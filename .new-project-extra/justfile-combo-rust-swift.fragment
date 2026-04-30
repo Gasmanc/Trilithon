@@ -1,0 +1,13 @@
+build-core:
+    cd core && bash scripts/build-xcframework.sh
+
+xcframework: build-core
+    @echo "✓ xcframework at core/target/xcframework/"
+
+# Re-run after editing core.udl or core/adapters source.
+sync-bindings: build-core
+    @echo "→ copying generated Swift bindings into the app"
+    rsync -a core/target/xcframework/Generated/ app/Sources/./Generated/
+
+open-app:
+    cd app && open *.xcodeproj

@@ -1,0 +1,15 @@
+[package]
+name = ".-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+
+# IMPORTANT: `core` must NOT depend on adapters or cli, or on any I/O crate.
+# This is the architectural rule — enforced by the absence of those deps.
+
+[lints]
+workspace = true

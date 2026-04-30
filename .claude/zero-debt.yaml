@@ -1,0 +1,41 @@
+schema_version: 1
+project_name: .
+archetype: full            # full | lightweight
+strictness: strict          # strict | paranoid
+created: 2026-04-30
+updated: 2026-04-30
+languages:
+  rust:
+    variant: workspace-three-layer
+    path: core
+    added: 2026-04-30
+  typescript:
+    variant: react-frontend
+    path: web
+    added: 2026-04-30
+  swift:
+    variant: xcode-app
+    path: app
+    added: 2026-04-30
+combos:
+  - rust+swift-xcode
+recommendations:
+  lore:
+    - cargo-clap@4
+    - cargo-anyhow@1
+    - cargo-thiserror@2
+    - cargo-tracing@0.1
+    - cargo-tokio@1
+    - cargo-serde@1
+    - cargo-axum@0.8
+    - cargo-sqlx@0.8
+    - npm-react@19
+    - npm-react-dom@19
+    - npm-tailwindcss@3
+    - npm-vite@5
+    - npm-vitest@2
+    - npm-typescript@5
+    - npm-eslint@9
+    - npm-zod@3
+    - swift-swiftui@6
+    - swift-stdlib@5.9

@@ -1,0 +1,73 @@
+# Pre-commit hooks for ..
+# Install: `pre-commit install` (one-time per clone).
+# Manual run: `pre-commit run --all-files`.
+#
+# Hooks are diff-aware by default — they only run on staged files unless you
+# pass `--all-files`.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: bash -c 'cargo fmt --all --check'
+        files: .rs$
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        language: system
+        entry: bash -c 'cargo clippy --workspace --all-targets --all-features -- -D warnings'
+        files: .rs$
+        pass_filenames: false
+  - repo: local
+    hooks:
+      - id: ts-eslint
+        name: eslint
+        language: system
+        entry: bash -c 'pnpm exec eslint'
+        files: .(ts|tsx)$
+      - id: ts-prettier
+        name: prettier
+        language: system
+        entry: bash -c 'pnpm exec prettier --check'
+        files: .(ts|tsx|json|md|css)$
+      - id: ts-typecheck
+        name: tsc
+        language: system
+        entry: bash -c 'pnpm exec tsc --noEmit'
+        files: .(ts|tsx)$
+        pass_filenames: false
+  - repo: local
+    hooks:
+      - id: swiftlint
+        name: swiftlint
+        language: system
+        entry: bash -c 'swiftlint lint --strict'
+        files: .swift$
+        pass_filenames: false
+      - id: swiftformat
+        name: swiftformat
+        language: system
+        entry: bash -c 'swiftformat --lint .'
+        files: .swift$
+        pass_filenames: false

@@ -1,0 +1,3 @@
+[bindings.swift]
+ffi_module_name = "CoreFFI"
+generate_module_map = true

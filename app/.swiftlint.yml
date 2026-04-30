@@ -1,0 +1,48 @@
+disabled_rules: []
+
+opt_in_rules:
+  - force_unwrapping
+  - force_cast
+  - force_try
+  - fatal_error_message
+  - implicit_return
+  - discouraged_optional_collection
+  - discouraged_optional_boolean
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - last_where
+  - unused_import
+  - unused_declaration
+
+excluded:
+  - .build
+  - DerivedData
+  - Pods
+
+custom_rules:
+  no_mocks_in_production:
+    name: "Mock/Stub/Fake in non-test path"
+    regex: '\b(Mock|Stub|Fake)[A-Z]\w*'
+    match_kinds:
+      - identifier
+      - typeidentifier
+    excluded:
+      - ".*Tests?\\.swift$"
+      - ".*/Tests/.*"
+    severity: error
+    message: "Mock/Stub/Fake types must live in *Tests.swift or Tests/ directories."
+
+  no_todo:
+    name: "TODO/FIXME/XXX/HACK in committed code"
+    regex: '(TODO|FIXME|XXX|HACK)'
+    match_kinds:
+      - comment
+    severity: error
+    message: "Either implement, or open a tracked issue and remove the comment."
+
+force_unwrapping: error
+force_cast: error
+force_try: error
+fatal_error_message: warning

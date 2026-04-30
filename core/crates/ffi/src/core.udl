@@ -1,0 +1,11 @@
+namespace ._ffi {
+    string version();
+
+    [Throws=FfiError]
+    void boot();
+};
+
+[Error]
+enum FfiError {
+    "Boot",
+};
