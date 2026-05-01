@@ -28,3 +28,22 @@ Nothing flagged — SQL matches spec exactly, test uses `?` propagation, one jus
 - Formatter: `rustfmt` required joining a two-line `let` binding onto one line.
 - Clippy: `assert_eq!` macro expands to internal `expect` calls; replaced with explicit `if count != 1 { return Err(...) }`.
 - Clippy: added `#[allow(clippy::disallowed_methods)]` to the test function for the residual MIR-level span attribution from `Migrator::new` internals.
+
+## Slice 2.4
+**Status:** complete
+**Summary:** Implemented `SqliteStorage` in `core/crates/adapters/src/sqlite_storage.rs` backed by sqlx, with all four required pragmas (WAL, NORMAL sync, foreign keys, 5s busy timeout) set via `SqliteConnectOptions`. An advisory file-lock helper in `lock.rs` uses `fs2::FileExt::try_lock_exclusive` to fail fast if a peer process holds the lock. All `Storage` methods are implemented; drift, proposals stubs return `StorageError::Migration` with a versioned message. All eight named integration tests pass.
+
+### Simplify Findings
+- `row_to_snapshot` extracted as a shared helper used across `get_snapshot`, `parent_chain`, and `latest_desired_state` (avoids repeating 14-field struct construction).
+- `sqlx_err` helper keeps all error mappings consistent in a single place.
+- `tail_audit_log` builds the WHERE clause as SQL text (safe because only predicate structure is injected; all values are bound parameters) — same pattern as the in-memory double.
+- `actor_kind_str` and `outcome_str` made `const fn` per clippy `missing_const_for_fn` lint.
+
+### Fixes Applied
+- Gate failure 1: `async-trait` dependency was missing from `adapters/Cargo.toml` — added it.
+- Gate failure 1: switched from `sqlx::query!()` macros (require DATABASE_URL) to dynamic `sqlx::query()` throughout.
+- Gate failure 2: `LockHandle` missing `Debug` derive — added `#[derive(Debug)]`.
+- Gate failure 3 (clippy): `FileExt::unlock()` call in `Drop` was ambiguous with `std::fs::File::unlock` (stable 1.89); qualified as `FileExt::unlock(&self.file)` to select the `fs2` method.
+- Gate failure 3 (clippy): `std::io::Error::new(ErrorKind::Other, …)` rewritten to `std::io::Error::other(…)`.
+- Gate failure 3 (clippy): `pool()` made `const fn`; `actor_kind_str`/`outcome_str` made `const fn`.
+- Gate failure 3 (clippy): `sqlx_err` annotated with `#[allow(clippy::needless_pass_by_value)]` to preserve the ergonomic `.map_err(sqlx_err)` pattern.

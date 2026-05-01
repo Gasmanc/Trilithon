@@ -6,6 +6,8 @@
 
 pub mod config_loader;
 pub mod env_provider;
+pub mod lock;
+pub mod sqlite_storage;
 
 /// Errors returned by [`boot`].
 #[derive(Debug, thiserror::Error)]
