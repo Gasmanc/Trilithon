@@ -1,3 +1,18 @@
+## Slice 1.4
+**Status:** complete
+**Summary:** Implemented `observability::init` in `core/crates/cli/src/observability.rs` with `EnvFilter` support (`RUST_LOG` takes precedence, then `config.log_filter`), JSON or compact-pretty formatting selected by `config.format` or `TRILITHON_LOG_FORMAT=json`, and a `UtcSecondsLayer` that records `ts_unix_seconds` on every event via a thread-local. `main.rs` writes the pre-tracing sentinel to stderr, then installs the subscriber and emits `daemon.started`. Both `observability::tests` and the `pre_tracing_line` integration test pass.
+
+### Simplify Findings
+- `UtcSecondsLayer` visibility changed from `pub(crate)` to private (`struct UtcSecondsLayer`) since it is never referenced from outside `observability.rs`; the test reaches it through the module's `use super::UtcSecondsLayer`.
+- Lock scope in `utc_seconds_field_present` tightened with an inner block to satisfy `clippy::significant_drop_tightening`.
+
+### Fixes Applied
+1. Gate (clippy): `pub(crate) struct inside private module` — changed `UtcSecondsLayer` visibility to private.
+2. Gate (clippy): `called map(<f>).unwrap_or(false) on a Result` — replaced with `.is_ok_and(...)`.
+3. Gate (clippy): `redundant clone` in `pre_tracing_line.rs` test — removed `.clone()` on `output.stderr`.
+4. Gate (clippy): `temporary with significant Drop can be early dropped` — tightened `captured.lock()` guard scope inside an inner block.
+5. Gate (fmt): two `rustfmt` reformats applied after manual edits.
+
 ## Slice 1.3
 **Status:** complete
 **Summary:** Implemented `EnvProvider` trait and `EnvError` in `core/crates/core/src/config/env.rs`, with `StdEnvProvider` in `adapters`. Created `config_loader.rs` with `load_config` that reads a TOML file, overlays `TRILITHON_*` env vars via dotted-key mutation of a `toml::Table`, validates `rebase_token_ttl_minutes ∈ [5, 1440]`, and checks data-directory writability via a write probe. Nine integration tests all pass.
