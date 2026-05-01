@@ -6,6 +6,7 @@
 
 pub mod config_loader;
 pub mod env_provider;
+pub mod integrity_check;
 pub mod lock;
 pub mod migrate;
 pub mod sqlite_storage;

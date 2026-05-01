@@ -10,7 +10,9 @@ compile_error!("Trilithon V1 supports Unix targets only (Linux, macOS). See ADR-
 
 use std::time::Duration;
 
+use async_trait::async_trait;
 use tokio::sync::watch;
+use trilithon_core::lifecycle::ShutdownObserver;
 
 /// Maximum wall-clock budget between SIGINT/SIGTERM receipt and process exit.
 pub const DRAIN_BUDGET: Duration = Duration::from_secs(10);
@@ -58,6 +60,13 @@ impl ShutdownSignal {
     #[expect(dead_code, reason = "spec-required API, callers added in later slices")]
     pub fn is_shutting_down(&self) -> bool {
         *self.rx.borrow()
+    }
+}
+
+#[async_trait]
+impl ShutdownObserver for ShutdownSignal {
+    async fn wait_for_shutdown(&mut self) {
+        self.wait().await;
     }
 }
 

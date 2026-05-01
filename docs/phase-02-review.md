@@ -64,3 +64,17 @@ Nothing flagged — SQL matches spec exactly, test uses `?` propagation, one jus
 - Gate failure 2 (clippy): merged `Ok(None) => 0, Err(_) => 0` into `Ok(None) | Err(_) => 0`.
 - Gate failure 2 (clippy): replaced wildcard `other =>` arm in test match with explicit `MigrationError::Sqlx { source }` variant.
 - Gate failure 2 (clippy): added `#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::disallowed_methods)]` to test file — same pattern as `sqlite_storage.rs` tests.
+
+## Slice 2.6
+**Status:** complete
+**Summary:** Added `ShutdownObserver` trait in `core/crates/core/src/lifecycle.rs` to break the layering dependency; implemented it on `ShutdownSignal` in cli. Created `integrity_check.rs` in adapters with `run_integrity_loop` (tokio::select! over a 6-hour ticker and shutdown signal) and `integrity_check_once` (PRAGMA integrity_check). All three tests pass: inline unit test confirms `Ok` on healthy DB, integration test confirms the loop exits on shutdown within 500 ms.
+
+### Simplify Findings
+- `MissedTickBehavior::Skip` correctly handles delayed ticks without catching up.
+- `() = shutdown.wait_for_shutdown()` is more explicit than `_` per clippy `ignored_unit_patterns`.
+- `SQLite` backtick-wrapping in doc comments required throughout to satisfy `doc_markdown` lint.
+
+### Fixes Applied
+- Gate failure 1 (fmt): reformatted `sqlx::query_scalar` chain and import list in test file.
+- Gate failure 2 (clippy): fixed `doc_markdown` lint — `SQLite` → `` `SQLite` `` in four doc strings and module-level comment.
+- Gate failure 2 (clippy): fixed `ignored_unit_patterns` lint — `_ =` → `() =` in `tokio::select!` shutdown arm.
