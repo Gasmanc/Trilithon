@@ -37,9 +37,14 @@ pub async fn run_with_shutdown() -> anyhow::Result<ExitCode> {
     controller.trigger();
 
     // Await all spawned tasks, up to the drain budget.
+    // A JoinError indicates the task panicked; treat that as an abnormal exit.
     match tokio::time::timeout(DRAIN_BUDGET, task).await {
-        Ok(_) => {
+        Ok(Ok(())) => {
             tracing::info!(forced = false, "daemon.shutdown-complete");
+        }
+        Ok(Err(join_err)) => {
+            tracing::error!(error = %join_err, "daemon.task-panicked");
+            return Ok(ExitCode::StartupPreconditionFailure);
         }
         Err(_elapsed) => {
             tracing::warn!(forced = true, "daemon.shutdown-complete");

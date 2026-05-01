@@ -23,10 +23,11 @@ pub fn run(config_path: &Path) -> ExitCode {
 }
 
 #[allow(clippy::print_stdout)]
+// zd:phase-01 expires:2026-08-01 reason: config show is a user-facing display command; stdout is correct
 fn run_inner(config_path: &Path) -> Result<(), anyhow::Error> {
     let env = trilithon_adapters::env_provider::StdEnvProvider;
     let config = trilithon_adapters::config_loader::load_config(config_path, &env)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(anyhow::Error::from)?;
     let redacted = config.redacted();
     let rendered = toml::to_string_pretty(&redacted)?;
     println!("{rendered}");

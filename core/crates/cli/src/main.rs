@@ -2,6 +2,7 @@
 //!
 //! `unreachable_pub` is suppressed for the binary crate: items are `pub`
 //! within private modules for clarity, but can never be exported externally.
+// zd:phase-01 expires:2026-08-01 reason: binary crate pub-in-private-module pattern is intentional
 #![allow(unreachable_pub)]
 
 use std::io::Write as _;
@@ -97,6 +98,7 @@ fn run_daemon(config_path: &std::path::Path) -> trilithon_core::exit::ExitCode {
 }
 
 #[allow(clippy::print_stdout)]
+// zd:phase-01 expires:2026-08-01 reason: version output must go to stdout per CLI convention
 fn print_version() -> trilithon_core::exit::ExitCode {
     println!(
         "trilithon {} ({}) {}",

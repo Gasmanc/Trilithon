@@ -2,10 +2,11 @@
 //!
 //! # Algorithm
 //!
-//! 1. Read the file at `path`; missing → [`ConfigError::Missing`].
+//! 1. Read the file at `path`; `NotFound` → [`ConfigError::Missing`],
+//!    other I/O errors → [`ConfigError::ReadFailed`].
 //! 2. Parse into [`DaemonConfig`] via TOML; errors → [`ConfigError::MalformedToml`].
 //! 3. Re-serialize to a [`toml::Table`] so env overrides can be applied
-//!    as dotted-key mutations.
+//!    as dotted-key mutations; serialisation failure → [`ConfigError::InternalSerialise`].
 //! 4. Collect `TRILITHON_*` env vars, map keys (lowercase, `__` → `.`),
 //!    apply as dotted-path overrides into the table.
 //! 5. Re-deserialize the mutated table back to [`DaemonConfig`].
@@ -43,6 +44,16 @@ pub enum ConfigError {
         path: PathBuf,
     },
 
+    /// The configuration file could not be read (e.g. permission denied).
+    #[error("failed to read configuration file at {path}: {source}")]
+    ReadFailed {
+        /// The path that was attempted.
+        path: PathBuf,
+        /// The underlying I/O error.
+        #[source]
+        source: io::Error,
+    },
+
     /// The file contains invalid TOML.
     #[error("malformed TOML at line {line}, column {column}: {source}")]
     MalformedToml {
@@ -74,18 +85,21 @@ pub enum ConfigError {
         source: io::Error,
     },
 
-    /// The bind address string is not a valid `SocketAddr`.
-    #[error("bind address {value} is invalid")]
-    BindAddressInvalid {
-        /// The raw string value.
-        value: String,
-    },
-
     /// The rebase TTL is outside the allowed range \[5, 1440\].
     #[error("rebase TTL {value} minutes is outside [5, 1440]")]
     RebaseTtlOutOfBounds {
         /// The out-of-range value.
         value: u32,
+    },
+
+    /// Internal: serialising a valid `DaemonConfig` back to `toml::Table` failed.
+    ///
+    /// This should never occur in practice because we just successfully
+    /// deserialised the config from the same TOML format.
+    #[error("internal: failed to re-serialise config: {detail}")]
+    InternalSerialise {
+        /// The serialisation error message.
+        detail: String,
     },
 }
 
@@ -96,10 +110,19 @@ pub enum ConfigError {
 /// See [`ConfigError`] for all failure modes.
 pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, ConfigError> {
     // 1. Read file.
-    // All read errors on the config file itself are reported as Missing; only
-    // the data-dir probe (step 7) uses DataDirNotWritable.
-    let text = fs::read_to_string(path).map_err(|_| ConfigError::Missing {
-        path: path.to_owned(),
+    // NotFound → Missing (caller can offer a first-run setup message).
+    // Any other I/O error (EACCES, EIO, …) → ReadFailed (distinct from missing).
+    let text = fs::read_to_string(path).map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            ConfigError::Missing {
+                path: path.to_owned(),
+            }
+        } else {
+            ConfigError::ReadFailed {
+                path: path.to_owned(),
+                source: e,
+            }
+        }
     })?;
 
     // 2. Parse TOML → DaemonConfig.
@@ -116,12 +139,18 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
     })?;
 
     // 3. Re-serialize to a mutable toml::Table so we can apply env overrides.
-    // Safety: DaemonConfig derives Serialize; serialising a just-deserialized
-    // value cannot fail in practice.
-    let mut table: toml::Table = toml::Value::try_from(&config)
-        .unwrap_or_else(|_| toml::Value::Table(toml::Table::new()))
-        .try_into()
-        .unwrap_or_default();
+    // DaemonConfig derives Serialize and we just deserialised it successfully,
+    // so serialisation failure is an internal invariant violation — surface it
+    // as InternalSerialise rather than silently defaulting to an empty table.
+    let value = toml::Value::try_from(&config).map_err(|e| ConfigError::InternalSerialise {
+        detail: e.to_string(),
+    })?;
+    let mut table: toml::Table =
+        value
+            .try_into()
+            .map_err(|e: toml::de::Error| ConfigError::InternalSerialise {
+                detail: e.to_string(),
+            })?;
 
     // 4. Apply env overrides.
     let overrides = env.vars_with_prefix("TRILITHON_");
@@ -142,25 +171,17 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
     }
 
     // 5. Re-deserialize the (possibly mutated) table back to DaemonConfig.
+    // Any type mismatch from env overrides (e.g. bad bind address, bad integer)
+    // surfaces here as MalformedToml. Span information is not available at this
+    // stage because toml::de::Error spans refer to the original text positions,
+    // not the in-memory table, so we default to (1, 1).
     let config: DaemonConfig =
         toml::Value::Table(table)
             .try_into()
-            .map_err(|e: toml::de::Error| {
-                // A failed override (e.g. bad bind address) surfaces here.
-                let msg = e.to_string();
-                if msg.contains("bind") || msg.contains("SocketAddr") || msg.contains("address") {
-                    // Extract the bad value from the error message if possible.
-                    ConfigError::BindAddressInvalid { value: msg }
-                } else {
-                    let span = e.span();
-                    let (line, column) =
-                        span.map_or((1, 1), |r| byte_offset_to_line_col("", r.start));
-                    ConfigError::MalformedToml {
-                        line,
-                        column,
-                        source: e,
-                    }
-                }
+            .map_err(|e: toml::de::Error| ConfigError::MalformedToml {
+                line: 1,
+                column: 1,
+                source: e,
             })?;
 
     // 6. Validate rebase TTL.

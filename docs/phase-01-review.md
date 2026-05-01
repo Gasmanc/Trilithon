@@ -85,3 +85,117 @@
 2. Gate (clippy): `pub(crate) struct inside private module` for `TsWriter`/`TsWriterGuard` — changed visibility to private.
 3. Gate (clippy): `these match arms have identical bodies` for `Ok(()) => {}` and `Err(UnknownKey) => {}` — refactored to `if let Err(reason) = ... { if reason != UnknownKey { return Err(...) } }`.
 4. Gate (clippy): `this could be a const fn` for `TsWriter::new` — made `const fn`.
+
+## Multi-Review Findings
+
+### Reviewer: cc-kimi
+**CRITICAL**
+- C1 `adapters/src/config_loader.rs:121-124` — `unwrap_or_else`/`unwrap_or_default` silently replace config with empty table on serialisation failure
+- C2 `adapters/src/config_loader.rs:101` — All I/O errors (EACCES, etc.) mapped to `ConfigError::Missing`
+
+**WARNING**
+- W1 `core/Cargo.toml:28` vs `adapters/Cargo.toml:19` — `nix` version split (0.27 workspace vs 0.29 adapters)
+- W2 `adapters/src/config_loader.rs:150` — Error classification by string matching is fragile
+- W3 `cli/src/observability.rs:124-189` — Double `now_utc()` calls; thread-local and JSON timestamp can diverge
+- W4 `cli/tests/signals.rs:60` — Unconditional 1-s sleep before signalling is a race on CI
+- W5 `adapters/src/config_loader.rs:181` — Stale write-probe file on removal failure
+
+**INFO**
+- I1 `core/Cargo.toml:10` — `serde_json` in core prod deps; only used in tests
+- I2 `cli/src/run.rs:40` — Task panic swallowed as clean shutdown
+- I3 `cli/src/observability.rs:125,177` — Two independent timestamps per event
+- I4 `cli/src/main.rs:36` — Tracing config hardcoded; `[tracing]` TOML section is a no-op
+- I5 `cli/src/config_show.rs:29` — `anyhow!("{e}")` discards structured error chain
+
+### Reviewer: cc-minimax
+**CRITICAL**
+- C-1 `adapters/src/config_loader.rs:99-103` — All I/O errors map to `ConfigError::Missing`
+- C-2 `adapters/src/config_loader.rs:121-124` — `unwrap_or_else`/`unwrap_or_default` silently corrupt config
+
+**WARNING**
+- W-1 `cli/src/run.rs:40-43` — Task panic swallowed as clean shutdown
+- W-2 `web/vite.config.ts` + `vitest.config.ts` — Duplicate Vitest config blocks
+- W-3 `core/Cargo.toml:28` + `adapters/Cargo.toml:19` — `nix` version split
+- W-4 `cli/src/observability.rs:125,177` — Double timestamp sampling
+- W-5 `adapters/src/config_loader.rs` — No cross-field validation of `allow_remote` vs `bind`
+- W-6 `adapters/src/config_loader.rs:150-154` — `BindAddressInvalid.value` contains full error string
+- W-7 `web/package.json:2` — Invalid npm package name `".-frontend"`
+
+**INFO**
+- I-1 `core/src/config/env.rs:12` — `'static` bound on `EnvProvider` broader than needed
+- I-3 `core/Cargo.toml:11` — `serde_json` in prod deps, only used in tests
+- I-4 `adapters/Cargo.toml:15`, `core/Cargo.toml:14` — `toml` not using `{ workspace = true }`
+
+### Reviewer: codex
+**CRITICAL**
+- 1 `adapters/src/config_loader.rs:101` — I/O error swallowed, EACCES reported as "file not found"
+- 2 `cli/src/run.rs:40-46` — Task panic silently returns `ExitCode::CleanShutdown`
+- 3 `adapters/src/config_loader.rs:151` — Fragile string-match on TOML error message for `BindAddressInvalid`
+
+**WARNING**
+- 4 `adapters/src/config_loader.rs:121-124` — `unwrap_or_else`/`unwrap_or_default` in production path
+- 5 `adapters/Cargo.toml:19` vs workspace — `nix` 0.29 conflicts with workspace pin of 0.27
+- 6 `cli/src/observability.rs:123-128,177,189` — Double `time::now()` call
+- 7 `adapters/src/lib.rs:7` — `pub use trilithon_core as core` shadows std `core` alias
+- 8 `adapters/src/lib.rs:20-21` — `anyhow::Result` in adapters violates project conventions
+- 9 Multiple — `#[allow(...)]` suppressions missing required `zd:<id>` tracking format
+
+**INFO**
+- 12 `web/vite.config.ts`, `web/vitest.config.ts` — Duplicate `test` block
+- 13 `web/package.json:2` — Package name is template artifact `".-frontend"`
+- 15 `core/Cargo.toml` dev-deps — `toml` not using `{ workspace = true }`
+
+### Reviewer: cc-qwen
+**CRITICAL**
+- 1 `adapters/src/config_loader.rs:121-124` — Silent data loss via `unwrap_or_else`/`unwrap_or_default`
+- 2 `adapters/src/config_loader.rs` + `cli/src/run.rs` — `allow_remote` field parsed but never enforced
+
+**WARNING**
+- 3 `core/Cargo.toml:28` + `adapters/Cargo.toml:19` — `nix` version mismatch
+- 4 `adapters/src/lib.rs` — `anyhow::Result` in adapters public API
+- 5 `core/crates/ffi/Cargo.toml:37` — `unsafe_code = "allow"` without explanation
+- 7 `cli/src/observability.rs:125,177` — Double timestamp sampling
+- 8 `cli/tests/signals.rs:60` + `utc_timestamps.rs:59` — `sleep(1s)` race on CI
+
+**INFO**
+- 9 `core/src/lib.rs` — `CoreError::InvalidInput` unused
+- 11 `web/vite.config.ts` + `vitest.config.ts` — Duplicate Vitest config
+- 13 `web/package.json:2` — Invalid npm package name
+
+### Reviewer: cc-glm
+**CRITICAL**
+- 1 `core/crates/core/Cargo.toml:10` — `serde_json` in core prod deps but only used in tests
+- 2 `adapters/src/config_loader.rs:121-124` — `unwrap_or_else`/`unwrap_or_default` silently swallows errors
+
+**WARNING**
+- 3 `core/Cargo.toml:28` + `adapters/Cargo.toml:19` — `nix` version mismatch
+- 4 `adapters/src/lib.rs` — `anyhow::Result` in adapters, violates conventions
+- 5 `adapters/src/lib.rs:20`, `cli/src/main.rs:99` — `#[allow]` suppressions missing `zd:` ids
+- 7 `adapters/src/config_loader.rs:79-82,153` — `BindAddressInvalid.value` contains full error message
+- 8 `adapters/src/config_loader.rs:157` — `byte_offset_to_line_col("", r.start)` always yields (1,1)
+- 10 `cli/tests/signals.rs:60` — `sleep(1s)` synchronisation race
+- 11 `core/Cargo.toml:13` — MSRV documented as 1.85 in workspace but CLAUDE.md says 1.80
+
+**INFO**
+- 13 `core/crates/ffi/Cargo.toml:37` — `unsafe_code = "allow"` without explanation
+- 14 `web/package.json:2` — Invalid package name
+- 16 `cli/tests/config_show.rs:17-18` — Removing compile-time env vars is a no-op
+
+### Reviewer: gemini
+**CRITICAL**
+- 1 `adapters/src/config_loader.rs:121-124` — Silent data loss via `unwrap_or_else`/`unwrap_or_default`
+- 2 `adapters/src/config_loader.rs:148-163` — Fragile string-match heuristic for `BindAddressInvalid`; untested
+
+**WARNING**
+- 3 `adapters/Cargo.toml:19` vs workspace — `nix` version skew
+- 4 `cli/src/main.rs:72` — Config loaded and discarded; will be loaded a second time in future phases
+- 5 `adapters/src/lib.rs:20`, `cli/src/main.rs:99`, `cli/src/config_show.rs:25` — `#[allow]` suppressions missing `zd:` tracking ids
+- 6 `core/src/config/env.rs:12` — `'static` bound on `EnvProvider` unnecessary
+- 7 `cli/src/observability.rs:113-128` — Thread-local side-channel couples production to test layer
+- 8 `cli/tests/signals.rs:60`, `cli/tests/utc_timestamps.rs:59` — `sleep(1s)` synchronisation race
+- 9 `core/Cargo.toml:10` — `serde_json` prod dep used only in `#[cfg(test)]`
+
+**INFO**
+- 10 `core/src/exit.rs:19` — `InvalidInvocation` defined but never emitted
+- 11 `adapters/src/lib.rs:21` — `boot()` vestigial, not called by current `main.rs`
+- 12 `adapters/Cargo.toml:15`, `core/Cargo.toml:14` — `toml` not using `{ workspace = true }`

@@ -9,7 +9,9 @@ pub use trilithon_core as core;
 pub mod config_loader;
 pub mod env_provider;
 
-use anyhow::Result;
+/// Errors returned by [`boot`].
+#[derive(Debug, thiserror::Error)]
+pub enum BootError {}
 
 /// Initialize all adapters.
 ///
@@ -18,7 +20,8 @@ use anyhow::Result;
 /// This function does not currently return errors, but is designed to support
 /// future initialization steps that may fail.
 #[allow(clippy::unnecessary_wraps)]
-pub fn boot() -> Result<()> {
+// zd:phase-01 expires:2026-08-01 reason: boot() is a scaffold; will gain real fallible steps in Phase 2
+pub fn boot() -> Result<(), BootError> {
     tracing::info!("adapters initialised");
     Ok(())
 }

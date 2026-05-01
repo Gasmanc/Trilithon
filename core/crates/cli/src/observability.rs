@@ -174,7 +174,12 @@ impl<W: io::Write> io::Write for TsWriterGuard<W> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let ts = time::OffsetDateTime::now_utc().unix_timestamp();
+        // Reuse the timestamp captured by UtcSecondsLayer::on_event for this
+        // event. Fall back to now_utc() only if the thread-local was not set
+        // (e.g. if TsWriter is used outside the UtcSecondsLayer pipeline).
+        let ts = LAST_TS
+            .get()
+            .unwrap_or_else(|| time::OffsetDateTime::now_utc().unix_timestamp());
         let line = inject_ts_unix_seconds(&self.buf, ts);
         self.inner.write_all(&line)?;
         self.inner.flush()?;
@@ -186,7 +191,9 @@ impl<W: io::Write> io::Write for TsWriterGuard<W> {
 impl<W: io::Write> Drop for TsWriterGuard<W> {
     fn drop(&mut self) {
         if !self.buf.is_empty() {
-            let ts = time::OffsetDateTime::now_utc().unix_timestamp();
+            let ts = LAST_TS
+                .get()
+                .unwrap_or_else(|| time::OffsetDateTime::now_utc().unix_timestamp());
             let line = inject_ts_unix_seconds(&self.buf, ts);
             let _ = self.inner.write_all(&line);
             let _ = self.inner.flush();
