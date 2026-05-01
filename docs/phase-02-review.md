@@ -47,3 +47,20 @@ Nothing flagged — SQL matches spec exactly, test uses `?` propagation, one jus
 - Gate failure 3 (clippy): `std::io::Error::new(ErrorKind::Other, …)` rewritten to `std::io::Error::other(…)`.
 - Gate failure 3 (clippy): `pool()` made `const fn`; `actor_kind_str`/`outcome_str` made `const fn`.
 - Gate failure 3 (clippy): `sqlx_err` annotated with `#[allow(clippy::needless_pass_by_value)]` to preserve the ergonomic `.map_err(sqlx_err)` pattern.
+
+## Slice 2.5
+**Status:** complete
+**Summary:** Implemented `core/crates/adapters/src/migrate.rs` — a migration runner wrapping `sqlx::migrate!` with a downgrade refusal gate. The runner queries `_sqlx_migrations` (sqlx's internal tracking table) before and after `MIGRATOR.run()` to compute `applied_count`, and refuses to start with `MigrationError::Downgrade` if the database's max version exceeds the embedded set max. All three integration tests (`fresh_db_applies_all`, `idempotent_second_run`, `refuses_downgrade`) use in-memory SQLite for isolation and pass cleanly.
+
+### Simplify Findings
+- `MIGRATOR.iter().map(...).max().map_or(0, ...)` avoids a `.map().unwrap_or()` chain (caught by Clippy `map_unwrap_or` on first gate run).
+- `Ok(None) | Err(_) => 0` collapses two arms into one (caught by Clippy `match_wildcard_for_single_variants` / `single_match_else` on first gate run).
+- The test wildcard `other =>` arm was replaced with the explicit `MigrationError::Sqlx { source }` variant — required by the strict `match_wildcard_for_single_variants` lint.
+
+### Fixes Applied
+- Gate failure 1 (fmt): `rustfmt` reordered imports and collapsed a 4-line `connect_with` chain into one line in the test helper.
+- Gate failure 1 (clippy): added doc comments to all `MigrationError` struct fields (`db_version`, `embedded_max`, `source`).
+- Gate failure 1 (clippy): replaced `.map(...).unwrap_or(0)` chains with `.map_or(0, ...)` in two places.
+- Gate failure 2 (clippy): merged `Ok(None) => 0, Err(_) => 0` into `Ok(None) | Err(_) => 0`.
+- Gate failure 2 (clippy): replaced wildcard `other =>` arm in test match with explicit `MigrationError::Sqlx { source }` variant.
+- Gate failure 2 (clippy): added `#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::disallowed_methods)]` to test file — same pattern as `sqlite_storage.rs` tests.
