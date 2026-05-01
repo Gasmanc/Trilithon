@@ -9,6 +9,7 @@ use thiserror::Error;
 
 pub mod config;
 pub mod exit;
+pub mod storage;
 
 /// Errors from the core domain logic.
 #[derive(Debug, Error)]
