@@ -120,3 +120,18 @@ Nothing flagged — SQL matches spec exactly, test uses `?` propagation, one jus
 - WARNING: sqlx_err dead variants — fixed
 - WARNING: integrity task fire-and-forget — documented unfixed (low severity, design choice)
 - WARNING: stubs use Migration { version: 0 } — documented unfixed
+
+## Phase-End Simplify
+
+### Reuse
+- Extracted `glob_prefix(pattern: &str) -> Option<&str>` into `core/crates/core/src/storage.rs` — eliminates duplicated trailing-`*` parsing between `in_memory.rs` and `sqlite_storage.rs`.
+
+### Quality
+- Trimmed verbose comment on `IntegrityResult::Failed.detail` field (integrity_check.rs).
+- Replaced `match snapshot.parent_id.clone() { None => break, Some(p) => ... }` with `if let Some(p) = ...` (in_memory.rs `parent_chain`).
+
+### Efficiency
+- Removed `count_before`/`count_after` queries from `migrate.rs` — applied_count now computed as `current_version.saturating_sub(db_version)`, reducing `_sqlx_migrations` query count from 4 to 2.
+
+### Fixes Applied
+- Gate passed cleanly after all simplify edits with no additional fix rounds required.
