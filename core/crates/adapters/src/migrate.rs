@@ -103,43 +103,19 @@ pub async fn apply_migrations(pool: &SqlitePool) -> Result<MigrationOutcome, Mig
         });
     }
 
-    // Step 4 — count rows before running, so we can compute applied_count.
-    // At this point the table either exists (db_version > 0) or doesn't yet
-    // (db_version == 0).  A missing table is fine here — MIGRATOR.run() will
-    // create it.  Any other error should propagate.
-    let count_before: i64 =
-        match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
-            .fetch_one(pool)
-            .await
-        {
-            Ok(n) => n,
-            Err(sqlx::Error::Database(ref db_err))
-                if db_err.message().contains("no such table") =>
-            {
-                0
-            }
-            Err(e) => return Err(MigrationError::Read { source: e }),
-        };
-
-    // Run the migrations.
+    // Step 4 — run the migrations.
     MIGRATOR.run(pool).await?;
-
-    // Count rows after — table is guaranteed to exist at this point.
-    let count_after: i64 = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
-        .fetch_one(pool)
-        .await
-        .map_err(|e| MigrationError::Read { source: e })?;
-
-    let applied_count = u32::try_from((count_after - count_before).max(0)).unwrap_or(0);
 
     // Step 5 — read the authoritative current version post-run.
     let current_version: u32 =
         sqlx::query_scalar::<_, Option<i64>>("SELECT MAX(version) FROM _sqlx_migrations")
             .fetch_one(pool)
             .await
-            .ok()
-            .flatten()
+            .map_err(|e| MigrationError::Read { source: e })?
             .map_or(0, |v| u32::try_from(v).unwrap_or(0));
+
+    // applied_count = new migrations run; correct since versions are sequential integers.
+    let applied_count = current_version.saturating_sub(db_version);
 
     tracing::info!(
         current_version,

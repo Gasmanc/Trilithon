@@ -413,11 +413,8 @@ impl Storage for SqliteStorage {
             conditions.push("kind LIKE ?");
             // SQLite uses % as wildcard; replace trailing * with %.
             kind_glob_param = selector.kind_glob.map(|g| {
-                if g.ends_with('*') {
-                    format!("{}%", &g[..g.len() - 1])
-                } else {
-                    g
-                }
+                let prefix = trilithon_core::storage::glob_prefix(&g).map(str::to_owned);
+                prefix.map_or(g, |p| format!("{p}%"))
             });
         }
         if selector.actor_id.is_some() {

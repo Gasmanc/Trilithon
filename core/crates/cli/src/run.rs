@@ -1,5 +1,7 @@
 //! Daemon run loop with signal handling and graceful shutdown.
 
+use trilithon_adapters::sqlite_storage::SqliteStorage;
+use trilithon_core::config::DaemonConfig;
 use trilithon_core::exit::ExitCode;
 
 use crate::shutdown::{
@@ -18,8 +20,37 @@ async fn daemon_loop(mut signal: ShutdownSignal) {
 /// # Errors
 ///
 /// Returns an error if OS signal handler installation fails.
-pub async fn run_with_shutdown() -> anyhow::Result<ExitCode> {
+pub async fn run_with_shutdown(config: DaemonConfig) -> anyhow::Result<ExitCode> {
+    // Open storage — failure exits 3.
+    let storage = SqliteStorage::open(&config.storage.data_dir)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "storage.open.failed");
+            anyhow::anyhow!("storage open failed: {e}")
+        })?;
+
+    // Apply migrations — failure exits 3.  `apply_migrations` logs
+    // `storage.migrations.applied` with version/applied counts on success.
+    trilithon_adapters::migrate::apply_migrations(storage.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "migration.failed");
+            anyhow::anyhow!("migration failed: {e}")
+        })?;
+
+    let pool = storage.pool().clone();
+
     let (controller, signal) = ShutdownController::new();
+
+    // Spawn the periodic integrity-check background task.
+    tokio::spawn(trilithon_adapters::integrity_check::run_integrity_loop(
+        pool,
+        trilithon_adapters::integrity_check::DEFAULT_INTERVAL,
+        Box::new(signal.clone()) as Box<dyn trilithon_core::lifecycle::ShutdownObserver>,
+    ));
+
+    // Emit daemon.started only after migrations succeed.
+    tracing::info!("daemon.started");
 
     let task = tokio::spawn(daemon_loop(signal));
 

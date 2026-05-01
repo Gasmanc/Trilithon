@@ -118,9 +118,10 @@ impl Storage for InMemoryStorage {
 
             chain.push(snapshot.clone());
 
-            match snapshot.parent_id.clone() {
-                None => break,
-                Some(parent_id) => current_id = parent_id,
+            if let Some(parent_id) = snapshot.parent_id.clone() {
+                current_id = parent_id;
+            } else {
+                break;
             }
         }
 
@@ -166,14 +167,17 @@ impl Storage for InMemoryStorage {
             .iter()
             .filter(|row| {
                 if let Some(ref kind_glob) = selector.kind_glob {
-                    // Simple glob: support trailing `*` only.
-                    if kind_glob.ends_with('*') {
-                        let prefix = &kind_glob[..kind_glob.len() - 1];
-                        if !row.kind.starts_with(prefix) {
-                            return false;
+                    match crate::storage::glob_prefix(kind_glob) {
+                        Some(prefix) => {
+                            if !row.kind.starts_with(prefix) {
+                                return false;
+                            }
                         }
-                    } else if row.kind != *kind_glob {
-                        return false;
+                        None => {
+                            if row.kind != *kind_glob {
+                                return false;
+                            }
+                        }
                     }
                 }
                 if let Some(ref actor_id) = selector.actor_id {

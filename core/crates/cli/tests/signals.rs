@@ -41,12 +41,22 @@ mod unix_tests {
     /// 2. Stderr contains `daemon.shutting-down`.
     /// 3. Wall-clock time from kill to exit is < 10 seconds.
     fn assert_signal_shutdown(sig_name: &str) {
+        // Each test gets its own data directory to avoid advisory-lock conflicts
+        // when the two signal tests execute in parallel.
+        let data_dir =
+            std::env::temp_dir().join(format!("trilithon-signal-test-{}", sig_name.to_lowercase()));
+        std::fs::create_dir_all(&data_dir).expect("create test data dir");
+
         let child = std::process::Command::new(trilithon_bin())
             .args([
                 "--config",
                 fixture_config().to_str().expect("utf-8 path"),
                 "run",
             ])
+            .env(
+                "TRILITHON_STORAGE__DATA_DIR",
+                data_dir.to_str().expect("utf-8 path"),
+            )
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()

@@ -39,6 +39,11 @@ mod unix_tests {
         // Capture the wall-clock range around the test.
         let before = now_unix_secs();
 
+        // Use a unique data directory so this test does not conflict with
+        // other tests that run the daemon in parallel.
+        let data_dir = std::env::temp_dir().join("trilithon-utc-timestamps-test");
+        std::fs::create_dir_all(&data_dir).expect("create test data dir");
+
         let child = std::process::Command::new(trilithon_bin())
             .args([
                 "--config",
@@ -47,6 +52,10 @@ mod unix_tests {
             ])
             // Force JSON log format so we can parse ts_unix_seconds.
             .env("TRILITHON_LOG_FORMAT", "json")
+            .env(
+                "TRILITHON_STORAGE__DATA_DIR",
+                data_dir.to_str().expect("utf-8 path"),
+            )
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()

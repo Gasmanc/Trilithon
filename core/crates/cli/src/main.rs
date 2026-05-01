@@ -48,8 +48,6 @@ fn main() -> std::process::ExitCode {
         }
     }
 
-    tracing::info!("daemon.started");
-
     let code = dispatch(cli);
     exit::to_process_exit(code)
 }
@@ -70,11 +68,14 @@ fn run_daemon(config_path: &std::path::Path) -> trilithon_core::exit::ExitCode {
     // Load and validate config before starting the runtime so that config
     // errors produce exit code 2 without spinning up Tokio.
     let env = trilithon_adapters::env_provider::StdEnvProvider;
-    if let Err(e) = trilithon_adapters::config_loader::load_config(config_path, &env) {
-        let mut stderr = std::io::stderr().lock();
-        let _ = writeln!(stderr, "trilithon: {e}");
-        return trilithon_core::exit::ExitCode::ConfigError;
-    }
+    let config = match trilithon_adapters::config_loader::load_config(config_path, &env) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            let mut stderr = std::io::stderr().lock();
+            let _ = writeln!(stderr, "trilithon: {e}");
+            return trilithon_core::exit::ExitCode::ConfigError;
+        }
+    };
 
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -88,7 +89,7 @@ fn run_daemon(config_path: &std::path::Path) -> trilithon_core::exit::ExitCode {
         }
     };
 
-    match rt.block_on(run::run_with_shutdown()) {
+    match rt.block_on(run::run_with_shutdown(config)) {
         Ok(code) => code,
         Err(e) => {
             tracing::error!(error = %e, "daemon.fatal");

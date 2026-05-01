@@ -26,6 +26,12 @@ impl ExitCode {
     }
 }
 
+impl From<crate::storage::StorageError> for ExitCode {
+    fn from(_: crate::storage::StorageError) -> Self {
+        Self::StartupPreconditionFailure
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ExitCode;

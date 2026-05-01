@@ -1,9 +1,4 @@
 //! Periodic `PRAGMA integrity_check` background task.
-//!
-//! [`run_integrity_loop`] should be spawned once at startup. It fires every
-//! [`DEFAULT_INTERVAL`] and emits a `storage.integrity_check.failed` tracing
-//! event if `SQLite` reports a problem. The task terminates when the provided
-//! [`ShutdownObserver`] fires.
 
 use std::time::Duration;
 
@@ -21,9 +16,7 @@ pub enum IntegrityResult {
     Ok,
     /// `SQLite` reported one or more problems.
     Failed {
-        /// The raw detail string returned by `SQLite` (may contain multiple lines
-        /// joined by newlines). Callers should treat this as opaque; do not
-        /// expose it in user-facing messages without redaction.
+        /// The raw detail string from `SQLite`; treat as opaque.
         detail: String,
     },
 }
