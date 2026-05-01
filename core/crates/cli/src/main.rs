@@ -54,13 +54,13 @@ fn main() -> std::process::ExitCode {
 }
 
 fn dispatch(cli: Cli) -> trilithon_core::exit::ExitCode {
-    let Cli { config: _, command } = cli;
+    let Cli { config, command } = cli;
     match command {
         Command::Version => print_version(),
         Command::Run => run_daemon(),
         Command::Config {
             action: ConfigAction::Show,
-        } => config_show::placeholder(),
+        } => config_show::run(&config),
     }
 }
 

@@ -58,3 +58,16 @@
 5. Gate (dead_code): added `#[expect(dead_code, reason = "spec-required API, callers added in later slices")]` on `is_shutting_down` and `signal` per the spec.
 6. Gate (compile): `assert_cmd::Command` does not expose `spawn()` publicly; replaced with `std::process::Command` in `tests/signals.rs`.
 7. Integration test stability: SIGINT handling required a 1-second startup sleep (vs 500ms) for the Tokio runtime to register its SIGINT signal pipe within the cargo test environment; SIGTERM worked with 500ms but SIGINT did not.
+
+## Slice 1.6
+**Status:** complete
+**Summary:** Implemented the `config show` subcommand by replacing the placeholder in `config_show.rs` with `run_inner` (loads config via `load_config`, calls `redacted()`, serialises with `toml::to_string_pretty`) and a public `run` entry point that maps errors to stderr + `ExitCode::ConfigError`. The `main.rs` dispatch was updated to pass `&config` (the path) to `config_show::run`. An integration test in `tests/config_show.rs` runs the binary against a fixture with a secret `credentials_file`, captures stdout via `assert_cmd`, and asserts the snapshot via `insta` — confirming `***` is present and the raw path is absent.
+
+### Simplify Findings
+- No extraction opportunities found; `run_inner` is the minimal single-responsibility helper the spec calls for.
+- `insta::assert_snapshot!` calls `.unwrap()` internally; added the same `#![allow(...)]` banner used by `tests/signals.rs` to keep clippy clean.
+
+### Fixes Applied
+1. Gate (clippy): `clippy::uninlined_format_args` — changed `anyhow::anyhow!("{}", e)` to `anyhow::anyhow!("{e}")`.
+2. Gate (clippy): `insta::assert_snapshot!` expands to `unwrap()` — added `#![allow(clippy::expect_used, clippy::unwrap_used, clippy::disallowed_methods)]` to the test file.
+3. Runtime (env): `TRILITHON_GIT_SHORT_HASH` and `TRILITHON_RUSTC_VERSION` build-env vars were picked up by `StdEnvProvider` as config overrides and rejected as `UnknownKey` — cleared them with `.env_remove()` in the test invocation.
