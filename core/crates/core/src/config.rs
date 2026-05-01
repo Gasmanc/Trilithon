@@ -4,5 +4,7 @@
 //!
 //! All types are pure data — no I/O, no async, no filesystem access.
 
+pub mod env;
 pub mod types;
+pub use env::*;
 pub use types::*;
