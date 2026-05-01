@@ -199,3 +199,18 @@
 - 10 `core/src/exit.rs:19` — `InvalidInvocation` defined but never emitted
 - 11 `adapters/src/lib.rs:21` — `boot()` vestigial, not called by current `main.rs`
 - 12 `adapters/Cargo.toml:15`, `core/Cargo.toml:14` — `toml` not using `{ workspace = true }`
+
+## Phase-End Simplify
+
+### Reuse
+- Extracted `get_or_now_unix_ts()` helper in `observability.rs` — eliminated the duplicate `LAST_TS.get().unwrap_or_else(now_utc)` pattern from `flush()` and `drop()` (3 call sites → 1 helper).
+- Skipped: stderr helper (only 2 effective call sites, below 3-use threshold). Config-loading wrapper (2 sites). Env-key normalization (1 site).
+
+### Quality
+- Added `REDACTED: &str = "***"` constant in `types.rs`; all three `"***"` literals now reference it.
+- Removed redundant inline comments that duplicated the `#[expect(dead_code)]` reason strings in `shutdown.rs`.
+- Removed non-explanatory `// Map TRILITHON_SERVER__BIND → server.bind` comment in `config_loader.rs`.
+- Skipped: Unifying the `match format` registry arms in `observability.rs` — `fmt_layer` types differ in the type system, boxing would add more complexity than the duplication costs.
+
+### Efficiency
+- Nothing flagged — all paths are efficient and TOCTOU-free.
