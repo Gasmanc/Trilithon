@@ -71,3 +71,17 @@
 1. Gate (clippy): `clippy::uninlined_format_args` — changed `anyhow::anyhow!("{}", e)` to `anyhow::anyhow!("{e}")`.
 2. Gate (clippy): `insta::assert_snapshot!` expands to `unwrap()` — added `#![allow(clippy::expect_used, clippy::unwrap_used, clippy::disallowed_methods)]` to the test file.
 3. Runtime (env): `TRILITHON_GIT_SHORT_HASH` and `TRILITHON_RUSTC_VERSION` build-env vars were picked up by `StdEnvProvider` as config overrides and rejected as `UnknownKey` — cleared them with `.env_remove()` in the test invocation.
+
+## Slice 1.7
+**Status:** complete
+**Summary:** Added end-to-end integration tests for exit-code and signal behaviour: `missing_config.rs` covers missing and malformed config (exit 2), `signals.rs` was extended with `daemon.shutdown-complete` assertion, and `utc_timestamps.rs` verifies JSON log lines carry `ts_unix_seconds` integer fields. The `TsWriter`/`TsWriterGuard` infrastructure was added to `observability.rs` to inject `ts_unix_seconds` into JSON output by wrapping the fmt layer's writer. Config loading was wired into `run_daemon` so the `run` subcommand validates config before starting the Tokio runtime. `core/README.md` was created with the exit-code table.
+
+### Simplify Findings
+- `UnknownKey` env override errors were changed from hard failures to silent skips in `config_loader.rs`. Build-time env vars (`TRILITHON_GIT_SHORT_HASH`, etc.) share the `TRILITHON_` prefix and must not fail config loading. This is architecturally cleaner than requiring every call site to strip these vars manually.
+- `TsWriter::new` is `const fn` and both `TsWriter`/`TsWriterGuard` are private (not `pub(crate)`) since they are only used within `observability.rs`.
+
+### Fixes Applied
+1. Gate (test runtime): `TRILITHON_GIT_SHORT_HASH` in the test environment caused `ConfigError::EnvOverride(UnknownKey)` → exit 2 in signal tests. Fixed by making `UnknownKey` a silent skip in `config_loader::load_config`.
+2. Gate (clippy): `pub(crate) struct inside private module` for `TsWriter`/`TsWriterGuard` — changed visibility to private.
+3. Gate (clippy): `these match arms have identical bodies` for `Ok(()) => {}` and `Err(UnknownKey) => {}` — refactored to `if let Err(reason) = ... { if reason != UnknownKey { return Err(...) } }`.
+4. Gate (clippy): `this could be a const fn` for `TsWriter::new` — made `const fn`.

@@ -128,12 +128,17 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
     for (suffix, value) in overrides {
         // Map TRILITHON_SERVER__BIND → server.bind
         let dotted_key = suffix.to_lowercase().replace("__", ".");
-        set_by_path(&mut table, &dotted_key, &value).map_err(|reason| {
-            ConfigError::EnvOverride {
-                var: format!("TRILITHON_{suffix}"),
-                reason,
+        // Unknown keys are silently skipped: build-time or deployment env
+        // vars with the TRILITHON_ prefix (e.g. TRILITHON_GIT_SHORT_HASH)
+        // must not cause a config error.
+        if let Err(reason) = set_by_path(&mut table, &dotted_key, &value) {
+            if reason != EnvOverrideReason::UnknownKey {
+                return Err(ConfigError::EnvOverride {
+                    var: format!("TRILITHON_{suffix}"),
+                    reason,
+                });
             }
-        })?;
+        }
     }
 
     // 5. Re-deserialize the (possibly mutated) table back to DaemonConfig.

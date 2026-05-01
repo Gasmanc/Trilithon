@@ -82,6 +82,12 @@ mod unix_tests {
             "stderr did not contain 'daemon.shutting-down':\n{stderr}",
         );
 
+        // Stderr must also confirm shutdown completed.
+        assert!(
+            stderr.contains("daemon.shutdown-complete"),
+            "stderr did not contain 'daemon.shutdown-complete':\n{stderr}",
+        );
+
         // Completed within the drain budget.
         assert!(
             elapsed < std::time::Duration::from_secs(10),

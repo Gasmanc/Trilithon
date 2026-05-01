@@ -7,7 +7,8 @@ use std::io;
 
 use tracing::Subscriber;
 use tracing_subscriber::{
-    EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
+    EnvFilter, Layer, fmt::MakeWriter, layer::SubscriberExt as _, registry::LookupSpan,
+    util::SubscriberInitExt as _,
 };
 use trilithon_core::config::{LogFormat, TracingConfig};
 
@@ -52,7 +53,7 @@ pub fn init(config: &TracingConfig) -> Result<(), ObsError> {
                 .json()
                 .with_current_span(true)
                 .with_span_list(true)
-                .with_writer(io::stderr);
+                .with_writer(TsWriter::new(io::stderr));
             tracing_subscriber::registry()
                 .with(env_filter)
                 .with(fmt_layer)
@@ -103,9 +104,10 @@ fn resolve_format(configured: LogFormat) -> LogFormat {
 /// Layer that injects a `ts_unix_seconds` integer field on every event.
 ///
 /// In the fmt/json pipeline the timestamp appears as an additional field
-/// recorded via `tracing::info!` span instrumentation. In this layer, the
-/// value is stored in a thread-local so tests can inspect it without
-/// coupling to the formatter output.
+/// recorded via a side-channel write that appends `ts_unix_seconds` to the
+/// event before the fmt layer serialises it. In this layer, the value is
+/// stored in a thread-local so tests can inspect it without coupling to the
+/// formatter output.
 struct UtcSecondsLayer;
 
 std::thread_local! {
@@ -117,11 +119,93 @@ std::thread_local! {
         const { std::cell::Cell::new(None) };
 }
 
-impl<S: Subscriber> Layer<S> for UtcSecondsLayer {
+impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for UtcSecondsLayer {
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         let _ = (event, ctx);
         let ts = time::OffsetDateTime::now_utc().unix_timestamp();
         LAST_TS.set(Some(ts));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TsWriter — wraps a MakeWriter to inject `ts_unix_seconds` into JSON lines
+// ---------------------------------------------------------------------------
+
+/// A [`MakeWriter`] wrapper that rewrites each JSON log line to inject
+/// `ts_unix_seconds` as an integer field immediately after the opening `{`.
+///
+/// This allows the fmt/json layer to emit `ts_unix_seconds` without a custom
+/// `FormatEvent` implementation.
+struct TsWriter<W> {
+    inner: W,
+}
+
+impl<W> TsWriter<W> {
+    /// Wrap an existing writer.
+    const fn new(inner: W) -> Self {
+        Self { inner }
+    }
+}
+
+impl<'a, W> MakeWriter<'a> for TsWriter<W>
+where
+    W: MakeWriter<'a>,
+{
+    type Writer = TsWriterGuard<W::Writer>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        TsWriterGuard {
+            inner: self.inner.make_writer(),
+            buf: Vec::new(),
+        }
+    }
+}
+
+/// Guard that buffers a single JSON line and injects `ts_unix_seconds` on flush.
+struct TsWriterGuard<W: io::Write> {
+    inner: W,
+    buf: Vec<u8>,
+}
+
+impl<W: io::Write> io::Write for TsWriterGuard<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buf.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let ts = time::OffsetDateTime::now_utc().unix_timestamp();
+        let line = inject_ts_unix_seconds(&self.buf, ts);
+        self.inner.write_all(&line)?;
+        self.inner.flush()?;
+        self.buf.clear();
+        Ok(())
+    }
+}
+
+impl<W: io::Write> Drop for TsWriterGuard<W> {
+    fn drop(&mut self) {
+        if !self.buf.is_empty() {
+            let ts = time::OffsetDateTime::now_utc().unix_timestamp();
+            let line = inject_ts_unix_seconds(&self.buf, ts);
+            let _ = self.inner.write_all(&line);
+            let _ = self.inner.flush();
+        }
+    }
+}
+
+/// Inject `"ts_unix_seconds":<ts>,` immediately after the opening `{` of a
+/// JSON object. If the buffer does not start with `{`, it is returned as-is.
+fn inject_ts_unix_seconds(buf: &[u8], ts: i64) -> Vec<u8> {
+    if buf.first().copied() == Some(b'{') {
+        let field = format!("\"ts_unix_seconds\":{ts},");
+        let mut out = Vec::with_capacity(buf.len() + field.len());
+        out.push(b'{');
+        out.extend_from_slice(field.as_bytes());
+        out.extend_from_slice(&buf[1..]);
+        out
+    } else {
+        buf.to_vec()
     }
 }
 
@@ -140,9 +224,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use tracing::Subscriber;
-    use tracing_subscriber::{Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _};
+    use tracing_subscriber::{
+        Layer, layer::SubscriberExt as _, registry::LookupSpan, util::SubscriberInitExt as _,
+    };
 
-    use super::{LAST_TS, UtcSecondsLayer};
+    use super::{LAST_TS, UtcSecondsLayer, inject_ts_unix_seconds};
 
     /// A minimal in-memory capture layer that records the `ts_unix_seconds`
     /// value left in the thread-local by [`UtcSecondsLayer`] after each event.
@@ -150,7 +236,7 @@ mod tests {
         captured: Arc<Mutex<Vec<i64>>>,
     }
 
-    impl<S: Subscriber> Layer<S> for CaptureLayer {
+    impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for CaptureLayer {
         fn on_event(
             &self,
             event: &tracing::Event<'_>,
@@ -218,5 +304,23 @@ mod tests {
             matches!(result, Err(ObsError::AlreadyInstalled)),
             "expected AlreadyInstalled, got: {result:?}"
         );
+    }
+
+    #[test]
+    fn inject_ts_unix_seconds_prepends_field() {
+        let input = br#"{"level":"INFO","message":"hi"}"#;
+        let result = inject_ts_unix_seconds(input, 1_234_567_890);
+        let s = String::from_utf8(result).unwrap();
+        assert!(
+            s.starts_with(r#"{"ts_unix_seconds":1234567890,"#),
+            "unexpected output: {s}"
+        );
+    }
+
+    #[test]
+    fn inject_ts_unix_seconds_passthrough_non_json() {
+        let input = b"not json";
+        let result = inject_ts_unix_seconds(input, 999);
+        assert_eq!(result, input);
     }
 }
