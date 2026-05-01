@@ -12,6 +12,7 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+sqlx = { version = "0.8", features = ["sqlite", "migrate", "runtime-tokio"], default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

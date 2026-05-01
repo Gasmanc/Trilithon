@@ -16,3 +16,15 @@
 - Clippy: removed unused `ProposalSource` and `DriftEventRow`/`DriftRowId` imports from the test module.
 - Clippy: added `Default` impl for `InMemoryStorage`.
 - Formatter: applied `cargo fmt` formatting pass (two minor whitespace diffs).
+
+## Slice 2.3
+**Status:** complete
+**Summary:** Created `core/crates/adapters/migrations/0001_init.sql` with nine tables (`schema_migrations`, `caddy_instances`, `users`, `sessions`, `snapshots`, `audit_log`, `mutations`, `secrets_metadata`) — every row-data table carries `caddy_instance_id TEXT NOT NULL DEFAULT 'local'`. Added `sqlx` with `sqlite`, `migrate`, and `runtime-tokio` features to the adapters crate. The `migrations_parse` integration test verifies the file parses cleanly via `sqlx::migrate::Migrator::new`.
+
+### Simplify Findings
+Nothing flagged — SQL matches spec exactly, test uses `?` propagation, one justified `#[allow(clippy::disallowed_methods)]` for a clippy MIR-level false positive where `Migrator::new`'s internal `.expect()` is attributed to the test call site.
+
+### Fixes Applied
+- Formatter: `rustfmt` required joining a two-line `let` binding onto one line.
+- Clippy: `assert_eq!` macro expands to internal `expect` calls; replaced with explicit `if count != 1 { return Err(...) }`.
+- Clippy: added `#[allow(clippy::disallowed_methods)]` to the test function for the residual MIR-level span attribution from `Migrator::new` internals.
