@@ -55,7 +55,6 @@ impl ShutdownSignal {
     /// Returns `true` if a shutdown has already been triggered.
     ///
     /// Used by long-running tasks to poll shutdown state between checkpoints.
-    // Spec-required API; callers will be added in later slices.
     #[expect(dead_code, reason = "spec-required API, callers added in later slices")]
     pub fn is_shutting_down(&self) -> bool {
         *self.rx.borrow()
@@ -77,7 +76,6 @@ impl ShutdownController {
     /// Return a new [`ShutdownSignal`] cloned from the internal receiver.
     ///
     /// Use this to hand a signal to tasks spawned after the initial pair.
-    // Spec-required API; callers will be added in later slices.
     #[expect(dead_code, reason = "spec-required API, callers added in later slices")]
     pub fn signal(&self) -> ShutdownSignal {
         ShutdownSignal {

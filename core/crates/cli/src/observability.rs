@@ -161,6 +161,14 @@ where
     }
 }
 
+/// Return the last timestamp captured by [`UtcSecondsLayer`] for this thread,
+/// or the current time if no event has been processed yet.
+fn get_or_now_unix_ts() -> i64 {
+    LAST_TS
+        .get()
+        .unwrap_or_else(|| time::OffsetDateTime::now_utc().unix_timestamp())
+}
+
 /// Guard that buffers a single JSON line and injects `ts_unix_seconds` on flush.
 struct TsWriterGuard<W: io::Write> {
     inner: W,
@@ -174,12 +182,7 @@ impl<W: io::Write> io::Write for TsWriterGuard<W> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        // Reuse the timestamp captured by UtcSecondsLayer::on_event for this
-        // event. Fall back to now_utc() only if the thread-local was not set
-        // (e.g. if TsWriter is used outside the UtcSecondsLayer pipeline).
-        let ts = LAST_TS
-            .get()
-            .unwrap_or_else(|| time::OffsetDateTime::now_utc().unix_timestamp());
+        let ts = get_or_now_unix_ts();
         let line = inject_ts_unix_seconds(&self.buf, ts);
         self.inner.write_all(&line)?;
         self.inner.flush()?;
@@ -191,9 +194,7 @@ impl<W: io::Write> io::Write for TsWriterGuard<W> {
 impl<W: io::Write> Drop for TsWriterGuard<W> {
     fn drop(&mut self) {
         if !self.buf.is_empty() {
-            let ts = LAST_TS
-                .get()
-                .unwrap_or_else(|| time::OffsetDateTime::now_utc().unix_timestamp());
+            let ts = get_or_now_unix_ts();
             let line = inject_ts_unix_seconds(&self.buf, ts);
             let _ = self.inner.write_all(&line);
             let _ = self.inner.flush();

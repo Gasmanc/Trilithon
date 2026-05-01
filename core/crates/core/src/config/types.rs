@@ -9,6 +9,9 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use url::Url;
 
+/// Placeholder used in redacted config output for every secret-bearing field.
+const REDACTED: &str = "***";
+
 /// Top-level daemon configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
@@ -293,8 +296,8 @@ impl From<&DaemonConfig> for RedactedConfig {
                         url, mtls_ca_path, ..
                     } => RedactedCaddyEndpoint::LoopbackTls {
                         url: url.clone(),
-                        mtls_cert_path: "***",
-                        mtls_key_path: "***",
+                        mtls_cert_path: REDACTED,
+                        mtls_key_path: REDACTED,
                         mtls_ca_path: mtls_ca_path.clone(),
                     },
                 },
@@ -305,14 +308,14 @@ impl From<&DaemonConfig> for RedactedConfig {
             secrets: RedactedSecretsConfig {
                 master_key_backend: match &cfg.secrets.master_key_backend {
                     SecretsBackend::Keychain => RedactedSecretsBackend::Keychain,
-                    SecretsBackend::File { .. } => RedactedSecretsBackend::File { path: "***" },
+                    SecretsBackend::File { .. } => RedactedSecretsBackend::File { path: REDACTED },
                 },
             },
             concurrency: cfg.concurrency.clone(),
             tracing: cfg.tracing.clone(),
             bootstrap: RedactedBootstrapConfig {
                 enabled_on_first_run: cfg.bootstrap.enabled_on_first_run,
-                credentials_file: "***",
+                credentials_file: REDACTED,
             },
         }
     }
