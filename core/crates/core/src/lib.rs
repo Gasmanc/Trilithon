@@ -7,13 +7,15 @@
 
 use thiserror::Error;
 
+/// Errors from the core domain logic.
 #[derive(Debug, Error)]
 pub enum CoreError {
+    /// Invalid input was provided.
     #[error("invalid input: {0}")]
     InvalidInput(String),
 }
 
-/// Placeholder. Replace with your domain types.
-pub fn version() -> &'static str {
+/// Returns the crate version.
+pub const fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }

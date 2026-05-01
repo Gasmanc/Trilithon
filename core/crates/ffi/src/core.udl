@@ -1,4 +1,4 @@
-namespace ._ffi {
+namespace trilithon_ffi {
     string version();
 
     [Throws=FfiError]

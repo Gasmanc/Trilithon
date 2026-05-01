@@ -30,13 +30,13 @@ repos:
       - id: cargo-fmt
         name: cargo fmt
         language: system
-        entry: bash -c 'cargo fmt --all --check'
+        entry: bash -c 'cd core && cargo fmt --all --check'
         files: .rs$
         pass_filenames: false
       - id: cargo-clippy
         name: cargo clippy
         language: system
-        entry: bash -c 'cargo clippy --workspace --all-targets --all-features -- -D warnings'
+        entry: bash -c 'cd core && cargo clippy --workspace --all-targets --all-features -- -D warnings'
         files: .rs$
         pass_filenames: false
   - repo: local
@@ -44,17 +44,17 @@ repos:
       - id: ts-eslint
         name: eslint
         language: system
-        entry: bash -c 'pnpm exec eslint'
+        entry: bash -c 'cd web && pnpm exec eslint'
         files: .(ts|tsx)$
       - id: ts-prettier
         name: prettier
         language: system
-        entry: bash -c 'pnpm exec prettier --check'
+        entry: bash -c 'cd web && pnpm exec prettier --check'
         files: .(ts|tsx|json|md|css)$
       - id: ts-typecheck
         name: tsc
         language: system
-        entry: bash -c 'pnpm exec tsc --noEmit'
+        entry: bash -c 'cd web && pnpm exec tsc --noEmit'
         files: .(ts|tsx)$
         pass_filenames: false
   - repo: local

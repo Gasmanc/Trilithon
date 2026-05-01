@@ -1,16 +1,16 @@
 [package]
-name = "."
+name = "trilithon"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "."
+name = "trilithon"
 path = "src/main.rs"
 
 [dependencies]
-.-core = { path = "../core" }
-.-adapters = { path = "../adapters" }
+trilithon-core = { path = "../core" }
+trilithon-adapters = { path = "../adapters" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }

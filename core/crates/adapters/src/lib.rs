@@ -4,11 +4,17 @@
 
 #![forbid(unsafe_code)]
 
-pub use ._core as core;
+pub use trilithon_core as core;
 
 use anyhow::Result;
 
-/// Example adapter shape. Replace with real adapters.
+/// Initialize all adapters.
+///
+/// # Errors
+///
+/// This function does not currently return errors, but is designed to support
+/// future initialization steps that may fail.
+#[allow(clippy::unnecessary_wraps)]
 pub fn boot() -> Result<()> {
     tracing::info!("adapters initialised");
     Ok(())

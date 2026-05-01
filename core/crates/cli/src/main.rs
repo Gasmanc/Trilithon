@@ -12,11 +12,12 @@ struct Cli {
 }
 
 #[tokio::main]
+#[allow(clippy::disallowed_methods)]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     init_tracing(cli.verbose);
-    ._adapters::boot()?;
-    tracing::info!(version = %._adapters::core::version(), ". starting");
+    trilithon_adapters::boot()?;
+    tracing::info!(version = %trilithon_adapters::core::version(), ". starting");
     Ok(())
 }
 
