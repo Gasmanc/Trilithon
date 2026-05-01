@@ -4,8 +4,6 @@
 
 #![forbid(unsafe_code)]
 
-pub use trilithon_core as core;
-
 pub mod config_loader;
 pub mod env_provider;
 
