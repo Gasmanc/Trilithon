@@ -78,3 +78,45 @@ Nothing flagged — SQL matches spec exactly, test uses `?` propagation, one jus
 - Gate failure 1 (fmt): reformatted `sqlx::query_scalar` chain and import list in test file.
 - Gate failure 2 (clippy): fixed `doc_markdown` lint — `SQLite` → `` `SQLite` `` in four doc strings and module-level comment.
 - Gate failure 2 (clippy): fixed `ignored_unit_patterns` lint — `_ =` → `() =` in `tokio::select!` shutdown arm.
+
+## Multi-Review Findings
+
+### Codex
+- CRITICAL: downgrade check bypassed in open() — fixed
+- CRITICAL: schema_migrations redundant — documented unfixed (up-only policy)
+- CRITICAL: pool size hardcoded — documented unfixed
+- WARNING: integrity event hyphen — fixed
+- WARNING: apply_migrations swallows errors — fixed
+
+### Gemini
+- CRITICAL: downgrade check bypassed — fixed
+- CRITICAL: sqlx_err maps all to Other — fixed
+- WARNING: redundant schema_migrations — documented unfixed
+- SUGGESTION: caddy_instance_id in AuditEventRow — fixed
+- SUGGESTION: missing audit_log index — documented unfixed
+
+### cc-qwen
+- CRITICAL: downgrade check bypassed — fixed
+- CRITICAL: dead SqliteErrorKind variants — fixed
+- WARNING: integrity event hyphen — fixed
+- WARNING: apply_migrations swallows errors — fixed
+- SUGGESTION: schema_migrations redundant — documented unfixed
+
+### cc-kimi
+- CRITICAL: missing session/user/secrets in trait — documented unfixed (Phase 10/future scope)
+- CRITICAL: mutation vs proposal naming + stubs — documented unfixed (intentional Phase 4/8 deferral)
+- CRITICAL: integrity event hyphen — fixed
+- CRITICAL: pool size hardcoded — documented unfixed
+- WARNING: drift API stub — documented unfixed
+- WARNING: apply_migrations error masking — fixed
+- WARNING: From<> impls are dead code — documented unfixed
+
+### cc-glm
+- Timed out / no findings returned.
+
+### cc-minimax
+- CRITICAL: downgrade check bypassed — fixed
+- WARNING: session/secrets missing from trait — documented unfixed
+- WARNING: sqlx_err dead variants — fixed
+- WARNING: integrity task fire-and-forget — documented unfixed (low severity, design choice)
+- WARNING: stubs use Migration { version: 0 } — documented unfixed

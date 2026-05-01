@@ -69,6 +69,8 @@ pub enum ActorKind {
 pub struct AuditEventRow {
     /// Row identifier (ULID).
     pub id: AuditRowId,
+    /// Caddy instance this event originated from. V1: always `"local"`.
+    pub caddy_instance_id: String,
     /// Correlation identifier tying this event to a request.
     pub correlation_id: String,
     /// Event time, whole seconds.

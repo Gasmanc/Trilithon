@@ -1,7 +1,7 @@
 //! Periodic `PRAGMA integrity_check` background task.
 //!
 //! [`run_integrity_loop`] should be spawned once at startup. It fires every
-//! [`DEFAULT_INTERVAL`] and emits a `storage.integrity-check.failed` tracing
+//! [`DEFAULT_INTERVAL`] and emits a `storage.integrity_check.failed` tracing
 //! event if `SQLite` reports a problem. The task terminates when the provided
 //! [`ShutdownObserver`] fires.
 
@@ -62,10 +62,10 @@ pub async fn run_integrity_loop(
                 match integrity_check_once(&pool).await {
                     Ok(IntegrityResult::Ok) => {}
                     Ok(IntegrityResult::Failed { detail }) => {
-                        tracing::error!(detail = %detail, "storage.integrity-check.failed");
+                        tracing::error!(detail = %detail, "storage.integrity_check.failed");
                     }
                     Err(err) => {
-                        tracing::error!(error = %err, "storage.integrity-check.query-error");
+                        tracing::error!(error = %err, "storage.integrity_check.query_error");
                     }
                 }
             }

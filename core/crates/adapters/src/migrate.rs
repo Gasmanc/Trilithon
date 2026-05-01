@@ -40,6 +40,20 @@ pub enum MigrationError {
         #[from]
         source: sqlx::migrate::MigrateError,
     },
+
+    /// An unexpected database error occurred while reading migration state.
+    #[error("failed to read migration state: {source}")]
+    Read {
+        /// The underlying sqlx error.
+        #[source]
+        source: sqlx::Error,
+    },
+}
+
+impl From<MigrationError> for trilithon_core::exit::ExitCode {
+    fn from(_: MigrationError) -> Self {
+        Self::StartupPreconditionFailure
+    }
 }
 
 /// Apply pending migrations to `pool`, refusing if the database is ahead of the
@@ -62,8 +76,16 @@ pub async fn apply_migrations(pool: &SqlitePool) -> Result<MigrationOutcome, Mig
             .await
         {
             Ok(Some(v)) => u32::try_from(v).unwrap_or(0),
-            // Table exists but has no rows, or table does not exist yet.
-            Ok(None) | Err(_) => 0,
+            // Table exists but has no rows yet — fresh database.
+            Ok(None) => 0,
+            // Table does not exist yet — fresh database.
+            Err(sqlx::Error::Database(ref db_err))
+                if db_err.message().contains("no such table") =>
+            {
+                0
+            }
+            // Any other error (I/O failure, corruption, etc.) must propagate.
+            Err(e) => return Err(MigrationError::Read { source: e }),
         };
 
     // Step 2 — determine the highest version embedded in this binary.
@@ -82,19 +104,31 @@ pub async fn apply_migrations(pool: &SqlitePool) -> Result<MigrationOutcome, Mig
     }
 
     // Step 4 — count rows before running, so we can compute applied_count.
-    let count_before: i64 = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+    // At this point the table either exists (db_version > 0) or doesn't yet
+    // (db_version == 0).  A missing table is fine here — MIGRATOR.run() will
+    // create it.  Any other error should propagate.
+    let count_before: i64 =
+        match sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(pool)
+            .await
+        {
+            Ok(n) => n,
+            Err(sqlx::Error::Database(ref db_err))
+                if db_err.message().contains("no such table") =>
+            {
+                0
+            }
+            Err(e) => return Err(MigrationError::Read { source: e }),
+        };
 
     // Run the migrations.
     MIGRATOR.run(pool).await?;
 
-    // Count rows after.
+    // Count rows after — table is guaranteed to exist at this point.
     let count_after: i64 = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations")
         .fetch_one(pool)
         .await
-        .unwrap_or(0);
+        .map_err(|e| MigrationError::Read { source: e })?;
 
     let applied_count = u32::try_from((count_after - count_before).max(0)).unwrap_or(0);
 

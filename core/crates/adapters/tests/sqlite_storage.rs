@@ -12,7 +12,9 @@
 // reason: test-only code; panics are the correct failure mode in tests
 
 use tempfile::TempDir;
-use trilithon_adapters::{lock::LockHandle, sqlite_storage::SqliteStorage};
+use trilithon_adapters::{
+    lock::LockHandle, migrate::apply_migrations, sqlite_storage::SqliteStorage,
+};
 use trilithon_core::storage::{
     audit_vocab::AUDIT_KINDS,
     error::StorageError,
@@ -47,6 +49,7 @@ fn make_snapshot(id: &str, version: i64, parent: Option<&str>, body: &str) -> Sn
 fn make_audit_event(kind: &str, correlation_id: &str) -> AuditEventRow {
     AuditEventRow {
         id: AuditRowId(ulid::Ulid::new().to_string()),
+        caddy_instance_id: "local".to_owned(),
         correlation_id: correlation_id.to_owned(),
         occurred_at: 1_700_000_000,
         occurred_at_ms: 1_700_000_000_000,
@@ -65,9 +68,13 @@ fn make_audit_event(kind: &str, correlation_id: &str) -> AuditEventRow {
 }
 
 async fn open(dir: &TempDir) -> SqliteStorage {
-    SqliteStorage::open(dir.path())
+    let store = SqliteStorage::open(dir.path())
         .await
-        .expect("SqliteStorage::open should succeed")
+        .expect("SqliteStorage::open should succeed");
+    apply_migrations(store.pool())
+        .await
+        .expect("apply_migrations should succeed");
+    store
 }
 
 // ---------------------------------------------------------------------------

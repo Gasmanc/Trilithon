@@ -39,11 +39,16 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     /// Open (or create) the database at `<data_dir>/trilithon.db`.
     ///
+    /// This method acquires the advisory lock and builds the connection pool
+    /// with the required pragmas.  It does **not** run migrations; the caller
+    /// must invoke [`crate::migrate::apply_migrations`] after obtaining the
+    /// pool (already done in `run.rs`).
+    ///
     /// # Errors
     ///
     /// Returns [`StorageError::Io`] when the advisory lock cannot be acquired
     /// or when filesystem operations fail.  Returns [`StorageError::Sqlite`]
-    /// when the pool cannot be created or migrations fail.
+    /// when the pool cannot be created.
     pub async fn open(data_dir: &Path) -> Result<Self, StorageError> {
         // 1. Acquire the advisory lock first — fail fast if a peer holds it.
         let lock_handle = LockHandle::acquire(data_dir).map_err(|e| StorageError::Io {
@@ -66,14 +71,6 @@ impl SqliteStorage {
         let pool = SqlitePoolOptions::new()
             .max_connections(10)
             .connect_with(opts)
-            .await
-            .map_err(|e| StorageError::Sqlite {
-                kind: SqliteErrorKind::Other(e.to_string()),
-            })?;
-
-        // 4. Run migrations.
-        sqlx::migrate!("./migrations")
-            .run(&pool)
             .await
             .map_err(|e| StorageError::Sqlite {
                 kind: SqliteErrorKind::Other(e.to_string()),
@@ -139,11 +136,37 @@ fn parse_outcome(s: &str) -> Result<AuditOutcome, StorageError> {
 }
 
 /// Map a sqlx error to a [`StorageError`].
+///
+/// `SQLite` error codes (from `db_err.code()`):
+/// - 5 / 6 (`SQLITE_BUSY` / `SQLITE_LOCKED`) → [`StorageError::SqliteBusy`]
+/// - 11 (`SQLITE_CORRUPT`) → [`SqliteErrorKind::Corrupt`]
+/// - 19 (`SQLITE_CONSTRAINT`) → [`SqliteErrorKind::Constraint`]
+/// - anything else → [`SqliteErrorKind::Other`]
+///
+/// `retries` is 0 because the `busy_timeout` pragma handles waits at the
+/// `SQLite` level; the storage layer does not retry.
 #[allow(clippy::needless_pass_by_value)]
-// reason: `sqlx::Error` is non-Copy; the value is consumed transitively via `to_string`
+// reason: `sqlx::Error` is non-Copy; value must be owned to call `.to_string()`
 fn sqlx_err(e: sqlx::Error) -> StorageError {
-    StorageError::Sqlite {
-        kind: SqliteErrorKind::Other(e.to_string()),
+    match &e {
+        sqlx::Error::Database(db_err) => {
+            let code: i32 = db_err.code().as_deref().unwrap_or("").parse().unwrap_or(0);
+            match code {
+                5 | 6 => StorageError::SqliteBusy { retries: 0 },
+                11 => StorageError::Sqlite {
+                    kind: SqliteErrorKind::Corrupt,
+                },
+                19 => StorageError::Sqlite {
+                    kind: SqliteErrorKind::Constraint,
+                },
+                _ => StorageError::Sqlite {
+                    kind: SqliteErrorKind::Other(e.to_string()),
+                },
+            }
+        }
+        _ => StorageError::Sqlite {
+            kind: SqliteErrorKind::Other(e.to_string()),
+        },
     }
 }
 
@@ -345,10 +368,11 @@ impl Storage for SqliteStorage {
                  actor_kind, actor_id, kind, target_kind, target_id,
                  snapshot_id, redacted_diff_json, redaction_sites,
                  outcome, error_kind, notes)
-            VALUES (?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(&id)
+        .bind(&event.caddy_instance_id)
         .bind(&event.correlation_id)
         .bind(event.occurred_at)
         .bind(event.occurred_at_ms)
@@ -421,7 +445,7 @@ impl Storage for SqliteStorage {
 
         let sql = format!(
             r"
-            SELECT id, correlation_id, occurred_at, occurred_at_ms,
+            SELECT id, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
                    actor_kind, actor_id, kind, target_kind, target_id,
                    snapshot_id, redacted_diff_json, redaction_sites,
                    outcome, error_kind, notes
@@ -463,6 +487,7 @@ impl Storage for SqliteStorage {
 
             result.push(AuditEventRow {
                 id: AuditRowId(row.try_get("id").map_err(sqlx_err)?),
+                caddy_instance_id: row.try_get("caddy_instance_id").map_err(sqlx_err)?,
                 correlation_id: row.try_get("correlation_id").map_err(sqlx_err)?,
                 occurred_at: row.try_get("occurred_at").map_err(sqlx_err)?,
                 occurred_at_ms: row.try_get("occurred_at_ms").map_err(sqlx_err)?,

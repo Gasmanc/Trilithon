@@ -99,5 +99,8 @@ async fn refuses_downgrade() {
         MigrationError::Sqlx { source } => {
             panic!("expected Downgrade error, got Sqlx: {source}");
         }
+        MigrationError::Read { source } => {
+            panic!("expected Downgrade error, got Read: {source}");
+        }
     }
 }
