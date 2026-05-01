@@ -13,6 +13,7 @@ mod config_show;
 mod exit;
 mod observability;
 mod run;
+mod shutdown;
 
 use cli::{Cli, Command, ConfigAction};
 
@@ -56,10 +57,33 @@ fn dispatch(cli: Cli) -> trilithon_core::exit::ExitCode {
     let Cli { config: _, command } = cli;
     match command {
         Command::Version => print_version(),
-        Command::Run => run::placeholder(),
+        Command::Run => run_daemon(),
         Command::Config {
             action: ConfigAction::Show,
         } => config_show::placeholder(),
+    }
+}
+
+/// Spin up the Tokio runtime and run the daemon until a signal arrives.
+fn run_daemon() -> trilithon_core::exit::ExitCode {
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            let mut stderr = std::io::stderr().lock();
+            let _ = writeln!(stderr, "trilithon: failed to build Tokio runtime: {e}");
+            return trilithon_core::exit::ExitCode::StartupPreconditionFailure;
+        }
+    };
+
+    match rt.block_on(run::run_with_shutdown()) {
+        Ok(code) => code,
+        Err(e) => {
+            tracing::error!(error = %e, "daemon.fatal");
+            trilithon_core::exit::ExitCode::StartupPreconditionFailure
+        }
     }
 }
 

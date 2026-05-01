@@ -40,3 +40,21 @@
 2. Default functions made `const fn` where return types are primitive (`u32`, `bool`).
 3. `#[allow(clippy::disallowed_methods)]` added to `#[cfg(test)] mod tests` block to permit `.expect()` and `.parse().expect()` in test-only code; `panic!` in exhaustive match arm also allowed.
 4. Doc comment `SQLite` wrapped in backticks to satisfy `doc_markdown` lint.
+
+## Slice 1.5
+**Status:** complete
+**Summary:** Implemented `core/crates/cli/src/shutdown.rs` with `ShutdownController`/`ShutdownSignal` watch-channel pair, a `wait_for_signal()` async function for SIGINT/SIGTERM, and a `#[cfg(not(unix))] compile_error!` guard. Updated `core/crates/cli/src/run.rs` to implement the real daemon loop with signal dispatch and drain, and `core/crates/cli/src/main.rs` to build a Tokio multi-thread runtime for `Command::Run`. Signal integration tests in `tests/signals.rs` verify both SIGINT and SIGTERM cause graceful exit (status 0, `daemon.shutting-down` in stderr, under 10 seconds).
+
+### Simplify Findings
+- The `pre_tracing_line.rs` integration test used `Command::run` which now blocks (real daemon); updated to `version` since the pre-tracing line is emitted before arg parsing.
+- `wait_for_signal` now returns `anyhow::Result<SignalKind>` instead of bare `SignalKind`, eliminating all `expect()` calls from production paths.
+- The `nix` crate dev-dep was added to both workspace and cli Cargo.toml but ultimately unused due to Tokio signal-pipe interaction; removed from both to keep deps clean. `/bin/kill` is used in integration tests instead.
+
+### Fixes Applied
+1. Gate (clippy): replaced `expect()` on signal handler registration with `?` / `map_err` in `wait_for_signal`.
+2. Gate (clippy): replaced `expect()` on Tokio runtime build with explicit error logging and `StartupPreconditionFailure` return in `run_daemon`.
+3. Gate (clippy): added `#[allow(clippy::expect_used, clippy::unwrap_used, clippy::disallowed_methods)]` to `tests/signals.rs` (integration-test file).
+4. Gate (clippy): added `#[allow(clippy::expect_used, clippy::disallowed_methods)]` on the inline unit test to permit `expect()` there.
+5. Gate (dead_code): added `#[expect(dead_code, reason = "spec-required API, callers added in later slices")]` on `is_shutting_down` and `signal` per the spec.
+6. Gate (compile): `assert_cmd::Command` does not expose `spawn()` publicly; replaced with `std::process::Command` in `tests/signals.rs`.
+7. Integration test stability: SIGINT handling required a 1-second startup sleep (vs 500ms) for the Tokio runtime to register its SIGINT signal pipe within the cargo test environment; SIGTERM worked with 500ms but SIGINT did not.
