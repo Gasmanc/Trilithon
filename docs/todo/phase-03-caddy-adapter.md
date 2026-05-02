@@ -30,7 +30,7 @@ Total: 8 slices.
 
 ---
 
-## Slice 3.1 — `CaddyClient` trait, `CaddyError`, value types
+## Slice 3.1 [cross-cutting] — `CaddyClient` trait, `CaddyError`, value types
 
 ### Goal
 
@@ -167,7 +167,7 @@ None.
 
 ---
 
-## Slice 3.2 — `CaddyCapabilities` value type and capability migration `0002`
+## Slice 3.2 [cross-cutting] — `CaddyCapabilities` value type and capability migration `0002`
 
 ### Goal
 
@@ -251,7 +251,7 @@ None.
 
 ---
 
-## Slice 3.3 — Configuration validator: loopback-only, `--allow-remote-admin` exits 2
+## Slice 3.3 [cross-cutting] — Configuration validator: loopback-only, `--allow-remote-admin` exits 2
 
 ### Goal
 
@@ -332,7 +332,7 @@ None at this slice; `caddy.disconnected`-class events arrive in 3.6.
 
 ---
 
-## Slice 3.4 — `HyperCaddyClient` over Unix socket and loopback-mTLS
+## Slice 3.4 [cross-cutting] — `HyperCaddyClient` over Unix socket and loopback-mTLS
 
 ### Goal
 
@@ -453,7 +453,7 @@ None at this slice; the reconnect loop in 3.6 emits `caddy.connected`/`caddy.dis
 
 ---
 
-## Slice 3.5 — Capability probe at startup with persisted row
+## Slice 3.5 [standard] — Capability probe at startup with persisted row
 
 ### Goal
 
@@ -577,7 +577,7 @@ cargo test -p trilithon-adapters --test caddy/probe_persisted
 
 ---
 
-## Slice 3.6 — Reconnect loop with capped exponential backoff
+## Slice 3.6 [cross-cutting] — Reconnect loop with capped exponential backoff
 
 ### Goal
 
@@ -668,7 +668,7 @@ cargo test -p trilithon-adapters caddy::reconnect
 
 ---
 
-## Slice 3.7 — Ownership sentinel write and `--takeover`
+## Slice 3.7 [cross-cutting] — Ownership sentinel write and `--takeover`
 
 ### Goal
 
@@ -770,7 +770,7 @@ cargo test -p trilithon-adapters caddy::sentinel
 
 ---
 
-## Slice 3.8 — Wire startup; integration tests against real Caddy 2.8
+## Slice 3.8 [cross-cutting] — Wire startup; integration tests against real Caddy 2.8
 
 ### Goal
 
