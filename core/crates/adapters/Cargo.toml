@@ -25,18 +25,29 @@ http-body-util = "0.1"
 bytes = "1"
 rand = "0.8"
 rustls = "0.23"
+parking_lot = "0.12"
+time = { workspace = true }
+ulid = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
 nix = { workspace = true }
 tokio = { version = "1", features = ["full"] }
-ulid = { workspace = true }
 url = { workspace = true }
 httptest = "0.16"
+tracing-subscriber = { workspace = true }
 
 [[test]]
 name = "caddy_hyper_real_caddy"
 path = "tests/caddy/hyper_real_caddy.rs"
+
+[[test]]
+name = "caddy_probe_persisted"
+path = "tests/caddy/probe_persisted.rs"
+
+[[test]]
+name = "caddy_probe_under_one_second"
+path = "tests/caddy/probe_under_one_second.rs"
 
 [lints]
 workspace = true
