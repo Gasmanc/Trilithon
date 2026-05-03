@@ -2,6 +2,36 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Serde helpers for patch types that use `Option<Option<T>>`.
+///
+/// The three-state distinction is:
+/// - field absent → outer `None` (unchanged)
+/// - field present as `null` → `Some(None)` (clear)
+/// - field present with a value → `Some(Some(v))` (set)
+///
+/// Standard serde cannot distinguish "absent" from "null" for `Option<Option<T>>`
+/// without `#[serde(default)]` on the field *plus* a custom deserializer.
+/// Use `#[serde(default, deserialize_with = "double_option::deserialize")]`
+/// on each `Option<Option<T>>` field.
+pub mod double_option {
+    use serde::{Deserialize, Deserializer};
+
+    /// Deserialize `Option<Option<T>>` so that `null` maps to `Some(None)`
+    /// and an absent field (combined with `#[serde(default)]`) maps to `None`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any deserialization error from the inner `T` deserializer.
+    #[allow(clippy::option_option)] // zd:patch-triple-state expires:2027-01-01 reason:intentional absent/clear/set distinction
+    pub fn deserialize<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
+    where
+        T: Deserialize<'de>,
+        D: Deserializer<'de>,
+    {
+        Option::<T>::deserialize(d).map(Some)
+    }
+}
+
 /// Unix timestamp in seconds.
 pub type UnixSeconds = i64;
 
