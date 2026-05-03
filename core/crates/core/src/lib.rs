@@ -12,6 +12,7 @@ pub mod config;
 pub mod exit;
 pub mod lifecycle;
 pub mod model;
+pub mod mutation;
 pub mod storage;
 
 /// Errors from the core domain logic.
