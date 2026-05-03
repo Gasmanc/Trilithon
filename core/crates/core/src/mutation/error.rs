@@ -65,6 +65,10 @@ pub enum ValidationRule {
     PolicyPresetMissing,
     /// A route id is already present in the desired state.
     DuplicateRouteId,
+    /// An upstream id is already present in the desired state.
+    DuplicateUpstreamId,
+    /// A route does not exist in the desired state.
+    RouteMissing,
     /// A route references a policy attachment that does not exist.
     PolicyAttachmentMissing,
 }

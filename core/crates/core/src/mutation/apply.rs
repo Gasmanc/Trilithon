@@ -105,9 +105,9 @@ fn apply_variant(
         }
         // Rollback always returns Forbidden in Phase 4 — handled by pre_conditions.
         // This arm is unreachable in practice, but must be exhaustive.
-        Mutation::Rollback { .. } => {
-            unreachable!("Rollback rejected in pre_conditions before reaching state application")
-        }
+        Mutation::Rollback { .. } => Err(MutationError::Forbidden {
+            reason: crate::mutation::error::ForbiddenReason::RollbackTargetUnknown,
+        }),
     }
 }
 
@@ -444,7 +444,7 @@ fn apply_upstream_patch(
 fn missing_route_error(id: &str) -> MutationError {
     use crate::mutation::error::ValidationRule;
     MutationError::Validation {
-        rule: ValidationRule::PolicyAttachmentMissing,
+        rule: ValidationRule::RouteMissing,
         path: JsonPointer::root().push("route_id"),
         hint: format!("route '{id}' does not exist"),
     }
@@ -686,12 +686,22 @@ mod tests {
 
         let mut route = minimal_route("route-6");
         route.policy_attachment = Some(RoutePolicyAttachment {
-            preset_id,
+            preset_id: preset_id.clone(),
             preset_version: 5,
         });
 
         let mut state = DesiredState::empty();
         state.routes.insert(route_id.clone(), route);
+        // Preset must exist at the requested target version for the downgrade
+        // check to be reached (version 3 and 5 both register as available).
+        state.presets.insert(
+            preset_id.clone(),
+            PresetVersion {
+                preset_id: preset_id.clone(),
+                version: 3,
+                body_json: "{}".to_owned(),
+            },
+        );
 
         // Try downgrading from 5 to 3.
         let mutation = Mutation::UpgradePolicy {
@@ -708,6 +718,15 @@ mod tests {
         );
 
         // Same version (no increase) must also be rejected.
+        // Update preset to version 5 to match the "same version" case.
+        state.presets.insert(
+            preset_id.clone(),
+            PresetVersion {
+                preset_id,
+                version: 5,
+                body_json: "{}".to_owned(),
+            },
+        );
         let mutation_same = Mutation::UpgradePolicy {
             expected_version: 0,
             route_id,
@@ -729,12 +748,21 @@ mod tests {
 
         let mut route = minimal_route("route-7");
         route.policy_attachment = Some(RoutePolicyAttachment {
-            preset_id,
+            preset_id: preset_id.clone(),
             preset_version: 2,
         });
 
         let mut state = DesiredState::empty();
         state.routes.insert(route_id.clone(), route);
+        // Preset must exist at version 3 for the upgrade to succeed.
+        state.presets.insert(
+            preset_id.clone(),
+            PresetVersion {
+                preset_id,
+                version: 3,
+                body_json: "{}".to_owned(),
+            },
+        );
 
         let mutation = Mutation::UpgradePolicy {
             expected_version: 0,

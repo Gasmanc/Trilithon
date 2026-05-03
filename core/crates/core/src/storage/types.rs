@@ -2,13 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
-/// In-memory representation of a structured audit event.
+/// In-memory representation of an ownership-layer audit event.
 ///
 /// Phase 6 will persist these via [`Storage::append_audit_event`].  Until
 /// then, callers that generate events keep them in-memory so that unit tests
 /// can assert on the constructed value without requiring a database.
+///
+/// This is distinct from [`crate::audit::AuditEvent`] which covers mutation
+/// audit events; this type covers storage-layer lifecycle events.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AuditEvent {
+pub enum StorageAuditEvent {
     /// The ownership sentinel was overwritten because `--takeover` was
     /// passed.  Phase 6 will write this to the audit log.
     OwnershipSentinelTakeover {
@@ -20,7 +23,9 @@ pub enum AuditEvent {
 }
 
 /// Unix epoch seconds.
-pub type UnixSeconds = i64;
+///
+/// Re-exported from [`crate::model::primitive`] for convenience.
+pub use crate::model::primitive::UnixSeconds;
 
 /// Content-addressed snapshot identifier — SHA-256 hex, 64 chars.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]

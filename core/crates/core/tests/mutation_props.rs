@@ -124,11 +124,11 @@ proptest! {
         };
         let mut_b_after_a = Mutation::CreateRoute {
             expected_version: version + 1,
-            route: minimal_route(id_b.clone(), 0),
+            route: minimal_route(id_b, 0),
         };
         let mut_a_after_b = Mutation::CreateRoute {
             expected_version: version + 1,
-            route: minimal_route(id_a.clone(), 0),
+            route: minimal_route(id_a, 0),
         };
 
         // Order A then B.
@@ -143,12 +143,8 @@ proptest! {
         let ba = apply_mutation(&after_b.new_state, &mut_a_after_b, &caps)
             .expect("A after B should succeed");
 
-        // Both final states should contain both routes at the same version.
-        prop_assert_eq!(ab.new_state.version, ba.new_state.version);
-        prop_assert!(ab.new_state.routes.contains_key(&id_a));
-        prop_assert!(ab.new_state.routes.contains_key(&id_b));
-        prop_assert!(ba.new_state.routes.contains_key(&id_a));
-        prop_assert!(ba.new_state.routes.contains_key(&id_b));
+        // Both orderings must produce identical final states.
+        prop_assert_eq!(ab.new_state, ba.new_state);
     }
 }
 

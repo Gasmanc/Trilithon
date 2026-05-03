@@ -11,6 +11,7 @@ use crate::model::{
     header::HeaderRules,
     identifiers::UpstreamId,
     matcher::MatcherSet,
+    primitive::double_option,
     redirect::RedirectRule,
     route::{HostPattern, Route, RoutePolicyAttachment},
     upstream::{Upstream, UpstreamDestination, UpstreamProbe},
@@ -42,11 +43,19 @@ pub struct RoutePatch {
     pub headers: Option<HeaderRules>,
 
     /// New or cleared redirect rule. `Some(None)` clears any redirect.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "double_option::deserialize"
+    )]
     pub redirects: Option<Option<RedirectRule>>,
 
     /// New or cleared policy attachment. `Some(None)` clears any attachment.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "double_option::deserialize"
+    )]
     pub policy_attachment: Option<Option<RoutePolicyAttachment>>,
 
     /// New enabled state for the route.
@@ -76,7 +85,11 @@ pub struct UpstreamPatch {
     pub weight: Option<u16>,
 
     /// New or cleared max request bytes. `Some(None)` clears the limit.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "double_option::deserialize"
+    )]
     pub max_request_bytes: Option<Option<u64>>,
 }
 

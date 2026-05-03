@@ -10,7 +10,7 @@
 //! - **Present, foreign, `takeover = false`** → returns [`SentinelError::Conflict`].
 //! - **Present, foreign, `takeover = true`** → overwrites and returns a
 //!   [`SentinelOutcome::TookOver`] along with an in-memory
-//!   [`AuditEvent::OwnershipSentinelTakeover`] stub for Phase 6.
+//!   [`StorageAuditEvent::OwnershipSentinelTakeover`] stub for Phase 6.
 
 use trilithon_core::{
     caddy::{
@@ -18,7 +18,7 @@ use trilithon_core::{
         error::CaddyError,
         types::{CaddyJsonPointer, JsonPatch, JsonPatchOp},
     },
-    storage::AuditEvent,
+    storage::StorageAuditEvent,
 };
 
 /// The `@id` value used to mark the ownership sentinel.
@@ -71,7 +71,7 @@ pub enum SentinelError {
 ///    "trilithon-owner"`.
 /// 3. Act on the result as described in the module docs.
 ///
-/// When `takeover` succeeds an [`AuditEvent::OwnershipSentinelTakeover`] is
+/// When `takeover` succeeds an [`StorageAuditEvent::OwnershipSentinelTakeover`] is
 /// returned via the `Ok` side as a tuple `(outcome, Some(event))`.  All other
 /// outcomes return `None` for the audit event.
 ///
@@ -84,7 +84,7 @@ pub async fn ensure_sentinel(
     client: &dyn CaddyClient,
     installation_id: &str,
     takeover: bool,
-) -> Result<(SentinelOutcome, Option<AuditEvent>), SentinelError> {
+) -> Result<(SentinelOutcome, Option<StorageAuditEvent>), SentinelError> {
     let cfg = client.get_running_config().await?;
 
     let sentinels = find_sentinels(&cfg.0);
@@ -140,7 +140,7 @@ pub async fn ensure_sentinel(
                     )
                     .await?;
 
-                let event = AuditEvent::OwnershipSentinelTakeover {
+                let event = StorageAuditEvent::OwnershipSentinelTakeover {
                     previous_installation_id: previous.clone(),
                     new_installation_id: installation_id.to_owned(),
                 };
@@ -237,7 +237,7 @@ mod tests {
             TlsCertificate, UpstreamHealth,
         },
     };
-    use trilithon_core::storage::AuditEvent;
+    use trilithon_core::storage::StorageAuditEvent;
 
     use super::{SENTINEL_ID, SENTINEL_POINTER, SentinelError, SentinelOutcome, ensure_sentinel};
 
@@ -444,7 +444,7 @@ mod tests {
         // Audit event stub must be produced.
         assert_eq!(
             event,
-            Some(AuditEvent::OwnershipSentinelTakeover {
+            Some(StorageAuditEvent::OwnershipSentinelTakeover {
                 previous_installation_id: "deadbeef".to_owned(),
                 new_installation_id: "ours-id".to_owned(),
             })

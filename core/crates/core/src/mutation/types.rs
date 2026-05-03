@@ -190,7 +190,7 @@ impl Mutation {
 }
 
 /// Discriminant for [`Mutation`] — carries no payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum MutationKind {
     /// See [`Mutation::CreateRoute`].
     CreateRoute,

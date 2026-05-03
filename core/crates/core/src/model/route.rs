@@ -106,6 +106,11 @@ pub fn validate_hostname(s: &str) -> Result<HostPattern, HostnameError> {
         return Err(HostnameError::Empty);
     }
 
+    // Check total length before any processing — applies to wildcards too.
+    if s.len() > 253 {
+        return Err(HostnameError::TotalTooLong);
+    }
+
     // Handle wildcard prefix.
     if let Some(rest) = s.strip_prefix("*.") {
         // Reject nested wildcards like `*.*.example.com` — rest must not contain `*`.

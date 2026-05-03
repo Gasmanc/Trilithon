@@ -33,7 +33,7 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
         Mutation::CreateUpstream { upstream, .. } => {
             if state.upstreams.contains_key(&upstream.id) {
                 return Err(MutationError::Validation {
-                    rule: ValidationRule::DuplicateRouteId,
+                    rule: ValidationRule::DuplicateUpstreamId,
                     path: JsonPointer::root().push("upstream").push("id"),
                     hint: "upstream id already exists".to_owned(),
                 });
@@ -41,7 +41,7 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
             Ok(())
         }
 
-        Mutation::UpdateUpstream { id, .. } | Mutation::DeleteUpstream { id, .. } => {
+        Mutation::UpdateUpstream { id, .. } => {
             if !state.upstreams.contains_key(id) {
                 return Err(MutationError::Validation {
                     rule: ValidationRule::UpstreamReferenceMissing,
@@ -51,6 +51,8 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
             }
             Ok(())
         }
+
+        Mutation::DeleteUpstream { id, .. } => check_delete_upstream(state, id),
 
         Mutation::AttachPolicy {
             route_id,
@@ -95,7 +97,7 @@ fn check_route_id_unused(state: &DesiredState, id: &RouteId) -> Result<(), Mutat
 fn check_route_exists(state: &DesiredState, id: &RouteId) -> Result<(), MutationError> {
     if !state.routes.contains_key(id) {
         return Err(MutationError::Validation {
-            rule: ValidationRule::PolicyAttachmentMissing,
+            rule: ValidationRule::RouteMissing,
             path: JsonPointer::root().push("id"),
             hint: "route does not exist".to_owned(),
         });
@@ -147,6 +149,9 @@ fn check_update_route(
     if let Some(upstreams) = &patch.upstreams {
         check_upstreams_exist(state, upstreams)?;
     }
+    if let Some(hostnames) = &patch.hostnames {
+        check_hostnames_valid(hostnames)?;
+    }
     Ok(())
 }
 
@@ -159,7 +164,7 @@ fn check_attach_policy(
 ) -> Result<(), MutationError> {
     if !state.routes.contains_key(route_id) {
         return Err(MutationError::Validation {
-            rule: ValidationRule::PolicyAttachmentMissing,
+            rule: ValidationRule::RouteMissing,
             path: JsonPointer::root().push("route_id"),
             hint: "route does not exist".to_owned(),
         });
@@ -188,7 +193,7 @@ fn check_detach_policy(state: &DesiredState, route_id: &RouteId) -> Result<(), M
         .routes
         .get(route_id)
         .ok_or_else(|| MutationError::Validation {
-            rule: ValidationRule::PolicyAttachmentMissing,
+            rule: ValidationRule::RouteMissing,
             path: JsonPointer::root().push("route_id"),
             hint: "route does not exist".to_owned(),
         })?;
@@ -212,7 +217,7 @@ fn check_upgrade_policy(
         .routes
         .get(route_id)
         .ok_or_else(|| MutationError::Validation {
-            rule: ValidationRule::PolicyAttachmentMissing,
+            rule: ValidationRule::RouteMissing,
             path: JsonPointer::root().push("route_id"),
             hint: "route does not exist".to_owned(),
         })?;
@@ -224,10 +229,60 @@ fn check_upgrade_policy(
             path: JsonPointer::root().push("route_id"),
             hint: "route does not carry a policy attachment".to_owned(),
         })?;
+    // Verify the preset exists in state and the requested version is available.
+    match state.presets.get(&attachment.preset_id) {
+        None => {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::PolicyPresetMissing,
+                path: JsonPointer::root().push("preset_id"),
+                hint: "policy preset does not exist".to_owned(),
+            });
+        }
+        Some(pv) if pv.version != to_version => {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::PolicyPresetMissing,
+                path: JsonPointer::root().push("to_version"),
+                hint: format!(
+                    "preset version {to_version} not available; current version is {}",
+                    pv.version
+                ),
+            });
+        }
+        Some(_) => {}
+    }
     if to_version <= attachment.preset_version {
         return Err(MutationError::Forbidden {
             reason: ForbiddenReason::PolicyDowngrade,
         });
+    }
+    Ok(())
+}
+
+/// Pre-conditions for [`Mutation::DeleteUpstream`].
+///
+/// Rejects the deletion when any route still references the target upstream,
+/// which would leave dangling upstream IDs in those routes.
+fn check_delete_upstream(state: &DesiredState, id: &UpstreamId) -> Result<(), MutationError> {
+    if !state.upstreams.contains_key(id) {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::UpstreamReferenceMissing,
+            path: JsonPointer::root().push("id"),
+            hint: "upstream does not exist".to_owned(),
+        });
+    }
+    // Reject if any route still references this upstream.
+    for (route_id, route) in &state.routes {
+        if route.upstreams.contains(id) {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::UpstreamReferenceMissing,
+                path: JsonPointer::root().push("id"),
+                hint: format!(
+                    "upstream '{}' is still referenced by route '{}'",
+                    id.as_str(),
+                    route_id.as_str()
+                ),
+            });
+        }
     }
     Ok(())
 }
