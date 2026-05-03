@@ -23,7 +23,7 @@ pub enum AuditEvent {
 pub type UnixSeconds = i64;
 
 /// Content-addressed snapshot identifier — SHA-256 hex, 64 chars.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SnapshotId(pub String);
 
 /// ULID-based identifier for an audit log row.

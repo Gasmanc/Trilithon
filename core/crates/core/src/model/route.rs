@@ -11,7 +11,7 @@ use crate::model::{
 };
 
 /// A routing rule that maps incoming requests to one or more upstreams.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct Route {
     /// Unique identifier.
     pub id: RouteId,
@@ -36,7 +36,9 @@ pub struct Route {
 }
 
 /// A hostname pattern: either an exact hostname or a single-level wildcard.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, schemars::JsonSchema,
+)]
 pub enum HostPattern {
     /// An exact hostname match, e.g. `example.com`.
     Exact(String),
@@ -45,7 +47,7 @@ pub enum HostPattern {
 }
 
 /// Attaches a policy preset (with a pinned version) to a route.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
 pub struct RoutePolicyAttachment {
     /// The preset being applied.
     pub preset_id: PresetId,

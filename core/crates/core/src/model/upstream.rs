@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::identifiers::UpstreamId;
 
 /// An upstream backend that a route can forward traffic to.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct Upstream {
     /// Unique identifier for this upstream.
     pub id: UpstreamId,
@@ -20,7 +20,7 @@ pub struct Upstream {
 }
 
 /// The network destination for an upstream.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum UpstreamDestination {
     /// A plain TCP address (host + port).
@@ -45,7 +45,7 @@ pub enum UpstreamDestination {
 }
 
 /// Health-check probe configuration for an upstream.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum UpstreamProbe {
     /// TCP-level connectivity check.

@@ -8,7 +8,18 @@ use serde::{Deserialize, Serialize};
 macro_rules! id_newtype {
     ($name:ident) => {
         #[doc = concat!("Unique identifier for ", stringify!($name), ".")]
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+        #[derive(
+            Debug,
+            Clone,
+            PartialEq,
+            Eq,
+            Hash,
+            PartialOrd,
+            Ord,
+            Serialize,
+            Deserialize,
+            schemars::JsonSchema,
+        )]
         pub struct $name(pub String);
 
         impl $name {

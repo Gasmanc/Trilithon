@@ -1,0 +1,7 @@
+{
+  "$ref": "Mutation.json#/definitions/Mutation",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Roll back desired state to a previous snapshot.",
+  "title": "Rollback",
+  "x-variant": "Rollback"
+}

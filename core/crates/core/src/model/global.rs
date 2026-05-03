@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::primitive::double_option;
 
 /// Global proxy configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct GlobalConfig {
     /// Address the Caddy admin API listens on.
     pub admin_listen: Option<String>,
@@ -23,7 +23,7 @@ pub struct GlobalConfig {
 /// - outer `Some(Some(v))` — set to `v`
 // The three-state patch pattern requires Option<Option<T>> by design.
 #[allow(clippy::option_option)] // zd:patch-triple-state expires:2027-01-01 reason:intentional absent/clear/set distinction
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct GlobalConfigPatch {
     /// Set, clear, or leave unchanged the admin listen address.
     #[serde(

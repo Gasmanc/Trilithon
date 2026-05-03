@@ -22,7 +22,7 @@ use crate::model::{
 /// - `None` = do not modify
 /// - `Some(None)` = clear the field
 /// - `Some(Some(value))` = set to value
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[allow(clippy::option_option)]
 pub struct RoutePatch {
     /// New hostnames for the route.
@@ -60,7 +60,7 @@ pub struct RoutePatch {
 /// - `None` = do not modify
 /// - `Some(None)` = clear the field
 /// - `Some(Some(value))` = set to value
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[allow(clippy::option_option)]
 pub struct UpstreamPatch {
     /// New destination for the upstream.
@@ -85,7 +85,7 @@ pub struct UpstreamPatch {
 /// Phase 13 supplies the parsed-Caddyfile shape. For Phase 4 this is an
 /// opaque carrier; the `apply_mutation` handler for `ImportFromCaddyfile`
 /// reads `routes` and `upstreams` and merges them into `DesiredState`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct ParsedCaddyfile {
     /// Routes parsed from the Caddyfile.
     pub routes: Vec<Route>,

@@ -1,0 +1,1340 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mutation",
+  "description": "Every possible desired-state mutation.\n\nThe `expected_version` field on each variant is the optimistic-concurrency guard: the handler rejects the mutation if the current config version does not match.",
+  "oneOf": [
+    {
+      "description": "Create a new route.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "route"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "CreateRoute"
+          ]
+        },
+        "route": {
+          "description": "The route to create.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Route"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Apply a partial update to an existing route.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "id",
+        "kind",
+        "patch"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "description": "Target route identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RouteId"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "UpdateRoute"
+          ]
+        },
+        "patch": {
+          "description": "Fields to update.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoutePatch"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Remove a route.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "description": "Target route identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RouteId"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "DeleteRoute"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Create a new upstream.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "upstream"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "CreateUpstream"
+          ]
+        },
+        "upstream": {
+          "description": "The upstream to create.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Upstream"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Apply a partial update to an existing upstream.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "id",
+        "kind",
+        "patch"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "description": "Target upstream identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpstreamId"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "UpdateUpstream"
+          ]
+        },
+        "patch": {
+          "description": "Fields to update.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpstreamPatch"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Remove an upstream.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "description": "Target upstream identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpstreamId"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "DeleteUpstream"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Attach a policy preset to a route.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "preset_id",
+        "preset_version",
+        "route_id"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "AttachPolicy"
+          ]
+        },
+        "preset_id": {
+          "description": "Policy preset to attach.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PresetId"
+            }
+          ]
+        },
+        "preset_version": {
+          "description": "Version of the preset to attach.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "route_id": {
+          "description": "Target route identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RouteId"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Remove any policy attachment from a route.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "route_id"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "DetachPolicy"
+          ]
+        },
+        "route_id": {
+          "description": "Target route identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RouteId"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Upgrade an attached policy to a newer preset version.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "route_id",
+        "to_version"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "UpgradePolicy"
+          ]
+        },
+        "route_id": {
+          "description": "Target route identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RouteId"
+            }
+          ]
+        },
+        "to_version": {
+          "description": "Target preset version.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    {
+      "description": "Replace the global proxy configuration.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "patch"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "SetGlobalConfig"
+          ]
+        },
+        "patch": {
+          "description": "Fields to update.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/GlobalConfigPatch"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Replace the global TLS configuration.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "patch"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "SetTlsConfig"
+          ]
+        },
+        "patch": {
+          "description": "Fields to update.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TlsConfigPatch"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Merge routes and upstreams parsed from a Caddyfile.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "parsed"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "ImportFromCaddyfile"
+          ]
+        },
+        "parsed": {
+          "description": "Pre-parsed Caddyfile contents.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ParsedCaddyfile"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "description": "Roll back desired state to a previous snapshot.",
+      "type": "object",
+      "required": [
+        "expected_version",
+        "kind",
+        "target"
+      ],
+      "properties": {
+        "expected_version": {
+          "description": "Optimistic-concurrency guard.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "Rollback"
+          ]
+        },
+        "target": {
+          "description": "Target snapshot identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SnapshotId"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "CidrMatcher": {
+      "description": "Matches a remote IP address against a CIDR range (IPv4 or IPv6).",
+      "type": "string"
+    },
+    "GlobalConfigPatch": {
+      "description": "Partial update for [`GlobalConfig`].\n\nThe `Option<Option<T>>` pattern distinguishes three states: - outer `None` — field unchanged - outer `Some(None)` — clear the field - outer `Some(Some(v))` — set to `v`",
+      "type": "object",
+      "properties": {
+        "admin_listen": {
+          "description": "Set, clear, or leave unchanged the admin listen address.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "default_sni": {
+          "description": "Set, clear, or leave unchanged the default SNI.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "log_level": {
+          "description": "Set, clear, or leave unchanged the log level.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "HeaderMatcher": {
+      "description": "Matches a request header by name, and optionally by value.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "Header name (case-insensitive per HTTP spec).",
+          "type": "string"
+        },
+        "value": {
+          "description": "If present, the header value must match exactly.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "HeaderOp": {
+      "description": "A single header manipulation operation.",
+      "oneOf": [
+        {
+          "description": "Set a header, replacing any existing value.",
+          "type": "object",
+          "required": [
+            "name",
+            "op",
+            "value"
+          ],
+          "properties": {
+            "name": {
+              "description": "Header name.",
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "set"
+              ]
+            },
+            "value": {
+              "description": "Header value to set.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Add a header value, preserving any existing values.",
+          "type": "object",
+          "required": [
+            "name",
+            "op",
+            "value"
+          ],
+          "properties": {
+            "name": {
+              "description": "Header name.",
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "add"
+              ]
+            },
+            "value": {
+              "description": "Header value to add.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "Delete a header entirely.",
+          "type": "object",
+          "required": [
+            "name",
+            "op"
+          ],
+          "properties": {
+            "name": {
+              "description": "Header name to remove.",
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "delete"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "HeaderRules": {
+      "description": "Header operations applied to requests and responses.",
+      "type": "object",
+      "required": [
+        "request",
+        "response"
+      ],
+      "properties": {
+        "request": {
+          "description": "Operations applied to the proxied request before forwarding upstream.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HeaderOp"
+          }
+        },
+        "response": {
+          "description": "Operations applied to the response before sending to the client.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HeaderOp"
+          }
+        }
+      }
+    },
+    "HostPattern": {
+      "description": "A hostname pattern: either an exact hostname or a single-level wildcard.",
+      "oneOf": [
+        {
+          "description": "An exact hostname match, e.g. `example.com`.",
+          "type": "object",
+          "required": [
+            "Exact"
+          ],
+          "properties": {
+            "Exact": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A wildcard match for one subdomain level, e.g. `*.example.com`.",
+          "type": "object",
+          "required": [
+            "Wildcard"
+          ],
+          "properties": {
+            "Wildcard": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "HttpMethod": {
+      "description": "HTTP request methods supported for matching.",
+      "oneOf": [
+        {
+          "description": "HTTP GET",
+          "type": "string",
+          "enum": [
+            "GET"
+          ]
+        },
+        {
+          "description": "HTTP POST",
+          "type": "string",
+          "enum": [
+            "POST"
+          ]
+        },
+        {
+          "description": "HTTP PUT",
+          "type": "string",
+          "enum": [
+            "PUT"
+          ]
+        },
+        {
+          "description": "HTTP PATCH",
+          "type": "string",
+          "enum": [
+            "PATCH"
+          ]
+        },
+        {
+          "description": "HTTP DELETE",
+          "type": "string",
+          "enum": [
+            "DELETE"
+          ]
+        },
+        {
+          "description": "HTTP HEAD",
+          "type": "string",
+          "enum": [
+            "HEAD"
+          ]
+        },
+        {
+          "description": "HTTP OPTIONS",
+          "type": "string",
+          "enum": [
+            "OPTIONS"
+          ]
+        }
+      ]
+    },
+    "MatcherSet": {
+      "description": "A set of conditions that a request must match for a route to apply.\n\nAll non-empty fields are AND-combined. An empty `MatcherSet` matches everything.",
+      "type": "object",
+      "required": [
+        "headers",
+        "methods",
+        "paths",
+        "query",
+        "remote"
+      ],
+      "properties": {
+        "headers": {
+          "description": "Request header conditions.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HeaderMatcher"
+          }
+        },
+        "methods": {
+          "description": "Allowed HTTP methods.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HttpMethod"
+          }
+        },
+        "paths": {
+          "description": "Path prefix or exact patterns.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PathMatcher"
+          }
+        },
+        "query": {
+          "description": "Query parameter conditions.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/QueryMatcher"
+          }
+        },
+        "remote": {
+          "description": "Remote address CIDR conditions.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CidrMatcher"
+          }
+        }
+      }
+    },
+    "ParsedCaddyfile": {
+      "description": "A parsed Caddyfile ready to be merged into desired state.\n\nPhase 13 supplies the parsed-Caddyfile shape. For Phase 4 this is an opaque carrier; the `apply_mutation` handler for `ImportFromCaddyfile` reads `routes` and `upstreams` and merges them into `DesiredState`.",
+      "type": "object",
+      "required": [
+        "routes",
+        "upstreams",
+        "warnings"
+      ],
+      "properties": {
+        "routes": {
+          "description": "Routes parsed from the Caddyfile.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Route"
+          }
+        },
+        "upstreams": {
+          "description": "Upstreams parsed from the Caddyfile.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Upstream"
+          }
+        },
+        "warnings": {
+          "description": "Warnings generated during parsing.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PathMatcher": {
+      "description": "Matches a request path (exact or prefix).",
+      "type": "string"
+    },
+    "PresetId": {
+      "type": "string"
+    },
+    "QueryMatcher": {
+      "description": "Matches a query parameter by key, and optionally by value.",
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "description": "Query parameter name.",
+          "type": "string"
+        },
+        "value": {
+          "description": "If present, the value must match exactly.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RedirectRule": {
+      "description": "Configures an HTTP redirect for a route.",
+      "type": "object",
+      "required": [
+        "status",
+        "to"
+      ],
+      "properties": {
+        "status": {
+          "description": "HTTP status code to use (e.g. 301, 302, 307, 308).",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "to": {
+          "description": "The destination URL or path to redirect to.",
+          "type": "string"
+        }
+      }
+    },
+    "Route": {
+      "description": "A routing rule that maps incoming requests to one or more upstreams.",
+      "type": "object",
+      "required": [
+        "created_at",
+        "enabled",
+        "headers",
+        "hostnames",
+        "id",
+        "matchers",
+        "updated_at",
+        "upstreams"
+      ],
+      "properties": {
+        "created_at": {
+          "description": "Creation timestamp (Unix seconds).",
+          "type": "integer",
+          "format": "int64"
+        },
+        "enabled": {
+          "description": "Whether this route is active.",
+          "type": "boolean"
+        },
+        "headers": {
+          "description": "Header manipulation rules.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HeaderRules"
+            }
+          ]
+        },
+        "hostnames": {
+          "description": "Hostname patterns this route matches.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HostPattern"
+          }
+        },
+        "id": {
+          "description": "Unique identifier.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RouteId"
+            }
+          ]
+        },
+        "matchers": {
+          "description": "Additional request-matching conditions.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MatcherSet"
+            }
+          ]
+        },
+        "policy_attachment": {
+          "description": "Optional policy preset attachment.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RoutePolicyAttachment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redirects": {
+          "description": "Optional redirect instead of proxying.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RedirectRule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "description": "Last-updated timestamp (Unix seconds).",
+          "type": "integer",
+          "format": "int64"
+        },
+        "upstreams": {
+          "description": "Upstreams traffic is forwarded to.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/UpstreamId"
+          }
+        }
+      }
+    },
+    "RouteId": {
+      "type": "string"
+    },
+    "RoutePatch": {
+      "description": "Patch to apply to a route.\n\nAll fields follow the `Option<Option<T>>` convention where: - `None` = do not modify - `Some(None)` = clear the field - `Some(Some(value))` = set to value",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "New enabled state for the route.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "headers": {
+          "description": "New header rules for the route.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/HeaderRules"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hostnames": {
+          "description": "New hostnames for the route.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/HostPattern"
+          }
+        },
+        "matchers": {
+          "description": "New matcher set for the route.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MatcherSet"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy_attachment": {
+          "description": "New or cleared policy attachment. `Some(None)` clears any attachment.",
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RoutePolicyAttachment"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redirects": {
+          "description": "New or cleared redirect rule. `Some(None)` clears any redirect.",
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RedirectRule"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upstreams": {
+          "description": "New upstream IDs for the route.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/UpstreamId"
+          }
+        }
+      }
+    },
+    "RoutePolicyAttachment": {
+      "description": "Attaches a policy preset (with a pinned version) to a route.",
+      "type": "object",
+      "required": [
+        "preset_id",
+        "preset_version"
+      ],
+      "properties": {
+        "preset_id": {
+          "description": "The preset being applied.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PresetId"
+            }
+          ]
+        },
+        "preset_version": {
+          "description": "The version of the preset at attachment time.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "SnapshotId": {
+      "description": "Content-addressed snapshot identifier — SHA-256 hex, 64 chars.",
+      "type": "string"
+    },
+    "TlsConfigPatch": {
+      "description": "Partial update for [`TlsConfig`].\n\nThe `Option<Option<T>>` pattern distinguishes three states: - outer `None` — field unchanged - outer `Some(None)` — clear the field - outer `Some(Some(v))` — set to `v`",
+      "type": "object",
+      "properties": {
+        "default_issuer": {
+          "description": "Set, clear, or leave unchanged the default issuer.",
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TlsIssuer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "email": {
+          "description": "Set, clear, or leave unchanged the ACME contact email.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "on_demand_ask_url": {
+          "description": "Set, clear, or leave unchanged the on-demand ask URL.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "on_demand_enabled": {
+          "description": "Set or leave unchanged on-demand TLS.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "TlsIssuer": {
+      "description": "Certificate issuer variant.",
+      "oneOf": [
+        {
+          "description": "ACME protocol issuer (e.g. Let's Encrypt).",
+          "type": "object",
+          "required": [
+            "directory_url",
+            "issuer"
+          ],
+          "properties": {
+            "directory_url": {
+              "description": "ACME directory URL.",
+              "type": "string"
+            },
+            "issuer": {
+              "type": "string",
+              "enum": [
+                "acme"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Internal/self-signed issuer.",
+          "type": "object",
+          "required": [
+            "issuer"
+          ],
+          "properties": {
+            "issuer": {
+              "type": "string",
+              "enum": [
+                "internal"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Upstream": {
+      "description": "An upstream backend that a route can forward traffic to.",
+      "type": "object",
+      "required": [
+        "destination",
+        "id",
+        "probe",
+        "weight"
+      ],
+      "properties": {
+        "destination": {
+          "description": "Where to send traffic.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpstreamDestination"
+            }
+          ]
+        },
+        "id": {
+          "description": "Unique identifier for this upstream.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpstreamId"
+            }
+          ]
+        },
+        "max_request_bytes": {
+          "description": "Maximum size of a proxied request body in bytes.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "probe": {
+          "description": "Health-check probe configuration.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/UpstreamProbe"
+            }
+          ]
+        },
+        "weight": {
+          "description": "Relative weight for load balancing (higher = more traffic).",
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "UpstreamDestination": {
+      "description": "The network destination for an upstream.",
+      "oneOf": [
+        {
+          "description": "A plain TCP address (host + port).",
+          "type": "object",
+          "required": [
+            "host",
+            "kind",
+            "port"
+          ],
+          "properties": {
+            "host": {
+              "description": "Hostname or IP address.",
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "tcp_addr"
+              ]
+            },
+            "port": {
+              "description": "TCP port number.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            }
+          }
+        },
+        {
+          "description": "A Unix domain socket.",
+          "type": "object",
+          "required": [
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "unix_socket"
+              ]
+            },
+            "path": {
+              "description": "Filesystem path to the socket file.",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "A Docker container reachable by container ID and port.",
+          "type": "object",
+          "required": [
+            "container_id",
+            "kind",
+            "port"
+          ],
+          "properties": {
+            "container_id": {
+              "description": "Docker container ID or name.",
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "docker_container"
+              ]
+            },
+            "port": {
+              "description": "Port exposed by the container.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            }
+          }
+        }
+      ]
+    },
+    "UpstreamId": {
+      "type": "string"
+    },
+    "UpstreamPatch": {
+      "description": "Patch to apply to an upstream.\n\nAll fields follow the `Option<Option<T>>` convention where: - `None` = do not modify - `Some(None)` = clear the field - `Some(Some(value))` = set to value",
+      "type": "object",
+      "properties": {
+        "destination": {
+          "description": "New destination for the upstream.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UpstreamDestination"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_request_bytes": {
+          "description": "New or cleared max request bytes. `Some(None)` clears the limit.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "probe": {
+          "description": "New probe configuration for the upstream.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UpstreamProbe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weight": {
+          "description": "New weight for the upstream.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "UpstreamProbe": {
+      "description": "Health-check probe configuration for an upstream.",
+      "oneOf": [
+        {
+          "description": "TCP-level connectivity check.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "tcp"
+              ]
+            }
+          }
+        },
+        {
+          "description": "HTTP check: GET `path` and assert the response status.",
+          "type": "object",
+          "required": [
+            "expected_status",
+            "kind",
+            "path"
+          ],
+          "properties": {
+            "expected_status": {
+              "description": "HTTP status code considered healthy.",
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0.0
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "http"
+              ]
+            },
+            "path": {
+              "description": "Path to request (e.g. `/healthz`).",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "No health checks; upstream is always considered healthy.",
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "disabled"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

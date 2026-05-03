@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Header operations applied to requests and responses.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct HeaderRules {
     /// Operations applied to the proxied request before forwarding upstream.
     pub request: Vec<HeaderOp>,
@@ -12,7 +12,7 @@ pub struct HeaderRules {
 }
 
 /// A single header manipulation operation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum HeaderOp {
     /// Set a header, replacing any existing value.

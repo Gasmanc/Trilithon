@@ -17,7 +17,7 @@ use crate::storage::types::SnapshotId;
 /// The `expected_version` field on each variant is the optimistic-concurrency
 /// guard: the handler rejects the mutation if the current config version does
 /// not match.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "PascalCase")]
 pub enum Mutation {
     /// Create a new route.

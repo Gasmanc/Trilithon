@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::primitive::double_option;
 
 /// Global TLS configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct TlsConfig {
     /// ACME contact email.
     pub email: Option<String>,
@@ -25,7 +25,7 @@ pub struct TlsConfig {
 /// - outer `Some(Some(v))` — set to `v`
 // The three-state patch pattern requires Option<Option<T>> by design.
 #[allow(clippy::option_option)] // zd:patch-triple-state expires:2027-01-01 reason:intentional absent/clear/set distinction
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 pub struct TlsConfigPatch {
     /// Set, clear, or leave unchanged the ACME contact email.
     #[serde(
@@ -54,7 +54,7 @@ pub struct TlsConfigPatch {
 }
 
 /// Certificate issuer variant.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(tag = "issuer", rename_all = "snake_case")]
 pub enum TlsIssuer {
     /// ACME protocol issuer (e.g. Let's Encrypt).
