@@ -1,5 +1,6 @@
 //! Domain model types and identifiers.
 
+pub mod desired_state;
 pub mod global;
 pub mod header;
 pub mod identifiers;
@@ -12,6 +13,7 @@ pub mod tls;
 pub mod upstream;
 
 // Re-exports for convenience
+pub use desired_state::DesiredState;
 pub use global::{GlobalConfig, GlobalConfigPatch};
 pub use header::{HeaderOp, HeaderRules};
 pub use identifiers::{MutationId, PolicyId, PresetId, RouteId, UpstreamId};
