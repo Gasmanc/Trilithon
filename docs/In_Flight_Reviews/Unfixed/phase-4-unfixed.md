@@ -365,3 +365,57 @@
 **Severity:** SUGGESTION
 **Status:** open
 **Reason not fixed:** Identified by kimi in phase-end multi-review, awaiting fix-pass
+
+## phase-end simplify — VOCAB const duplicates AUDIT_KINDS slice
+**Date:** 2026-05-03
+**Severity:** CRITICAL
+**Status:** open
+**Reason not fixed:** `crate::storage::audit_vocab::AUDIT_KINDS` does not exist in Phase 4. The test comment explicitly documents this. No action until the storage module is introduced.
+
+## phase-end simplify — check_hostnames_valid discards HostnameError details
+**Date:** 2026-05-03
+**Severity:** HIGH
+**Status:** fixed
+**Fix commit:** 23ba033
+
+## phase-end simplify — Dead second s.len() > 253 check in validate_hostname
+**Date:** 2026-05-03
+**Severity:** WARNING
+**Status:** fixed
+**Fix commit:** 23ba033
+
+## phase-end simplify — serde_json::to_value(...).ok() repeated ~20× — extract helper
+**Date:** 2026-05-03
+**Severity:** HIGH
+**Status:** fixed
+**Fix commit:** 23ba033
+
+## phase-end simplify — Policy mutation preamble copy-pasted 3× in apply.rs
+**Date:** 2026-05-03
+**Severity:** HIGH
+**Status:** fixed
+**Fix commit:** 23ba033
+
+## phase-end simplify — Four inline route not found checks instead of calling check_route_exists
+**Date:** 2026-05-03
+**Severity:** HIGH
+**Status:** fixed
+**Fix commit:** 23ba033
+
+## phase-end simplify — check_delete_upstream uses UpstreamReferenceMissing for wrong condition
+**Date:** 2026-05-03
+**Severity:** HIGH
+**Status:** fixed
+**Fix commit:** 23ba033
+
+## phase-end simplify — capability.rs duplicates route-module derivation between CreateRoute and UpdateRoute
+**Date:** 2026-05-03
+**Severity:** HIGH
+**Status:** open
+**Reason not fixed:** Only 2 call sites — three-use rule not met per project conventions. The CreateRoute and UpdateRoute arms differ structurally (UpdateRoute wraps checks in Option guards), making a shared helper awkward without improving clarity.
+
+## phase-end simplify — Rename caps_with_everything to empty_caps in proptest
+**Date:** 2026-05-03
+**Severity:** SUGGESTION
+**Status:** fixed
+**Fix commit:** 23ba033

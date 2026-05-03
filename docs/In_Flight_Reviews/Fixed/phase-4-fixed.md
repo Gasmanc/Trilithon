@@ -44,6 +44,20 @@
 - **`option_if_let_else`** (`core/crates/core/src/mutation/capability.rs`): `match first_missing { None => Ok(()), Some(m) => Err(...) }` replaced with `first_missing.map_or(Ok(()), |m| Err(...))`.
 - **Disallowed `unwrap` in production code** (`core/crates/core/src/mutation/capability.rs`): Initial algorithm used `missing.iter().next().unwrap()` — replaced with a single `.find()` iterator call so the `None` branch is handled by the combinator, eliminating the unwrap entirely.
 
+## phase-end simplify — 2026-05-03
+
+| Unit | Title | Type | Date | Commit |
+|------|-------|------|------|--------|
+| phase-end simplify | VOCAB const duplicates AUDIT_KINDS slice — core/crates/core/src/audit.rs | Simplify-skip | 2026-05-03 | — |
+| phase-end simplify | check_hostnames_valid discards HostnameError details — core/crates/core/src/mutation/validate.rs | Simplify | 2026-05-03 | 23ba033 |
+| phase-end simplify | Dead second s.len() > 253 check in validate_hostname — core/crates/core/src/model/route.rs | Simplify | 2026-05-03 | 23ba033 |
+| phase-end simplify | serde_json::to_value(...).ok() repeated ~20× — extract helper — core/crates/core/src/mutation/apply.rs | Simplify | 2026-05-03 | 23ba033 |
+| phase-end simplify | Policy mutation preamble copy-pasted 3× in apply.rs — core/crates/core/src/mutation/apply.rs | Simplify | 2026-05-03 | 23ba033 |
+| phase-end simplify | Four inline route not found checks instead of calling check_route_exists — core/crates/core/src/mutation/validate.rs | Simplify | 2026-05-03 | 23ba033 |
+| phase-end simplify | check_delete_upstream uses UpstreamReferenceMissing for wrong condition — core/crates/core/src/mutation/validate.rs | Simplify | 2026-05-03 | 23ba033 |
+| phase-end simplify | capability.rs duplicates route-module derivation between CreateRoute and UpdateRoute — core/crates/core/src/mutation/capability.rs | Simplify-skip | 2026-05-03 | — |
+| phase-end simplify | Rename caps_with_everything to empty_caps in proptest — core/crates/core/tests/mutation_props.rs | Simplify | 2026-05-03 | 23ba033 |
+
 ## Slice 4.9 — 2026-05-03
 
 - **Function too long** (`apply.rs`, `validate.rs`): Both `apply_mutation`/`apply_variant` and `pre_conditions` exceeded clippy's 100-line limit — split into per-variant helper functions.
