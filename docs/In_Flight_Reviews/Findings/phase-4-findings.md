@@ -97,3 +97,35 @@ none
 - Added `#[allow(clippy::expect_used, clippy::unwrap_used, ...)]` to both test modules
 ### Items Left Unfixed
 none
+
+## Slice 4.7
+**Status:** complete
+**Date:** 2026-05-03
+**Summary:** Implemented `MutationError`, `MutationOutcome`, `Diff`, `DiffChange`, and `AuditEvent` with full `Display` coverage per architecture §6.6. All 41 `AuditEvent` variants map to unique wire kind strings verified by two tests. Gate passed after fixing four clippy violations introduced during initial implementation.
+### Simplify Findings
+- `mod.rs` not allowed by project clippy config — `audit/mod.rs` correctly moved to `audit.rs` (inline fix).
+- Wildcard import `use AuditEvent::*` in `Display` impl flagged — replaced with `Self::` prefixes (inline fix).
+- `serde_json::json!()` macro expands to `.unwrap()` calls which are disallowed — replaced with explicit `serde_json::Value` constructors (inline fix).
+- Single-character string `"9"` used as pattern — replaced with char literal `'9'` (inline fix).
+### Items Fixed Inline
+- Moved `audit/mod.rs` → `audit.rs` to satisfy `clippy::mod_module_files` project rule.
+- Replaced `use AuditEvent::*` with `Self::` prefixes in `Display` impl.
+- Replaced `serde_json::json!(0)` / `serde_json::json!(1)` with `serde_json::Value::Number(...)` in tests.
+- Changed `s.contains("9")` to `s.contains('9')` in `conflict_error_display_contains_versions` test.
+### Items Left Unfixed
+none
+
+## Slice 4.8
+**Status:** complete
+**Date:** 2026-05-03
+**Summary:** Implemented `Mutation::referenced_caddy_modules()` per variant and `check_capabilities()` in `core/crates/core/src/mutation/capability.rs`. All six acceptance tests pass. Three clippy violations were fixed inline during gate runs (match_same_arms, option_if_let_else, disallowed_methods for unwrap).
+### Simplify Findings
+- `Self::DetachPolicy` and `Self::SetGlobalConfig` arms returned identical `BTreeSet::new()` bodies — merged into a single arm (inline fix).
+- `match first_missing { ... }` pattern flagged by `option_if_let_else` — replaced with `map_or` combinator (inline fix).
+- `unwrap()` on the first missing module element is a disallowed method in production — replaced with iterator `.find()` + `map_or` which avoids the unreachable panic path entirely (inline fix).
+### Items Fixed Inline
+- Merged `DetachPolicy` + `SetGlobalConfig` arms to satisfy `clippy::match_same_arms`.
+- Replaced `match first_missing` with `first_missing.map_or(...)` to satisfy `clippy::option_if_let_else`.
+- Replaced `missing.iter().next().unwrap()` with a single `.find()` call to satisfy `clippy::disallowed_methods`.
+### Items Left Unfixed
+none
