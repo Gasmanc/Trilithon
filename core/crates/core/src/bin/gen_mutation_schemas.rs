@@ -25,7 +25,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Root schema — full discriminated union.
     let root_schema = schema_for!(Mutation);
-    let root_json = serde_json::to_string_pretty(&root_schema)?;
+    let mut root_json = serde_json::to_string_pretty(&root_schema)?;
+    root_json.push('\n');
     fs::write(out.join("Mutation.json"), root_json)?;
 
     // Per-variant stub schemas.  Each file contains a `$ref` to the root
@@ -77,7 +78,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         );
         stub.insert("x-variant", Value::String((*variant).to_owned()));
 
-        let json = serde_json::to_string_pretty(&stub)?;
+        let mut json = serde_json::to_string_pretty(&stub)?;
+        json.push('\n');
         let filename = format!("{variant}.json");
         fs::write(out.join(&filename), json)?;
     }
