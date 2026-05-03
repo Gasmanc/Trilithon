@@ -189,3 +189,33 @@
 **Status:** fixed
 **Reason not fixed:** N/A
 **Fix commit:** 8a5180d
+
+## phase-end simplify — sqlx_err duplication
+**Date:** 2026-05-03
+**Severity:** WARNING
+**Status:** open
+**Reason not fixed:** Only 2 uses of identical function; three-use extraction rule not yet met. Extract when a third use appears in Phase 4.
+
+## phase-end simplify — Two ShutdownObserver traits
+**Date:** 2026-05-03
+**Severity:** WARNING
+**Status:** open
+**Reason not fixed:** Structural refactor touching core + adapters + cli; risky mid-phase. Deferred to a dedicated refactor pass.
+
+## phase-end simplify — Sentinel raw JSON map
+**Date:** 2026-05-03
+**Severity:** SUGGESTION
+**Status:** open
+**Reason not fixed:** Requires typed sentinel struct; deferred to Phase 6 design review.
+
+## phase-end simplify — Unconditional DB write on probe
+**Date:** 2026-05-03
+**Severity:** SUGGESTION
+**Status:** open
+**Reason not fixed:** Low-churn path (reconnect events only, not health ticks); complexity of pre-check outweighs benefit at current scale.
+
+## phase-end simplify — Double TOML round-trip in config_loader
+**Date:** 2026-05-03
+**Severity:** SUGGESTION
+**Status:** open
+**Reason not fixed:** Startup-only, sub-millisecond cost; deferred.
