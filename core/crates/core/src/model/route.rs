@@ -131,10 +131,6 @@ pub fn validate_hostname(s: &str) -> Result<HostPattern, HostnameError> {
         return Err(HostnameError::InvalidWildcard { pattern: s.into() });
     }
 
-    if s.len() > 253 {
-        return Err(HostnameError::TotalTooLong);
-    }
-
     validate_labels(s)?;
     Ok(HostPattern::Exact(s.into()))
 }

@@ -71,6 +71,8 @@ pub enum ValidationRule {
     RouteMissing,
     /// A route references a policy attachment that does not exist.
     PolicyAttachmentMissing,
+    /// The upstream being deleted is still referenced by one or more routes.
+    UpstreamStillReferenced,
 }
 
 /// Kinds of schema violations.

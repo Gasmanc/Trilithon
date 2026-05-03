@@ -116,7 +116,7 @@ fn apply_create_route(
     route: &crate::model::route::Route,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("routes").push(route.id.as_str());
-    let after = serde_json::to_value(route).ok();
+    let after = to_json(route);
     new_state.routes.insert(route.id.clone(), route.clone());
     vec![DiffChange {
         path: pointer,
@@ -131,10 +131,7 @@ fn apply_delete_route(
     id: &crate::model::identifiers::RouteId,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("routes").push(id.as_str());
-    let before = state
-        .routes
-        .get(id)
-        .and_then(|r| serde_json::to_value(r).ok());
+    let before = state.routes.get(id).and_then(to_json);
     new_state.routes.remove(id);
     vec![DiffChange {
         path: pointer,
@@ -150,7 +147,7 @@ fn apply_create_upstream(
     let pointer = JsonPointer::root()
         .push("upstreams")
         .push(upstream.id.as_str());
-    let after = serde_json::to_value(upstream).ok();
+    let after = to_json(upstream);
     new_state
         .upstreams
         .insert(upstream.id.clone(), upstream.clone());
@@ -167,10 +164,7 @@ fn apply_delete_upstream(
     id: &crate::model::identifiers::UpstreamId,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("upstreams").push(id.as_str());
-    let before = state
-        .upstreams
-        .get(id)
-        .and_then(|u| serde_json::to_value(u).ok());
+    let before = state.upstreams.get(id).and_then(to_json);
     new_state.upstreams.remove(id);
     vec![DiffChange {
         path: pointer,
@@ -179,12 +173,16 @@ fn apply_delete_upstream(
     }]
 }
 
-fn apply_attach_policy(
-    new_state: &mut DesiredState,
+/// Build the `policy_attachment` JSON pointer and snapshot the before-value.
+///
+/// Shared preamble for the three policy mutation helpers (`attach`, `detach`,
+/// `upgrade`).  The caller is responsible for the `get_mut` call so that
+/// Rust's borrow checker can see the immutable read (before) ends before the
+/// mutable borrow begins.
+fn policy_attachment_preamble(
+    new_state: &DesiredState,
     route_id: &crate::model::identifiers::RouteId,
-    preset_id: &crate::model::identifiers::PresetId,
-    preset_version: u32,
-) -> Result<Vec<DiffChange>, MutationError> {
+) -> (JsonPointer, Option<serde_json::Value>) {
     let pointer = JsonPointer::root()
         .push("routes")
         .push(route_id.as_str())
@@ -193,7 +191,17 @@ fn apply_attach_policy(
         .routes
         .get(route_id)
         .and_then(|r| r.policy_attachment.as_ref())
-        .and_then(|a| serde_json::to_value(a).ok());
+        .and_then(to_json);
+    (pointer, before)
+}
+
+fn apply_attach_policy(
+    new_state: &mut DesiredState,
+    route_id: &crate::model::identifiers::RouteId,
+    preset_id: &crate::model::identifiers::PresetId,
+    preset_version: u32,
+) -> Result<Vec<DiffChange>, MutationError> {
+    let (pointer, before) = policy_attachment_preamble(new_state, route_id);
     let route = new_state
         .routes
         .get_mut(route_id)
@@ -202,10 +210,7 @@ fn apply_attach_policy(
         preset_id: preset_id.clone(),
         preset_version,
     });
-    let after = route
-        .policy_attachment
-        .as_ref()
-        .and_then(|a| serde_json::to_value(a).ok());
+    let after = route.policy_attachment.as_ref().and_then(to_json);
     Ok(vec![DiffChange {
         path: pointer,
         before,
@@ -217,15 +222,7 @@ fn apply_detach_policy(
     new_state: &mut DesiredState,
     route_id: &crate::model::identifiers::RouteId,
 ) -> Result<Vec<DiffChange>, MutationError> {
-    let pointer = JsonPointer::root()
-        .push("routes")
-        .push(route_id.as_str())
-        .push("policy_attachment");
-    let before = new_state
-        .routes
-        .get(route_id)
-        .and_then(|r| r.policy_attachment.as_ref())
-        .and_then(|a| serde_json::to_value(a).ok());
+    let (pointer, before) = policy_attachment_preamble(new_state, route_id);
     let route = new_state
         .routes
         .get_mut(route_id)
@@ -243,15 +240,7 @@ fn apply_upgrade_policy(
     route_id: &crate::model::identifiers::RouteId,
     to_version: u32,
 ) -> Result<Vec<DiffChange>, MutationError> {
-    let pointer = JsonPointer::root()
-        .push("routes")
-        .push(route_id.as_str())
-        .push("policy_attachment");
-    let before = new_state
-        .routes
-        .get(route_id)
-        .and_then(|r| r.policy_attachment.as_ref())
-        .and_then(|a| serde_json::to_value(a).ok());
+    let (pointer, before) = policy_attachment_preamble(new_state, route_id);
     let route = new_state
         .routes
         .get_mut(route_id)
@@ -259,10 +248,7 @@ fn apply_upgrade_policy(
     if let Some(attachment) = route.policy_attachment.as_mut() {
         attachment.preset_version = to_version;
     }
-    let after = route
-        .policy_attachment
-        .as_ref()
-        .and_then(|a| serde_json::to_value(a).ok());
+    let after = route.policy_attachment.as_ref().and_then(to_json);
     Ok(vec![DiffChange {
         path: pointer,
         before,
@@ -275,7 +261,7 @@ fn apply_set_global_config(
     global_patch: &crate::model::global::GlobalConfigPatch,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("global");
-    let before = serde_json::to_value(&new_state.global).ok();
+    let before = to_json(&new_state.global);
     if let Some(admin_listen) = &global_patch.admin_listen {
         new_state.global.admin_listen.clone_from(admin_listen);
     }
@@ -285,7 +271,7 @@ fn apply_set_global_config(
     if let Some(log_level) = &global_patch.log_level {
         new_state.global.log_level.clone_from(log_level);
     }
-    let after = serde_json::to_value(&new_state.global).ok();
+    let after = to_json(&new_state.global);
     vec![DiffChange {
         path: pointer,
         before,
@@ -298,7 +284,7 @@ fn apply_set_tls_config(
     tls_patch: &crate::model::tls::TlsConfigPatch,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("tls");
-    let before = serde_json::to_value(&new_state.tls).ok();
+    let before = to_json(&new_state.tls);
     if let Some(email) = &tls_patch.email {
         new_state.tls.email.clone_from(email);
     }
@@ -314,7 +300,7 @@ fn apply_set_tls_config(
     if let Some(default_issuer) = &tls_patch.default_issuer {
         new_state.tls.default_issuer.clone_from(default_issuer);
     }
-    let after = serde_json::to_value(&new_state.tls).ok();
+    let after = to_json(&new_state.tls);
     vec![DiffChange {
         path: pointer,
         before,
@@ -327,8 +313,8 @@ fn apply_import_caddyfile(
     parsed: &crate::mutation::patches::ParsedCaddyfile,
 ) -> Vec<DiffChange> {
     let root = JsonPointer::root();
-    let before_routes = serde_json::to_value(&new_state.routes).ok();
-    let before_upstreams = serde_json::to_value(&new_state.upstreams).ok();
+    let before_routes = to_json(&new_state.routes);
+    let before_upstreams = to_json(&new_state.upstreams);
     for route in &parsed.routes {
         new_state.routes.insert(route.id.clone(), route.clone());
     }
@@ -337,8 +323,8 @@ fn apply_import_caddyfile(
             .upstreams
             .insert(upstream.id.clone(), upstream.clone());
     }
-    let after_routes = serde_json::to_value(&new_state.routes).ok();
-    let after_upstreams = serde_json::to_value(&new_state.upstreams).ok();
+    let after_routes = to_json(&new_state.routes);
+    let after_upstreams = to_json(&new_state.upstreams);
     vec![
         DiffChange {
             path: root.push("routes"),
@@ -361,10 +347,7 @@ fn apply_route_patch(
     route_patch: &RoutePatch,
 ) -> Result<Vec<DiffChange>, MutationError> {
     let pointer = JsonPointer::root().push("routes").push(id.as_str());
-    let before = state
-        .routes
-        .get(id)
-        .and_then(|r| serde_json::to_value(r).ok());
+    let before = state.routes.get(id).and_then(to_json);
 
     let route = new_state
         .routes
@@ -393,7 +376,7 @@ fn apply_route_patch(
         route.enabled = enabled;
     }
 
-    let after = serde_json::to_value(route).ok();
+    let after = to_json(route);
     Ok(vec![DiffChange {
         path: pointer,
         before,
@@ -409,10 +392,7 @@ fn apply_upstream_patch(
     upstream_patch: &UpstreamPatch,
 ) -> Result<Vec<DiffChange>, MutationError> {
     let pointer = JsonPointer::root().push("upstreams").push(id.as_str());
-    let before = state
-        .upstreams
-        .get(id)
-        .and_then(|u| serde_json::to_value(u).ok());
+    let before = state.upstreams.get(id).and_then(to_json);
 
     let upstream = new_state
         .upstreams
@@ -432,12 +412,21 @@ fn apply_upstream_patch(
         upstream.max_request_bytes = max_request_bytes;
     }
 
-    let after = serde_json::to_value(upstream).ok();
+    let after = to_json(upstream);
     Ok(vec![DiffChange {
         path: pointer,
         before,
         after,
     }])
+}
+
+/// Serialize `v` to a [`serde_json::Value`], discarding serialization errors.
+///
+/// Used throughout the diff-building helpers to snapshot state before/after.
+/// Serialization of well-typed domain models should never fail in practice;
+/// swallowing the error here matches the `Option<Value>` contract on `DiffChange`.
+fn to_json<T: serde::Serialize>(v: &T) -> Option<serde_json::Value> {
+    serde_json::to_value(v).ok()
 }
 
 /// Build a `MutationError::Validation` for a missing route.

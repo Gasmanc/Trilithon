@@ -57,7 +57,7 @@ fn create_route_mutation(version: i64) -> Mutation {
 
 /// A `CapabilitySet` with no modules loaded — sufficient for `CreateRoute`
 /// mutations that have no upstreams, redirects, or header rules.
-fn caps_with_everything() -> CapabilitySet {
+fn empty_caps() -> CapabilitySet {
     CapabilitySet {
         loaded_modules: BTreeSet::new(),
         caddy_version: "v2.8.4".to_owned(),
@@ -77,7 +77,7 @@ proptest! {
             ..DesiredState::default()
         };
         let mutation = create_route_mutation(version);
-        let caps = caps_with_everything();
+        let caps = empty_caps();
 
         let result1 = apply_mutation(&state, &mutation, &caps);
         let result2 = apply_mutation(&state, &mutation, &caps);
@@ -108,7 +108,7 @@ proptest! {
             version,
             ..DesiredState::default()
         };
-        let caps = caps_with_everything();
+        let caps = empty_caps();
 
         // Two CreateRoute mutations with different RouteIds.
         let id_a = RouteId::new();
@@ -160,7 +160,7 @@ proptest! {
             ..DesiredState::default()
         };
         let mutation = create_route_mutation(version);
-        let caps = caps_with_everything();
+        let caps = empty_caps();
 
         let outcome = apply_mutation(&state, &mutation, &caps)
             .expect("compatible mutation must succeed");

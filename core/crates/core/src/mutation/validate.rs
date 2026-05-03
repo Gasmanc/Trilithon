@@ -125,14 +125,14 @@ fn check_hostnames_valid(hostnames: &[HostPattern]) -> Result<(), MutationError>
         let raw = match hp {
             HostPattern::Exact(s) | HostPattern::Wildcard(s) => s.as_str(),
         };
-        if validate_hostname(raw).is_err() {
+        if let Err(e) = validate_hostname(raw) {
             return Err(MutationError::Validation {
                 rule: ValidationRule::HostnameInvalid,
                 path: JsonPointer::root()
                     .push("route")
                     .push("hostnames")
                     .push(&i.to_string()),
-                hint: format!("hostname '{raw}' is not a valid RFC 1123 hostname"),
+                hint: format!("hostname '{raw}': {e}"),
             });
         }
     }
@@ -162,13 +162,7 @@ fn check_attach_policy(
     preset_id: &PresetId,
     preset_version: u32,
 ) -> Result<(), MutationError> {
-    if !state.routes.contains_key(route_id) {
-        return Err(MutationError::Validation {
-            rule: ValidationRule::RouteMissing,
-            path: JsonPointer::root().push("route_id"),
-            hint: "route does not exist".to_owned(),
-        });
-    }
+    check_route_exists(state, route_id)?;
     match state.presets.get(preset_id) {
         None => Err(MutationError::Validation {
             rule: ValidationRule::PolicyPresetMissing,
@@ -189,20 +183,16 @@ fn check_attach_policy(
 
 /// Pre-conditions for [`Mutation::DetachPolicy`].
 fn check_detach_policy(state: &DesiredState, route_id: &RouteId) -> Result<(), MutationError> {
-    let route = state
-        .routes
-        .get(route_id)
-        .ok_or_else(|| MutationError::Validation {
-            rule: ValidationRule::RouteMissing,
-            path: JsonPointer::root().push("route_id"),
-            hint: "route does not exist".to_owned(),
-        })?;
-    if route.policy_attachment.is_none() {
-        return Err(MutationError::Validation {
-            rule: ValidationRule::PolicyAttachmentMissing,
-            path: JsonPointer::root().push("route_id"),
-            hint: "route does not carry a policy attachment".to_owned(),
-        });
+    check_route_exists(state, route_id)?;
+    // Safe: check_route_exists guarantees the key is present.
+    if let Some(route) = state.routes.get(route_id) {
+        if route.policy_attachment.is_none() {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::PolicyAttachmentMissing,
+                path: JsonPointer::root().push("route_id"),
+                hint: "route does not carry a policy attachment".to_owned(),
+            });
+        }
     }
     Ok(())
 }
@@ -213,12 +203,13 @@ fn check_upgrade_policy(
     route_id: &RouteId,
     to_version: u32,
 ) -> Result<(), MutationError> {
+    check_route_exists(state, route_id)?;
     let route = state
         .routes
         .get(route_id)
         .ok_or_else(|| MutationError::Validation {
             rule: ValidationRule::RouteMissing,
-            path: JsonPointer::root().push("route_id"),
+            path: JsonPointer::root().push("id"),
             hint: "route does not exist".to_owned(),
         })?;
     let attachment = route
@@ -274,7 +265,7 @@ fn check_delete_upstream(state: &DesiredState, id: &UpstreamId) -> Result<(), Mu
     for (route_id, route) in &state.routes {
         if route.upstreams.contains(id) {
             return Err(MutationError::Validation {
-                rule: ValidationRule::UpstreamReferenceMissing,
+                rule: ValidationRule::UpstreamStillReferenced,
                 path: JsonPointer::root().push("id"),
                 hint: format!(
                     "upstream '{}' is still referenced by route '{}'",
