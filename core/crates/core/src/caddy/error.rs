@@ -19,15 +19,6 @@ pub enum CaddyError {
         body: String,
     },
 
-    /// The ownership sentinel in the running config does not match the expected value.
-    #[error("ownership sentinel mismatch (expected {expected}, found {found:?})")]
-    OwnershipMismatch {
-        /// The sentinel value this process expected to find.
-        expected: String,
-        /// The sentinel value actually found in the running config, if any.
-        found: Option<String>,
-    },
-
     /// The operation did not complete within the allowed time.
     #[error("operation timed out after {seconds}s")]
     Timeout {

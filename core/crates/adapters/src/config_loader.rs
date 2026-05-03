@@ -201,7 +201,7 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
     validate_loopback_only(&config.caddy.admin_endpoint)
         .map_err(|source| ConfigError::AdminEndpointPolicy { source })?;
 
-    // 7. Validate data directory writability.
+    // 8. Validate data directory writability.
     // create_dir_all is idempotent: it succeeds when the directory already
     // exists, so no existence pre-check is needed (avoids a TOCTOU window).
     let data_dir = &config.storage.data_dir;

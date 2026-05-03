@@ -66,7 +66,9 @@ pub async fn run_initial_probe(
     cache.replace(caps.clone());
     persistence.record_current(instance_id, &caps).await?;
 
+    let correlation_id = ulid::Ulid::new().to_string();
     tracing::info!(
+        correlation_id = %correlation_id,
         caddy_version = %caps.caddy_version,
         module_count = caps.loaded_modules.len(),
         "caddy.capability-probe.completed",

@@ -23,6 +23,45 @@ async fn daemon_loop(mut signal: ShutdownSignal) {
     signal.wait().await;
 }
 
+/// Ensure the ownership sentinel, emitting a structured warning on takeover.
+///
+/// Returns `Ok(())` on success (created, already ours, or took over) or
+/// `Err(exit_code)` when the sentinel check failed.
+async fn check_sentinel(
+    caddy_client: &dyn trilithon_core::caddy::client::CaddyClient,
+    installation_id: &str,
+    takeover: bool,
+) -> Result<(), ExitCode> {
+    match trilithon_adapters::caddy::sentinel::ensure_sentinel(
+        caddy_client,
+        installation_id,
+        takeover,
+    )
+    .await
+    {
+        Err(e) => {
+            tracing::error!(error = %e, "caddy.sentinel.failed");
+            Err(caddy_startup_exit_code())
+        }
+        Ok((
+            trilithon_adapters::caddy::sentinel::SentinelOutcome::TookOver {
+                ref previous_installation_id,
+            },
+            _,
+        )) => {
+            // Phase 6 will wire the audit event into persistent storage.
+            // Log it here so the takeover is not silently dropped.
+            tracing::warn!(
+                previous_installation_id = %previous_installation_id,
+                new_installation_id = %installation_id,
+                "caddy.ownership-sentinel.takeover",
+            );
+            Ok(())
+        }
+        Ok(_) => Ok(()),
+    }
+}
+
 /// Run the daemon until SIGINT or SIGTERM, then drain tasks within the budget.
 ///
 /// `takeover` is forwarded to the ownership-sentinel check so that a foreign
@@ -99,15 +138,8 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
             })?;
 
     // Ensure the ownership sentinel.
-    if let Err(e) = trilithon_adapters::caddy::sentinel::ensure_sentinel(
-        &*caddy_client,
-        &installation_id,
-        takeover,
-    )
-    .await
-    {
-        tracing::error!(error = %e, "caddy.sentinel.failed");
-        return Ok(caddy_startup_exit_code());
+    if let Err(exit_code) = check_sentinel(&*caddy_client, &installation_id, takeover).await {
+        return Ok(exit_code);
     }
 
     // Spawn the background reconnect loop.

@@ -361,19 +361,32 @@ fn build_request(
 // Recursive module-id collector
 // ---------------------------------------------------------------------------
 
+/// Maximum recursion depth for [`collect_module_ids`].
+///
+/// Caddy configs are operator-supplied and bounded in practice, but an
+/// adversarially crafted config could overflow the stack without this guard.
+const MAX_COLLECT_DEPTH: usize = 128;
+
 fn collect_module_ids(value: &serde_json::Value, out: &mut BTreeSet<String>) {
+    collect_module_ids_inner(value, out, 0);
+}
+
+fn collect_module_ids_inner(value: &serde_json::Value, out: &mut BTreeSet<String>, depth: usize) {
+    if depth >= MAX_COLLECT_DEPTH {
+        return;
+    }
     match value {
         serde_json::Value::Object(map) => {
             if let Some(serde_json::Value::String(module_id)) = map.get("module") {
                 out.insert(module_id.clone());
             }
             for v in map.values() {
-                collect_module_ids(v, out);
+                collect_module_ids_inner(v, out, depth + 1);
             }
         }
         serde_json::Value::Array(arr) => {
             for v in arr {
-                collect_module_ids(v, out);
+                collect_module_ids_inner(v, out, depth + 1);
             }
         }
         _ => {}
@@ -406,6 +419,32 @@ struct RawCert {
     not_after: i64,
     #[serde(default)]
     issuer: String,
+}
+
+// ---------------------------------------------------------------------------
+// Version fetch helper
+// ---------------------------------------------------------------------------
+
+/// Fetch the Caddy version from `GET /version`.
+///
+/// Caddy 2.8 returns `{"version":"v2.8.4"}` on this endpoint.  Falls back to
+/// `"unknown"` when the call fails or the `version` field is absent.
+async fn fetch_caddy_version(client: &HyperCaddyClient) -> String {
+    let fut = client.execute(RequestSpec {
+        method: Method::GET,
+        api_path: "/version",
+        content_type: None,
+        body: Bytes::new(),
+    });
+    match tokio::time::timeout(client.connect_timeout, fut).await {
+        Ok(Ok((status, body))) if status.is_success() => {
+            serde_json::from_slice::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("version")?.as_str().map(str::to_owned))
+                .unwrap_or_else(|| "unknown".to_owned())
+        }
+        _ => "unknown".to_owned(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -526,9 +565,9 @@ impl CaddyClient for HyperCaddyClient {
         let mut modules = BTreeSet::new();
         collect_module_ids(&apps, &mut modules);
 
-        // Caddy does not expose its version on the /config/apps endpoint.
-        // The spec permits "unknown" as a fallback when reflection is unavailable.
-        let caddy_version = "unknown".to_owned();
+        // Fetch the Caddy version from GET /version ({"version":"v2.8.4"}).
+        // Fall back to "unknown" if the call fails or the field is absent.
+        let caddy_version = fetch_caddy_version(self).await;
 
         Ok(LoadedModules {
             modules,

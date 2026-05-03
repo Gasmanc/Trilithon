@@ -51,7 +51,7 @@ async fn probe_within_one_second() {
         .unwrap_or_else(|_| "/tmp/caddy-e2e-test.sock".to_owned());
 
     let endpoint = CaddyEndpoint::Unix {
-        path: socket_path.into(),
+        path: socket_path.clone().into(),
     };
 
     let client = HyperCaddyClient::from_config(
@@ -67,8 +67,9 @@ async fn probe_within_one_second() {
     sqlx::query(
         "INSERT INTO caddy_instances \
          (id, display_name, transport, address, created_at, ownership_token) \
-         VALUES ('e2e-instance', 'E2E', 'unix', '/tmp/caddy-e2e-test.sock', 0, 'tok')",
+         VALUES ('e2e-instance', 'E2E', 'unix', ?, 0, 'tok')",
     )
+    .bind(&socket_path)
     .execute(&pool)
     .await
     .unwrap();

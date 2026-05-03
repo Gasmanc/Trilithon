@@ -27,7 +27,16 @@ pub fn read_or_create(data_dir: &Path) -> Result<String, io::Error> {
     // This avoids a TOCTOU window that would exist if we checked existence
     // before reading.
     match fs::read_to_string(&id_path) {
-        Ok(raw) => return Ok(raw.trim().to_owned()),
+        Ok(raw) => {
+            let trimmed = raw.trim().to_owned();
+            // Validate that the stored value is a plausible UUID v4 (hyphenated
+            // 8-4-4-4-12 format).  An empty or corrupted file would produce an
+            // invalid id that silently propagates into every downstream record.
+            if uuid::Uuid::parse_str(&trimmed).is_ok() {
+                return Ok(trimmed);
+            }
+            // Treat an invalid stored value as absent and regenerate.
+        }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
@@ -40,6 +49,10 @@ pub fn read_or_create(data_dir: &Path) -> Result<String, io::Error> {
     let mut file = fs::File::create(&tmp_path)?;
     file.write_all(id.as_bytes())?;
     file.flush()?;
+    // Flush to the OS page cache then sync to hardware so a crash between
+    // write and rename cannot leave a directory entry pointing to an empty
+    // or partial file.
+    file.sync_all()?;
     drop(file);
 
     if let Err(e) = fs::rename(&tmp_path, &id_path) {

@@ -104,6 +104,11 @@ pub async fn ensure_sentinel(
                     "installation_id".to_owned(),
                     serde_json::Value::String(installation_id.to_owned()),
                 );
+                // A Caddy HTTP server object requires at minimum a `listen`
+                // array; without it Caddy 2.8 may reject the provisioning
+                // step with a validation error.  An empty array binds no
+                // ports, which is correct for a sentinel-only entry.
+                map.insert("listen".to_owned(), serde_json::Value::Array(vec![]));
                 serde_json::Value::Object(map)
             };
             client

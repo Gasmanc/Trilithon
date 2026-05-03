@@ -63,8 +63,18 @@ pub async fn reconnect_loop(
     let mut backoff = INITIAL_BACKOFF;
 
     loop {
+        // Sleep duration depends on state: use HEALTH_INTERVAL when connected
+        // so we do not hammer Caddy; use the current backoff when disconnected
+        // so retries respect the capped exponential schedule without an extra
+        // 15 s penalty on top of each backoff step.
+        let sleep_duration = if state == HealthState::Reachable {
+            HEALTH_INTERVAL
+        } else {
+            backoff
+        };
+
         tokio::select! {
-            () = tokio::time::sleep(HEALTH_INTERVAL) => {}
+            () = tokio::time::sleep(sleep_duration) => {}
             () = shutdown.changed() => { break; }
         }
 
@@ -88,12 +98,6 @@ pub async fn reconnect_loop(
                     tracing::info!("caddy.disconnected");
                 }
                 state = HealthState::Unreachable;
-                // Race the backoff sleep against shutdown so the process can
-                // exit promptly even when backoff has reached MAX_BACKOFF (30 s).
-                tokio::select! {
-                    () = tokio::time::sleep(backoff) => {}
-                    () = shutdown.changed() => { break; }
-                }
                 backoff = std::cmp::min(backoff * 2, MAX_BACKOFF);
             }
         }

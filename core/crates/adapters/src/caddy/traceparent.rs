@@ -2,18 +2,16 @@
 
 use rand::Rng as _;
 
-/// Render a W3C `traceparent` header from the active correlation identifier.
+/// Render a W3C `traceparent` header from the active tracing span.
 ///
 /// Format: `00-<32 hex>-<16 hex>-01`.
 ///
-/// Trilithon stores its correlation id (a ULID, 26 chars) in the span field
-/// `correlation_id`. This function hex-encodes the UTF-8 bytes of that string,
-/// padding or truncating to exactly 32 hex characters (16 bytes) for the
-/// trace-id portion. The parent-id (span-id) is a freshly generated 64-bit
-/// random number, and flags are always `01` (sampled).
+/// The trace-id is derived from the current span's internal numeric ID: the
+/// 64-bit span id is packed into the high 8 bytes, leaving the low 8 bytes
+/// as zero, yielding 32 hex characters.  The parent-id (span-id) portion is a
+/// freshly generated 64-bit random number, and flags are always `01` (sampled).
 ///
-/// When no active span or no `correlation_id` field is found, the trace-id
-/// falls back to 32 zeros.
+/// When no active span exists the trace-id falls back to 32 zeros.
 pub fn current_traceparent() -> String {
     let trace_id = trace_id_from_current_span();
     let span_id = span_id_random();

@@ -36,7 +36,7 @@ pub fn validate_loopback_only(endpoint: &CaddyEndpoint) -> Result<(), EndpointPo
         CaddyEndpoint::LoopbackTls { url, .. } => match url.host() {
             Some(url::Host::Ipv4(addr)) if addr.is_loopback() => Ok(()),
             Some(url::Host::Ipv6(addr)) if addr == Ipv6Addr::LOCALHOST => Ok(()),
-            Some(url::Host::Domain("localhost")) => Ok(()),
+            Some(url::Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => Ok(()),
             Some(host) => Err(EndpointPolicyError::NonLoopback {
                 host: host.to_string(),
             }),

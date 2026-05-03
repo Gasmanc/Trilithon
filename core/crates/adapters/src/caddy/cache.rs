@@ -3,7 +3,7 @@
 use parking_lot::RwLock;
 use trilithon_core::caddy::capabilities::CaddyCapabilities;
 
-/// Thread-safe, lock-free-read cache for the latest [`CaddyCapabilities`].
+/// Thread-safe cache for the latest [`CaddyCapabilities`].
 ///
 /// A single shared instance is held in an [`std::sync::Arc`] and passed to
 /// both the probe runner (writer) and any code that reads capabilities at
