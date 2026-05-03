@@ -198,42 +198,7 @@ mod tests {
         use tracing::subscriber::with_default;
         use tracing_subscriber::layer::SubscriberExt as _;
 
-        // Collect the message field of each emitted event.
-        struct EventCollector {
-            events: Arc<Mutex<Vec<String>>>,
-        }
-
-        struct MessageVisitor<'a> {
-            message: &'a mut Option<String>,
-        }
-
-        impl tracing::field::Visit for MessageVisitor<'_> {
-            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-                if field.name() == "message" {
-                    *self.message = Some(format!("{value:?}"));
-                }
-            }
-
-            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-                if field.name() == "message" {
-                    *self.message = Some(value.to_owned());
-                }
-            }
-        }
-
-        impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for EventCollector {
-            fn on_event(
-                &self,
-                event: &tracing::Event<'_>,
-                _ctx: tracing_subscriber::layer::Context<'_, S>,
-            ) {
-                let mut msg: Option<String> = None;
-                event.record(&mut MessageVisitor { message: &mut msg });
-                if let Some(m) = msg {
-                    self.events.lock().unwrap().push(m);
-                }
-            }
-        }
+        use crate::test_support::EventCollector;
 
         let events: Arc<Mutex<Vec<String>>> = Arc::default();
         let collector = EventCollector {

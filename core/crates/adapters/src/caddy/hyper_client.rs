@@ -332,6 +332,21 @@ impl HyperCaddyClient {
             }
         }
     }
+
+    /// Execute a request with a timeout, mapping a timeout expiry to
+    /// [`CaddyError::Timeout`].
+    async fn execute_with_timeout(
+        &self,
+        timeout: Duration,
+        spec: RequestSpec<'_>,
+    ) -> Result<(StatusCode, Bytes), CaddyError> {
+        let timeout_secs = timeout.as_secs();
+        tokio::time::timeout(timeout, self.execute(spec))
+            .await
+            .map_err(|_| CaddyError::Timeout {
+                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
+            })?
+    }
 }
 
 /// Build a [`hyper::Request`] from a [`RequestSpec`], URI, and traceparent.
@@ -460,19 +475,17 @@ impl CaddyClient for HyperCaddyClient {
             detail: format!("failed to serialise config: {e}"),
         })?;
 
-        let timeout_secs = self.apply_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::POST,
-            api_path: "/load",
-            content_type: Some("application/json"),
-            body: Bytes::from(json),
-        });
-
-        let (status, resp_body) = tokio::time::timeout(self.apply_timeout, fut)
-            .await
-            .map_err(|_| CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            })??;
+        let (status, resp_body) = self
+            .execute_with_timeout(
+                self.apply_timeout,
+                RequestSpec {
+                    method: Method::POST,
+                    api_path: "/load",
+                    content_type: Some("application/json"),
+                    body: Bytes::from(json),
+                },
+            )
+            .await?;
 
         require_2xx(status, &resp_body)
     }
@@ -495,19 +508,17 @@ impl CaddyClient for HyperCaddyClient {
         })?;
 
         let api_path = format!("/config{}", path.0);
-        let timeout_secs = self.apply_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::PATCH,
-            api_path: &api_path,
-            content_type: Some("application/json"),
-            body: Bytes::from(json),
-        });
-
-        let (status, resp_body) = tokio::time::timeout(self.apply_timeout, fut)
-            .await
-            .map_err(|_| CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            })??;
+        let (status, resp_body) = self
+            .execute_with_timeout(
+                self.apply_timeout,
+                RequestSpec {
+                    method: Method::PATCH,
+                    api_path: &api_path,
+                    content_type: Some("application/json"),
+                    body: Bytes::from(json),
+                },
+            )
+            .await?;
 
         require_2xx(status, &resp_body)
     }
@@ -515,19 +526,17 @@ impl CaddyClient for HyperCaddyClient {
     /// Retrieve the full running Caddy configuration.
     #[instrument(skip(self), err)]
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
-        let timeout_secs = self.connect_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::GET,
-            api_path: "/config/",
-            content_type: None,
-            body: Bytes::new(),
-        });
-
-        let (status, body) = tokio::time::timeout(self.connect_timeout, fut)
-            .await
-            .map_err(|_| CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            })??;
+        let (status, body) = self
+            .execute_with_timeout(
+                self.connect_timeout,
+                RequestSpec {
+                    method: Method::GET,
+                    api_path: "/config/",
+                    content_type: None,
+                    body: Bytes::new(),
+                },
+            )
+            .await?;
 
         require_2xx(status, &body)?;
 
@@ -541,20 +550,20 @@ impl CaddyClient for HyperCaddyClient {
     /// List all modules currently loaded by Caddy.
     #[instrument(skip(self), err)]
     async fn get_loaded_modules(&self) -> Result<LoadedModules, CaddyError> {
-        let timeout_secs = self.connect_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::GET,
-            api_path: "/config/apps",
-            content_type: None,
-            body: Bytes::new(),
-        });
+        let (apps_result, caddy_version) = tokio::join!(
+            self.execute_with_timeout(
+                self.connect_timeout,
+                RequestSpec {
+                    method: Method::GET,
+                    api_path: "/config/apps",
+                    content_type: None,
+                    body: Bytes::new(),
+                }
+            ),
+            fetch_caddy_version(self),
+        );
 
-        let (status, body) = tokio::time::timeout(self.connect_timeout, fut)
-            .await
-            .map_err(|_| CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            })??;
-
+        let (status, body) = apps_result?;
         require_2xx(status, &body)?;
 
         let apps: serde_json::Value =
@@ -565,10 +574,6 @@ impl CaddyClient for HyperCaddyClient {
         let mut modules = BTreeSet::new();
         collect_module_ids(&apps, &mut modules);
 
-        // Fetch the Caddy version from GET /version ({"version":"v2.8.4"}).
-        // Fall back to "unknown" if the call fails or the field is absent.
-        let caddy_version = fetch_caddy_version(self).await;
-
         Ok(LoadedModules {
             modules,
             caddy_version,
@@ -578,19 +583,17 @@ impl CaddyClient for HyperCaddyClient {
     /// Query the health of all configured upstreams.
     #[instrument(skip(self), err)]
     async fn get_upstream_health(&self) -> Result<Vec<UpstreamHealth>, CaddyError> {
-        let timeout_secs = self.connect_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::GET,
-            api_path: "/reverse_proxy/upstreams",
-            content_type: None,
-            body: Bytes::new(),
-        });
-
-        let (status, body) = tokio::time::timeout(self.connect_timeout, fut)
-            .await
-            .map_err(|_| CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            })??;
+        let (status, body) = self
+            .execute_with_timeout(
+                self.connect_timeout,
+                RequestSpec {
+                    method: Method::GET,
+                    api_path: "/reverse_proxy/upstreams",
+                    content_type: None,
+                    body: Bytes::new(),
+                },
+            )
+            .await?;
 
         require_2xx(status, &body)?;
 
@@ -613,19 +616,17 @@ impl CaddyClient for HyperCaddyClient {
     /// List all TLS certificates currently managed by Caddy.
     #[instrument(skip(self), err)]
     async fn get_certificates(&self) -> Result<Vec<TlsCertificate>, CaddyError> {
-        let timeout_secs = self.connect_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::GET,
-            api_path: "/pki/ca/local/certificates",
-            content_type: None,
-            body: Bytes::new(),
-        });
-
-        let (status, body) = tokio::time::timeout(self.connect_timeout, fut)
-            .await
-            .map_err(|_| CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            })??;
+        let (status, body) = self
+            .execute_with_timeout(
+                self.connect_timeout,
+                RequestSpec {
+                    method: Method::GET,
+                    api_path: "/pki/ca/local/certificates",
+                    content_type: None,
+                    body: Bytes::new(),
+                },
+            )
+            .await?;
 
         // 404 means PKI app not loaded — return empty list per spec.
         if status == StatusCode::NOT_FOUND {
@@ -653,24 +654,25 @@ impl CaddyClient for HyperCaddyClient {
     /// Perform a lightweight health check against the Caddy admin endpoint.
     #[instrument(skip(self), err)]
     async fn health_check(&self) -> Result<HealthState, CaddyError> {
-        let timeout_secs = self.connect_timeout.as_secs();
-        let fut = self.execute(RequestSpec {
-            method: Method::GET,
-            api_path: "/",
-            content_type: None,
-            body: Bytes::new(),
-        });
-
-        match tokio::time::timeout(self.connect_timeout, fut).await {
-            Ok(Ok((status, _))) if status.is_success() => Ok(HealthState::Reachable),
-            Ok(Ok((status, body))) => Err(CaddyError::BadStatus {
+        match self
+            .execute_with_timeout(
+                self.connect_timeout,
+                RequestSpec {
+                    method: Method::GET,
+                    api_path: "/",
+                    content_type: None,
+                    body: Bytes::new(),
+                },
+            )
+            .await
+        {
+            Ok((status, _)) if status.is_success() => Ok(HealthState::Reachable),
+            Ok((status, body)) => Err(CaddyError::BadStatus {
                 status: status.as_u16(),
                 body: String::from_utf8_lossy(&body).into_owned(),
             }),
-            Ok(Err(_)) => Ok(HealthState::Unreachable),
-            Err(_) => Err(CaddyError::Timeout {
-                seconds: u32::try_from(timeout_secs).unwrap_or(u32::MAX),
-            }),
+            Err(CaddyError::Unreachable { .. }) => Ok(HealthState::Unreachable),
+            Err(e) => Err(e),
         }
     }
 }

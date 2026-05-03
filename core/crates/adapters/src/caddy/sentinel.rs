@@ -177,15 +177,24 @@ fn conflict_error(ours: &str, found: String) -> SentinelError {
     }
 }
 
+/// Maximum recursion depth for [`collect_sentinels`].
+///
+/// Mirrors the guard in `hyper_client::collect_module_ids_inner`; an
+/// adversarially crafted config could overflow the stack without this limit.
+const MAX_COLLECT_DEPTH: usize = 128;
+
 /// Walk a JSON value recursively and collect the `"installation_id"` field
 /// from any object whose `"@id"` equals [`SENTINEL_ID`].
 fn find_sentinels(value: &serde_json::Value) -> Vec<&str> {
     let mut out = Vec::new();
-    collect_sentinels(value, &mut out);
+    collect_sentinels(value, &mut out, 0);
     out
 }
 
-fn collect_sentinels<'v>(value: &'v serde_json::Value, out: &mut Vec<&'v str>) {
+fn collect_sentinels<'v>(value: &'v serde_json::Value, out: &mut Vec<&'v str>, depth: usize) {
+    if depth >= MAX_COLLECT_DEPTH {
+        return;
+    }
     match value {
         serde_json::Value::Object(map) => {
             if map.get("@id").and_then(|v| v.as_str()) == Some(SENTINEL_ID) {
@@ -194,12 +203,12 @@ fn collect_sentinels<'v>(value: &'v serde_json::Value, out: &mut Vec<&'v str>) {
                 }
             }
             for child in map.values() {
-                collect_sentinels(child, out);
+                collect_sentinels(child, out, depth + 1);
             }
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
-                collect_sentinels(item, out);
+                collect_sentinels(item, out, depth + 1);
             }
         }
         _ => {}
@@ -378,41 +387,7 @@ mod tests {
         use tracing::subscriber::with_default;
         use tracing_subscriber::layer::SubscriberExt as _;
 
-        struct EventCollector {
-            events: Arc<Mutex<Vec<String>>>,
-        }
-
-        struct MessageVisitor<'a> {
-            message: &'a mut Option<String>,
-        }
-
-        impl tracing::field::Visit for MessageVisitor<'_> {
-            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-                if field.name() == "message" {
-                    *self.message = Some(format!("{value:?}"));
-                }
-            }
-
-            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-                if field.name() == "message" {
-                    *self.message = Some(value.to_owned());
-                }
-            }
-        }
-
-        impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for EventCollector {
-            fn on_event(
-                &self,
-                event: &tracing::Event<'_>,
-                _ctx: tracing_subscriber::layer::Context<'_, S>,
-            ) {
-                let mut msg: Option<String> = None;
-                event.record(&mut MessageVisitor { message: &mut msg });
-                if let Some(m) = msg {
-                    self.events.lock().unwrap().push(m);
-                }
-            }
-        }
+        use crate::test_support::EventCollector;
 
         let events: Arc<Mutex<Vec<String>>> = Arc::default();
         let collector = EventCollector {

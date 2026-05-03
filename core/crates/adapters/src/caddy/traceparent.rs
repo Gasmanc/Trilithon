@@ -18,18 +18,11 @@ pub fn current_traceparent() -> String {
     format!("00-{trace_id}-{span_id}-01")
 }
 
-/// Extract a 32-hex trace-id from the current tracing span's `correlation_id`
-/// field, falling back to 32 zeros.
+/// Extract a 32-hex trace-id from the current tracing span's numeric ID,
+/// falling back to 32 zeros.
 fn trace_id_from_current_span() -> String {
-    // Attempt to read a correlation_id from the current span's metadata.
-    // `tracing` does not expose field values directly from Span at runtime
-    // without a custom subscriber. We use `tracing::field::DebugValue` via
-    // `with_current_span` from tracing_core.
-    //
-    // Since `tracing` does not provide direct field-value access from a Span
-    // handle without a subscriber hook, we fall back to the span id's u64 as
-    // the trace-id. This produces a deterministic, unique-per-span value that
-    // satisfies the W3C format requirement.
+    // NOTE: tracing does not expose field values at call time without a custom subscriber;
+    // trace-id is derived from the span's numeric ID instead.
     let id = tracing::Span::current()
         .id()
         .map_or(0u64, |id| id.into_u64());

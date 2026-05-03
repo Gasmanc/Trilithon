@@ -130,12 +130,18 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     }
 
     // Read or create the persistent installation id.
-    let installation_id =
-        trilithon_adapters::caddy::installation_id::read_or_create(&config.storage.data_dir)
-            .map_err(|e| {
-                tracing::error!(error = %e, "installation-id.read-failed");
-                anyhow::anyhow!("failed to read/create installation id: {e}")
-            })?;
+    // `read_or_create` does synchronous filesystem I/O; run it off the async
+    // executor to avoid blocking the Tokio thread pool.
+    let installation_id = tokio::task::spawn_blocking({
+        let data_dir = config.storage.data_dir.clone();
+        move || trilithon_adapters::caddy::installation_id::read_or_create(&data_dir)
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("installation-id task panicked: {e}"))?
+    .map_err(|e| {
+        tracing::error!(error = %e, "installation-id.read-failed");
+        anyhow::anyhow!("failed to read/create installation id: {e}")
+    })?;
 
     // Ensure the ownership sentinel.
     if let Err(exit_code) = check_sentinel(&*caddy_client, &installation_id, takeover).await {

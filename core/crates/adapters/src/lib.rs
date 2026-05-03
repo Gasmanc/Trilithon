@@ -4,6 +4,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+pub mod test_support;
+
 pub mod caddy;
 pub mod config_loader;
 pub mod env_provider;
