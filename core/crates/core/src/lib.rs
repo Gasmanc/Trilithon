@@ -7,6 +7,7 @@
 
 use thiserror::Error;
 
+pub mod audit;
 pub mod caddy;
 pub mod config;
 pub mod exit;
