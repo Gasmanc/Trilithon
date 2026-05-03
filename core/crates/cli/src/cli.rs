@@ -11,6 +11,12 @@ pub struct Cli {
     #[arg(long, default_value = "/etc/trilithon/config.toml", global = true)]
     pub config: PathBuf,
 
+    /// Attempt to allow a non-loopback Caddy admin endpoint.
+    ///
+    /// This flag is OUT OF SCOPE FOR V1. The CLI will refuse and exit 2.
+    #[arg(long, global = true)]
+    pub allow_remote_admin: bool,
+
     /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Command,
@@ -20,7 +26,16 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Run the Trilithon daemon.
-    Run,
+    Run {
+        /// Take over ownership of the Caddy sentinel from another installation.
+        ///
+        /// By default, if Caddy's running config contains an ownership
+        /// sentinel belonging to a different `installation_id`, Trilithon
+        /// exits with code 3.  Pass `--takeover` to overwrite the sentinel
+        /// and assume ownership, recording an audit event for Phase 6.
+        #[arg(long, default_value_t = false)]
+        takeover: bool,
+    },
     /// Configuration inspection subcommands.
     Config {
         /// Config action to perform.
@@ -49,9 +64,13 @@ mod tests {
         let cli = Cli::try_parse_from(["trilithon", "version"])?;
         assert!(matches!(cli.command, Command::Version));
 
-        // run
+        // run (default — no takeover)
         let cli = Cli::try_parse_from(["trilithon", "run"])?;
-        assert!(matches!(cli.command, Command::Run));
+        assert!(matches!(cli.command, Command::Run { takeover: false }));
+
+        // run --takeover
+        let cli = Cli::try_parse_from(["trilithon", "run", "--takeover"])?;
+        assert!(matches!(cli.command, Command::Run { takeover: true }));
 
         // config show
         let cli = Cli::try_parse_from(["trilithon", "config", "show"])?;

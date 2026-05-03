@@ -28,6 +28,7 @@ nix = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }
 insta = { workspace = true }
+tempfile = "3"
 
 [lints]
 workspace = true

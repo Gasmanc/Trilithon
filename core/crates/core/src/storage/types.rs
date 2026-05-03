@@ -2,6 +2,23 @@
 
 use serde::{Deserialize, Serialize};
 
+/// In-memory representation of a structured audit event.
+///
+/// Phase 6 will persist these via [`Storage::append_audit_event`].  Until
+/// then, callers that generate events keep them in-memory so that unit tests
+/// can assert on the constructed value without requiring a database.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditEvent {
+    /// The ownership sentinel was overwritten because `--takeover` was
+    /// passed.  Phase 6 will write this to the audit log.
+    OwnershipSentinelTakeover {
+        /// The previous owner's installation id that was replaced.
+        previous_installation_id: String,
+        /// Our own installation id that is now written.
+        new_installation_id: String,
+    },
+}
+
 /// Unix epoch seconds.
 pub type UnixSeconds = i64;
 

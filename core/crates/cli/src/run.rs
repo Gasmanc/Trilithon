@@ -1,12 +1,20 @@
 //! Daemon run loop with signal handling and graceful shutdown.
 
+use std::sync::Arc;
+
 use trilithon_adapters::sqlite_storage::SqliteStorage;
 use trilithon_core::config::DaemonConfig;
 use trilithon_core::exit::ExitCode;
 
+use crate::exit::caddy_startup_exit_code;
 use crate::shutdown::{
     DRAIN_BUDGET, ShutdownController, ShutdownSignal, SignalKind, wait_for_signal,
 };
+
+/// Instance ID used to identify this Caddy instance in probes, capability
+/// records, and the reconnect loop.  Phase 5 will replace this with a
+/// database-backed identifier.
+const CADDY_INSTANCE_ID: &str = "local";
 
 /// The placeholder daemon work task.
 ///
@@ -17,10 +25,14 @@ async fn daemon_loop(mut signal: ShutdownSignal) {
 
 /// Run the daemon until SIGINT or SIGTERM, then drain tasks within the budget.
 ///
+/// `takeover` is forwarded to the ownership-sentinel check so that a foreign
+/// sentinel in the running Caddy config can be overwritten rather than
+/// aborting with exit code 3.
+///
 /// # Errors
 ///
 /// Returns an error if OS signal handler installation fails.
-pub async fn run_with_shutdown(config: DaemonConfig) -> anyhow::Result<ExitCode> {
+pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::Result<ExitCode> {
     // Open storage — failure exits 3.
     let storage = SqliteStorage::open(&config.storage.data_dir)
         .await
@@ -44,12 +56,70 @@ pub async fn run_with_shutdown(config: DaemonConfig) -> anyhow::Result<ExitCode>
 
     // Spawn the periodic integrity-check background task.
     tokio::spawn(trilithon_adapters::integrity_check::run_integrity_loop(
-        pool,
+        pool.clone(),
         trilithon_adapters::integrity_check::DEFAULT_INTERVAL,
         Box::new(signal.clone()) as Box<dyn trilithon_core::lifecycle::ShutdownObserver>,
     ));
 
-    // Emit daemon.started only after migrations succeed.
+    // Build the Caddy HTTP client.
+    let caddy_client = Arc::new(
+        trilithon_adapters::caddy::hyper_client::HyperCaddyClient::from_config(
+            &config.caddy.admin_endpoint,
+            std::time::Duration::from_secs(config.caddy.connect_timeout_seconds.into()),
+            std::time::Duration::from_secs(config.caddy.apply_timeout_seconds.into()),
+        )
+        .map_err(|e| {
+            tracing::error!(error = %e, "caddy.client.build-failed");
+            anyhow::anyhow!("failed to build Caddy client: {e}")
+        })?,
+    );
+
+    let cap_cache = Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default());
+    let cap_store = trilithon_adapters::caddy::capability_store::CapabilityStore::new(pool.clone());
+
+    // Run the initial capability probe.
+    if let Err(e) = trilithon_adapters::caddy::probe::run_initial_probe(
+        &*caddy_client,
+        cap_cache.clone(),
+        &cap_store,
+        CADDY_INSTANCE_ID,
+    )
+    .await
+    {
+        tracing::error!(error = %e, "caddy.unreachable");
+        return Ok(caddy_startup_exit_code());
+    }
+
+    // Read or create the persistent installation id.
+    let installation_id =
+        trilithon_adapters::caddy::installation_id::read_or_create(&config.storage.data_dir)
+            .map_err(|e| {
+                tracing::error!(error = %e, "installation-id.read-failed");
+                anyhow::anyhow!("failed to read/create installation id: {e}")
+            })?;
+
+    // Ensure the ownership sentinel.
+    if let Err(e) = trilithon_adapters::caddy::sentinel::ensure_sentinel(
+        &*caddy_client,
+        &installation_id,
+        takeover,
+    )
+    .await
+    {
+        tracing::error!(error = %e, "caddy.sentinel.failed");
+        return Ok(caddy_startup_exit_code());
+    }
+
+    // Spawn the background reconnect loop.
+    tokio::spawn(trilithon_adapters::caddy::reconnect::reconnect_loop(
+        caddy_client.clone(),
+        cap_cache.clone(),
+        cap_store,
+        CADDY_INSTANCE_ID.into(),
+        signal.clone(),
+    ));
+
+    // Emit daemon.started only after every startup gate has passed.
     tracing::info!("daemon.started");
 
     let task = tokio::spawn(daemon_loop(signal));

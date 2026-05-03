@@ -28,6 +28,7 @@ rustls = "0.23"
 parking_lot = "0.12"
 time = { workspace = true }
 ulid = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -48,6 +49,18 @@ path = "tests/caddy/probe_persisted.rs"
 [[test]]
 name = "caddy_probe_under_one_second"
 path = "tests/caddy/probe_under_one_second.rs"
+
+[[test]]
+name = "caddy_reconnect_against_killed_caddy"
+path = "tests/caddy/reconnect_against_killed_caddy.rs"
+
+[[test]]
+name = "caddy_sentinel_e2e"
+path = "tests/caddy/sentinel_e2e.rs"
+
+[[test]]
+name = "caddy_end_to_end"
+path = "tests/caddy/end_to_end.rs"
 
 [lints]
 workspace = true

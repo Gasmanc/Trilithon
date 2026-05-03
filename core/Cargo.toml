@@ -34,6 +34,7 @@ toml = "0.8"
 insta = { version = "1", features = ["toml"] }
 uniffi = { version = "0.31", features = ["cli"] }
 uniffi_build = { version = "0.31" }
+uuid = { version = "1", features = ["v4"] }
 
 [workspace.lints.clippy]
 unwrap_used = "deny"

@@ -11,14 +11,17 @@
 //!    apply as dotted-path overrides into the table.
 //! 5. Re-deserialize the mutated table back to [`DaemonConfig`].
 //! 6. Validate `concurrency.rebase_token_ttl_minutes` ∈ \[5, 1440\].
-//! 7. Validate `storage.data_dir` is writable (create if absent; write probe).
-//! 8. Return `Ok(DaemonConfig)`.
+//! 7. Validate `caddy.admin_endpoint` is loopback-only (ADR-0011).
+//! 8. Validate `storage.data_dir` is writable (create if absent; write probe).
+//! 9. Return `Ok(DaemonConfig)`.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use trilithon_core::config::{DaemonConfig, EnvProvider};
+
+use crate::caddy::validate_endpoint::{EndpointPolicyError, validate_loopback_only};
 
 /// Reason an env override could not be applied.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +103,14 @@ pub enum ConfigError {
     InternalSerialise {
         /// The serialisation error message.
         detail: String,
+    },
+
+    /// The Caddy admin endpoint violates the loopback-only policy (ADR-0011).
+    #[error("admin endpoint policy violation: {source}")]
+    AdminEndpointPolicy {
+        /// The underlying policy error.
+        #[source]
+        source: EndpointPolicyError,
     },
 }
 
@@ -185,6 +196,10 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
     if !(5..=1440).contains(&ttl) {
         return Err(ConfigError::RebaseTtlOutOfBounds { value: ttl });
     }
+
+    // 7. Validate admin endpoint is loopback-only (ADR-0011).
+    validate_loopback_only(&config.caddy.admin_endpoint)
+        .map_err(|source| ConfigError::AdminEndpointPolicy { source })?;
 
     // 7. Validate data directory writability.
     // create_dir_all is idempotent: it succeeds when the directory already

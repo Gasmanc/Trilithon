@@ -70,6 +70,16 @@ impl ShutdownObserver for ShutdownSignal {
     }
 }
 
+impl trilithon_adapters::caddy::reconnect::ShutdownObserver for ShutdownSignal {
+    fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(self.wait())
+    }
+
+    fn is_shutting_down(&self) -> bool {
+        *self.rx.borrow()
+    }
+}
+
 /// Owns the send-side of the shutdown channel.
 pub struct ShutdownController {
     tx: watch::Sender<bool>,

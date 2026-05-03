@@ -17,7 +17,7 @@ pub fn glob_prefix(pattern: &str) -> Option<&str> {
 pub use error::StorageError;
 pub use trait_def::Storage;
 pub use types::{
-    ActorKind, AuditEventRow, AuditOutcome, AuditRowId, AuditSelector, DriftEventRow,
+    ActorKind, AuditEvent, AuditEventRow, AuditOutcome, AuditRowId, AuditSelector, DriftEventRow,
     DriftResolution, DriftRowId, ParentChain, ProposalId, ProposalRow, ProposalSource,
     ProposalState, Snapshot, SnapshotId, UnixSeconds,
 };

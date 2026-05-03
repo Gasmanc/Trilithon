@@ -53,10 +53,24 @@ fn main() -> std::process::ExitCode {
 }
 
 fn dispatch(cli: Cli) -> trilithon_core::exit::ExitCode {
-    let Cli { config, command } = cli;
+    let Cli {
+        config,
+        allow_remote_admin,
+        command,
+    } = cli;
+
+    if allow_remote_admin {
+        let mut stderr = std::io::stderr().lock();
+        let _ = writeln!(
+            stderr,
+            "--allow-remote-admin is OUT OF SCOPE FOR V1; remove the flag and rerun."
+        );
+        return trilithon_core::exit::ExitCode::ConfigError;
+    }
+
     match command {
         Command::Version => print_version(),
-        Command::Run => run_daemon(&config),
+        Command::Run { takeover } => run_daemon(&config, takeover),
         Command::Config {
             action: ConfigAction::Show,
         } => config_show::run(&config),
@@ -64,7 +78,7 @@ fn dispatch(cli: Cli) -> trilithon_core::exit::ExitCode {
 }
 
 /// Spin up the Tokio runtime and run the daemon until a signal arrives.
-fn run_daemon(config_path: &std::path::Path) -> trilithon_core::exit::ExitCode {
+fn run_daemon(config_path: &std::path::Path, takeover: bool) -> trilithon_core::exit::ExitCode {
     // Load and validate config before starting the runtime so that config
     // errors produce exit code 2 without spinning up Tokio.
     let env = trilithon_adapters::env_provider::StdEnvProvider;
@@ -89,7 +103,7 @@ fn run_daemon(config_path: &std::path::Path) -> trilithon_core::exit::ExitCode {
         }
     };
 
-    match rt.block_on(run::run_with_shutdown(config)) {
+    match rt.block_on(run::run_with_shutdown(config, takeover)) {
         Ok(code) => code,
         Err(e) => {
             tracing::error!(error = %e, "daemon.fatal");
