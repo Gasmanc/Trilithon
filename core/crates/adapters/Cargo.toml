@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 trilithon-core = { path = "../core" }
 thiserror = { workspace = true }
+url = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
@@ -15,12 +16,27 @@ toml = { workspace = true }
 sqlx = { version = "0.8", features = ["sqlite", "migrate", "runtime-tokio", "macros"], default-features = false }
 fs2 = "0.4"
 async-trait = { workspace = true }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy"] }
+hyperlocal = "0.9"
+hyper-rustls = { version = "0.27", features = ["rustls-native-certs"] }
+rustls-pemfile = "2"
+http-body-util = "0.1"
+bytes = "1"
+rand = "0.8"
+rustls = "0.23"
 
 [dev-dependencies]
 tempfile = "3"
 nix = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 ulid = { workspace = true }
+url = { workspace = true }
+httptest = "0.16"
+
+[[test]]
+name = "caddy_hyper_real_caddy"
+path = "tests/caddy/hyper_real_caddy.rs"
 
 [lints]
 workspace = true

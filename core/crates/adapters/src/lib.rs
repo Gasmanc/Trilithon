@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod caddy;
 pub mod config_loader;
 pub mod env_provider;
 pub mod integrity_check;
