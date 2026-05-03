@@ -32,7 +32,7 @@ Total: 10 slices.
 
 ---
 
-## Slice 4.1 — Aggregate identifier types and primitive value types
+## Slice 4.1 [trivial] — Aggregate identifier types and primitive value types
 
 ### Goal
 
@@ -125,7 +125,7 @@ None.
 
 ---
 
-## Slice 4.2 — Route, Upstream, MatcherSet, HeaderRules, RedirectRule
+## Slice 4.2 [standard] — Route, Upstream, MatcherSet, HeaderRules, RedirectRule
 
 ### Goal
 
@@ -336,7 +336,7 @@ None.
 
 ---
 
-## Slice 4.3 — TLS, GlobalConfig, policy attachment value types
+## Slice 4.3 [standard] — TLS, GlobalConfig, policy attachment value types
 
 ### Goal
 
@@ -466,7 +466,7 @@ None.
 
 ---
 
-## Slice 4.4 — `DesiredState` aggregate, serde round-trip, `BTreeMap` invariants
+## Slice 4.4 [standard] — `DesiredState` aggregate, serde round-trip, `BTreeMap` invariants
 
 ### Goal
 
@@ -540,7 +540,7 @@ None.
 
 ---
 
-## Slice 4.5 — Patch types
+## Slice 4.5 [trivial] — Patch types
 
 ### Goal
 
@@ -637,7 +637,7 @@ None.
 
 ---
 
-## Slice 4.6 — `Mutation` enum, `MutationId`, `expected_version` envelope
+## Slice 4.6 [standard] — `Mutation` enum, `MutationId`, `expected_version` envelope
 
 ### Goal
 
@@ -791,7 +791,7 @@ None at this slice.
 
 ---
 
-## Slice 4.7 — `MutationOutcome`, `MutationError`, `Diff`, `AuditEvent` integration
+## Slice 4.7 [cross-cutting] — `MutationOutcome`, `MutationError`, `Diff`, `AuditEvent` integration
 
 ### Goal
 
@@ -1023,7 +1023,7 @@ None.
 
 ---
 
-## Slice 4.8 — Capability-gating algorithm
+## Slice 4.8 [standard] — Capability-gating algorithm
 
 ### Goal
 
@@ -1113,7 +1113,7 @@ None.
 
 ---
 
-## Slice 4.9 — `apply_mutation` per-variant pure implementation
+## Slice 4.9 [standard] — `apply_mutation` per-variant pure implementation
 
 ### Goal
 
@@ -1239,7 +1239,7 @@ None at this slice (pure logic). Phase 7's `apply.started`, `apply.succeeded`, `
 
 ---
 
-## Slice 4.10 — Property tests, schema generation, mutation README
+## Slice 4.10 [cross-cutting] — Property tests, schema generation, mutation README
 
 ### Goal
 
