@@ -25,7 +25,7 @@ pub const INITIAL_BACKOFF: Duration = Duration::from_millis(250);
 pub const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 /// Health-check poll interval during normal (connected) operation.
-const HEALTH_INTERVAL: Duration = Duration::from_secs(15);
+pub const HEALTH_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Implement this on a concrete shutdown handle so [`reconnect_loop`] can
 /// observe shutdown requests without depending on the `cli` crate.
@@ -41,6 +41,10 @@ pub trait ShutdownObserver: Send + 'static {
 }
 
 /// Run the Caddy reconnect loop until shutdown is signalled.
+///
+/// `health_interval` controls how often Caddy is polled while connected.
+/// Pass [`HEALTH_INTERVAL`] from production call sites; tests may supply a
+/// shorter value to avoid long wall-clock waits.
 ///
 /// The function assumes that an initial capability probe has already succeeded
 /// before it is called, so it starts in the [`HealthState::Reachable`] state.
@@ -58,17 +62,18 @@ pub async fn reconnect_loop(
     persistence: CapabilityStore,
     instance_id: String,
     mut shutdown: impl ShutdownObserver,
+    health_interval: Duration,
 ) {
     let mut state = HealthState::Reachable;
     let mut backoff = INITIAL_BACKOFF;
 
     loop {
-        // Sleep duration depends on state: use HEALTH_INTERVAL when connected
+        // Sleep duration depends on state: use health_interval when connected
         // so we do not hammer Caddy; use the current backoff when disconnected
         // so retries respect the capped exponential schedule without an extra
-        // 15 s penalty on top of each backoff step.
+        // penalty on top of each backoff step.
         let sleep_duration = if state == HealthState::Reachable {
-            HEALTH_INTERVAL
+            health_interval
         } else {
             backoff
         };

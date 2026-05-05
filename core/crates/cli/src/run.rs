@@ -155,6 +155,7 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         cap_store,
         CADDY_INSTANCE_ID.into(),
         signal.clone(),
+        trilithon_adapters::caddy::reconnect::HEALTH_INTERVAL,
     ));
 
     // Emit daemon.started only after every startup gate has passed.

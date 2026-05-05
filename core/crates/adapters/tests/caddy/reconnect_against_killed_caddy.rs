@@ -1,7 +1,9 @@
-//! E2E test: kill Caddy mid-loop, restart after 5 s, assert a fresh
-//! `caddy.capability-probe.completed` event appears within 35 s of restart.
+//! Reconnect logic test: scripted client goes dead for one health cycle then
+//! recovers. Verifies `caddy.connected` and `caddy.capability-probe.completed`
+//! are emitted after reconnect.
 //!
-//! Gated behind `TRILITHON_E2E_CADDY=1`.
+//! Uses a call-count-based `ScriptedClient` and a 50 ms health interval so
+//! the test completes in well under one second of real wall-clock time.
 
 #![allow(
     clippy::unwrap_used,
@@ -10,12 +12,15 @@
     clippy::unimplemented,
     clippy::disallowed_methods
 )]
-// reason: E2E test — panics are the correct failure mode in tests
+// reason: test-only code; panics are the correct failure mode in tests
 
 use std::collections::BTreeSet;
 use std::str::FromStr as _;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -37,11 +42,11 @@ use trilithon_core::caddy::{
 };
 
 // ---------------------------------------------------------------------------
-// Test double — simulates Caddy being killed then restarted
+// Event capture
 // ---------------------------------------------------------------------------
 
 struct EventCaptureLayer {
-    events: Arc<Mutex<Vec<(String, Instant)>>>,
+    events: Arc<Mutex<Vec<String>>>,
 }
 
 struct MessageVisitor<'a> {
@@ -71,25 +76,28 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for EventCaptureLayer 
         let mut msg: Option<String> = None;
         event.record(&mut MessageVisitor { message: &mut msg });
         if let Some(m) = msg {
-            self.events.lock().unwrap().push((m, Instant::now()));
+            self.events.lock().unwrap().push(m);
         }
     }
 }
 
-/// Simulates a Caddy instance that is alive, then dead for a window, then alive again.
-struct ScriptedClient {
-    /// Timestamps (from `Instant::now()` at test start) during which the
-    /// client should appear unreachable.
-    dead_window: (Duration, Duration),
-    start: Instant,
+// ---------------------------------------------------------------------------
+// Test double — scripted by call count, not wall-clock time
+// ---------------------------------------------------------------------------
+
+/// Returns `Unreachable` for the first `dead_calls` health-check invocations,
+/// then `Reachable` for all subsequent calls.
+struct CallCountedClient {
+    call_count: Arc<AtomicUsize>,
+    dead_calls: usize,
     modules: LoadedModules,
 }
 
 #[async_trait]
-impl CaddyClient for ScriptedClient {
+impl CaddyClient for CallCountedClient {
     async fn health_check(&self) -> Result<HealthState, CaddyError> {
-        let elapsed = self.start.elapsed();
-        if elapsed >= self.dead_window.0 && elapsed < self.dead_window.1 {
+        let n = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if n < self.dead_calls {
             Ok(HealthState::Unreachable)
         } else {
             Ok(HealthState::Reachable)
@@ -134,23 +142,25 @@ impl CaddyClient for ScriptedClient {
 }
 
 // ---------------------------------------------------------------------------
-// Shutdown observer
+// Shutdown observer — times out after a fixed wall-clock duration
 // ---------------------------------------------------------------------------
 
 struct TimedShutdown {
-    deadline: Instant,
+    deadline: std::time::Instant,
 }
 
 impl ShutdownObserver for TimedShutdown {
     fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
-        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        let remaining = self
+            .deadline
+            .saturating_duration_since(std::time::Instant::now());
         Box::pin(async move {
             tokio::time::sleep(remaining).await;
         })
     }
 
     fn is_shutting_down(&self) -> bool {
-        Instant::now() >= self.deadline
+        std::time::Instant::now() >= self.deadline
     }
 }
 
@@ -158,37 +168,43 @@ impl ShutdownObserver for TimedShutdown {
 // Test
 // ---------------------------------------------------------------------------
 
-/// Kill the scripted Caddy at t=2 s, restart at t=7 s (5 s dead window).
-/// Assert a fresh `caddy.capability-probe.completed` event arrives within
-/// 35 s of restart (i.e. t < 42 s overall).
+/// The reconnect loop must emit `caddy.connected` and
+/// `caddy.capability-probe.completed` after a one-cycle dead window.
 ///
-/// Gated: only runs when `TRILITHON_E2E_CADDY=1`.
+/// Uses a 50 ms health interval and a call-count-based client so the test
+/// completes in well under one second without any clock manipulation.
+///
+/// Schedule (approximate wall-clock):
+///
+/// - t=0 ms: loop starts in `Reachable` state, sleeps `health_interval` (50 ms)
+/// - t≈50 ms: first `health_check` → call #0 → `Unreachable` → caddy.disconnected;
+///            backoff doubles from 250 ms to 500 ms
+/// - t≈550 ms: second `health_check` → call #1 → `Reachable` → caddy.connected
+///             + probe → caddy.capability-probe.completed
+/// - t=1500 ms: `TimedShutdown` fires → loop exits
 #[tokio::test]
-async fn observes_fresh_probe_within_35s() {
-    if std::env::var("TRILITHON_E2E_CADDY").as_deref() != Ok("1") {
-        return;
-    }
-
-    let events: Arc<Mutex<Vec<(String, Instant)>>> = Arc::default();
+async fn observes_fresh_probe_after_reconnect() {
+    let events: Arc<Mutex<Vec<String>>> = Arc::default();
     let layer = EventCaptureLayer {
         events: Arc::clone(&events),
     };
     let subscriber = tracing_subscriber::registry().with(layer);
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    // Set up an in-memory store.
-    let opts = sqlx::sqlite::SqliteConnectOptions::from_str("sqlite://:memory:")
-        .unwrap()
-        .create_if_missing(true);
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .connect_with(opts)
-        .await
-        .unwrap();
+    let pool = {
+        let opts = sqlx::sqlite::SqliteConnectOptions::from_str("sqlite://:memory:")
+            .unwrap()
+            .create_if_missing(true);
+        sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(opts)
+            .await
+            .unwrap()
+    };
     apply_migrations(&pool).await.unwrap();
     sqlx::query(
         "INSERT INTO caddy_instances \
          (id, display_name, transport, address, created_at, ownership_token) \
-         VALUES ('e2e-inst', 'E2E', 'unix', '/tmp/e2e.sock', 0, 'tok')",
+         VALUES ('test-inst', 'Test', 'unix', '/tmp/test.sock', 0, 'tok')",
     )
     .execute(&pool)
     .await
@@ -196,49 +212,60 @@ async fn observes_fresh_probe_within_35s() {
 
     let store = CapabilityStore::new(pool);
     let cache = Arc::new(CapabilityCache::default());
-    let test_start = Instant::now();
-
-    let client = Arc::new(ScriptedClient {
-        dead_window: (Duration::from_secs(2), Duration::from_secs(7)),
-        start: test_start,
+    let client = Arc::new(CallCountedClient {
+        call_count: Arc::new(AtomicUsize::new(0)),
+        dead_calls: 1,
         modules: LoadedModules {
             modules: BTreeSet::from(["http.handlers.reverse_proxy".to_owned()]),
             caddy_version: "v2.8.4".to_owned(),
         },
     });
 
-    // Run for at most 45 s — enough to observe reconnect + probe.
+    // 50 ms health interval keeps the test fast; 1500 ms shutdown gives the
+    // loop enough time to complete the disconnect + reconnect + probe cycle.
+    let health_interval = Duration::from_millis(50);
     let shutdown = TimedShutdown {
-        deadline: test_start + Duration::from_secs(45),
+        deadline: std::time::Instant::now() + Duration::from_millis(1500),
     };
 
     reconnect_loop(
-        client,
+        Arc::clone(&client) as Arc<dyn CaddyClient>,
         Arc::clone(&cache),
         store,
-        "e2e-inst".to_owned(),
+        "test-inst".to_owned(),
         shutdown,
+        health_interval,
     )
     .await;
 
-    // Find the restart time (first `caddy.connected` event).
     let captured = events.lock().unwrap().clone();
-    let reconnect_ts = captured
-        .iter()
-        .find(|(msg, _)| msg == "caddy.connected")
-        .map(|(_, ts)| *ts)
-        .expect("caddy.connected event not emitted");
-
-    // Verify a probe event followed the reconnect within 35 s.
-    let probe_ts = captured
-        .iter()
-        .find(|(msg, ts)| msg == "caddy.capability-probe.completed" && *ts >= reconnect_ts)
-        .map(|(_, ts)| *ts)
-        .expect("caddy.capability-probe.completed not emitted after reconnect");
-
-    let lag = probe_ts.duration_since(reconnect_ts);
     assert!(
-        lag <= Duration::from_secs(35),
-        "probe took {lag:?} after reconnect, want ≤ 35 s"
+        captured.iter().any(|m| m == "caddy.disconnected"),
+        "expected caddy.disconnected; got: {captured:?}",
+    );
+    assert!(
+        captured.iter().any(|m| m == "caddy.connected"),
+        "expected caddy.connected; got: {captured:?}",
+    );
+    assert!(
+        captured
+            .iter()
+            .any(|m| m == "caddy.capability-probe.completed"),
+        "expected caddy.capability-probe.completed; got: {captured:?}",
+    );
+
+    // Backoff after first disconnect: INITIAL_BACKOFF (250 ms) doubled to 500 ms.
+    // Verify that the probe fires before the shutdown deadline.
+    let probe_idx = captured
+        .iter()
+        .position(|m| m == "caddy.capability-probe.completed")
+        .unwrap();
+    let connect_idx = captured
+        .iter()
+        .position(|m| m == "caddy.connected")
+        .unwrap();
+    assert!(
+        connect_idx < probe_idx,
+        "caddy.connected must precede caddy.capability-probe.completed",
     );
 }
