@@ -83,3 +83,29 @@ A background task runs `PRAGMA integrity_check` every 6 hours. Any non-`ok` resu
 An exclusive file lock at `<data_dir>/trilithon.lock` prevents two daemon instances from opening the same database simultaneously. The second instance exits with code `3`.
 
 See also: [ADR-0006](docs/adr/0006-sqlite-as-v1-persistence-layer.md)
+
+## Snapshots
+
+Every time Trilithon reads the live Caddy configuration it produces a **snapshot** — an immutable, content-addressed record stored in the `snapshots` table.
+
+### Canonical JSON
+
+Before hashing, the JSON object is serialised to a canonical form so that two logically identical configurations always produce the same bytes:
+
+- Object keys are sorted in lexicographic order at every nesting level.
+- Numbers are normalised (no trailing zeros, no redundant sign).
+- The serialiser version is recorded in the `CANONICAL_JSON_VERSION` constant so future format changes can be detected and migrated.
+
+### Content addressing
+
+The `snapshot_id` is the lowercase hex-encoded SHA-256 digest of the canonical JSON bytes — always exactly 64 characters. Storing the digest as the primary key makes deduplication trivial: two snapshots with identical content share the same id and the second write is a no-op.
+
+### Parent linkage
+
+Each snapshot row carries a `parent_id` foreign key that references the preceding snapshot for the same installation. The very first snapshot in a lineage stores `NULL` for `parent_id`, forming the root of the chain. This singly-linked list lets the daemon reconstruct the full configuration history and detect gaps or forks.
+
+### Immutability guarantee
+
+The `snapshots` table is made append-only at the database layer by `BEFORE UPDATE` and `BEFORE DELETE` triggers introduced in migration `0004`. Any attempt to mutate or remove an existing row — whether from application code or a direct SQL client — is rejected immediately with an error. This guarantee holds regardless of the calling process, so audit trails built on the snapshot chain cannot be silently tampered with.
+
+See also: [ADR-0009](docs/adr/0009-immutable-content-addressed-snapshots-and-audit-log.md)
