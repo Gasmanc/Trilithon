@@ -10,7 +10,6 @@ compile_error!("Trilithon V1 supports Unix targets only (Linux, macOS). See ADR-
 
 use std::time::Duration;
 
-use async_trait::async_trait;
 use tokio::sync::watch;
 use trilithon_core::lifecycle::ShutdownObserver;
 
@@ -63,14 +62,7 @@ impl ShutdownSignal {
     }
 }
 
-#[async_trait]
 impl ShutdownObserver for ShutdownSignal {
-    async fn wait_for_shutdown(&mut self) {
-        self.wait().await;
-    }
-}
-
-impl trilithon_adapters::caddy::reconnect::ShutdownObserver for ShutdownSignal {
     fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
         Box::pin(self.wait())
     }

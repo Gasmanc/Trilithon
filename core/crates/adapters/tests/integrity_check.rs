@@ -10,7 +10,6 @@
 
 use std::time::Duration;
 
-use async_trait::async_trait;
 use tokio::sync::oneshot;
 use trilithon_adapters::integrity_check::{
     IntegrityResult, integrity_check_once, run_integrity_loop,
@@ -20,10 +19,15 @@ use trilithon_core::lifecycle::ShutdownObserver;
 /// A one-shot [`ShutdownObserver`] backed by a `tokio::sync::oneshot` channel.
 struct OneShotShutdown(oneshot::Receiver<()>);
 
-#[async_trait]
 impl ShutdownObserver for OneShotShutdown {
-    async fn wait_for_shutdown(&mut self) {
-        let _ = (&mut self.0).await;
+    fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(async move {
+            let _ = (&mut self.0).await;
+        })
+    }
+
+    fn is_shutting_down(&self) -> bool {
+        self.0.is_terminated()
     }
 }
 

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use trilithon_core::caddy::{client::CaddyClient, types::HealthState};
+pub use trilithon_core::lifecycle::ShutdownObserver;
 
 use crate::caddy::{
     cache::CapabilityCache, capability_store::CapabilityStore, probe::run_initial_probe,
@@ -26,19 +27,6 @@ pub const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 /// Health-check poll interval during normal (connected) operation.
 pub const HEALTH_INTERVAL: Duration = Duration::from_secs(15);
-
-/// Implement this on a concrete shutdown handle so [`reconnect_loop`] can
-/// observe shutdown requests without depending on the `cli` crate.
-pub trait ShutdownObserver: Send + 'static {
-    /// Return a future that resolves when shutdown is signalled.
-    ///
-    /// The returned future borrows `self` mutably, so it must be polled to
-    /// completion before `changed` can be called again.
-    fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>>;
-
-    /// Returns `true` if shutdown has already been signalled.
-    fn is_shutting_down(&self) -> bool;
-}
 
 /// Run the Caddy reconnect loop until shutdown is signalled.
 ///

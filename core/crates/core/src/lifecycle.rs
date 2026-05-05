@@ -3,16 +3,17 @@
 //! [`ShutdownObserver`] is implemented on concrete shutdown handles (e.g. in
 //! `cli`) so that `adapters` can consume it without importing from `cli`.
 
-use async_trait::async_trait;
-
 /// Implement this on your concrete shutdown handle so adapters can consume it.
 ///
-/// The implementor should resolve `wait_for_shutdown` when a shutdown signal
-/// has been received or the underlying channel has been closed.
-#[async_trait]
+/// The implementor should resolve `changed` when a shutdown signal has been
+/// received or the underlying channel has been closed.
 pub trait ShutdownObserver: Send + 'static {
-    /// Wait until a shutdown has been requested.
+    /// Return a future that resolves when shutdown is signalled.
     ///
-    /// Returns immediately if shutdown is already in progress.
-    async fn wait_for_shutdown(&mut self);
+    /// The returned future borrows `self` mutably, so it must be polled to
+    /// completion before `changed` can be called again.
+    fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>>;
+
+    /// Returns `true` if shutdown has already been signalled.
+    fn is_shutting_down(&self) -> bool;
 }

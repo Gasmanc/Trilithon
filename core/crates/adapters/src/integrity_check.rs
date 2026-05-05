@@ -62,7 +62,7 @@ pub async fn run_integrity_loop(
                     }
                 }
             }
-            () = shutdown.wait_for_shutdown() => {
+            () = shutdown.changed() => {
                 break;
             }
         }
