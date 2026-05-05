@@ -1,22 +1,22 @@
 schema_version: 1
-project_name: .
+project_name: Trilithon
 archetype: full            # full | lightweight
 strictness: strict          # strict | paranoid
 created: 2026-04-30
-updated: 2026-04-30
+updated: 2026-05-05
 languages:
   rust:
     variant: workspace-three-layer
     path: core
-    added: 2026-04-30
+    added: 2026-05-05
   typescript:
     variant: react-frontend
     path: web
-    added: 2026-04-30
+    added: 2026-05-05
   swift:
     variant: xcode-app
     path: app
-    added: 2026-04-30
+    added: 2026-05-05
 combos:
   - rust+swift-xcode
 recommendations:

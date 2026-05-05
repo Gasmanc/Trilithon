@@ -1,0 +1,95 @@
+# Compound Engineering — Solutions Schema
+# Install per-project: copy to docs/solutions/schema.yaml
+# Version: 1
+#
+# YAML safety rules for solution docs:
+#   - Quote strings containing : # & * ? | > ! % @ `
+#   - Never use tabs — spaces only
+#   - Multiline strings use | (literal) or > (folded) block scalars
+#   - All enum values must exactly match one of the listed options (case-sensitive)
+
+---
+version: 1
+
+# ── Track: bug ───────────────────────────────────────────────────────────────
+# Use for defects caught in review, production incidents, or fix cycles.
+# Required fields: track, problem_type, root_cause, resolution_type,
+#                  one_sentence_lesson, generalizable
+bug_problem_types:
+  - crash           # Process or service terminates unexpectedly
+  - data-loss       # Data silently discarded, truncated, or corrupted
+  - security        # Auth bypass, injection, secret leak, privilege escalation
+  - performance     # Throughput, latency, or memory regression
+  - correctness     # Wrong output; logic produces incorrect result
+  - race-condition  # Non-deterministic failure under concurrency or ordering
+  - api-contract    # Caller/callee agreement violated (types, nulls, shape)
+  - resource-leak   # File handles, connections, or memory not released
+  - integration     # Cross-service or cross-module boundary mismatch
+  - dependency      # Third-party library version, behaviour, or API change
+  - build           # Compilation failure, test failure, lint error, CI break
+
+# ── Track: knowledge ─────────────────────────────────────────────────────────
+# Use for architectural decisions, tooling choices, and reusable patterns.
+# Required fields: track, problem_type, one_sentence_lesson, generalizable
+# Optional: root_cause, resolution_type (fill when the pattern emerged from a fix)
+knowledge_problem_types:
+  - architecture-pattern  # Structural decision: layering, coupling, boundaries
+  - tooling-decision      # CLI, library, or framework choice and its rationale
+  - convention            # Naming, formatting, or code-style rule adopted
+  - workflow              # Process, branching, or review step improvement
+  - best-practice         # General coding guideline confirmed by experience
+  - performance-pattern   # Optimisation approach validated in this codebase
+  - security-pattern      # Hardening technique or threat model decision
+  - testing-pattern       # Test strategy, fixture approach, or coverage rule
+
+# ── Root causes (shared across both tracks) ───────────────────────────────────
+root_causes:
+  - missing-nil-check         # Null / None / Option not guarded before use
+  - wrong-type-assumption     # Caller passed incompatible type; no validation
+  - off-by-one                # Index, range, or boundary arithmetic error
+  - missing-error-handling    # Error silently swallowed or propagated unchecked
+  - shared-dependency-assumption  # Two callers assumed exclusive ownership
+  - wrong-ownership-model     # Borrow, lifetime, or reference cycle mistake
+  - stale-cache               # Cache not invalidated after underlying data changed
+  - missing-transaction       # Partial write committed without atomicity guard
+  - concurrency-gap           # Read/write race; TOCTOU; missing lock or barrier
+  - incorrect-algorithm       # Wrong data structure or complexity class chosen
+  - api-misuse                # Library called with wrong arguments or order
+  - hidden-coupling           # Two modules share implicit global or side-channel
+  - insufficient-validation   # Untrusted input accepted without sanitisation
+  - environment-mismatch      # Works locally; fails in CI/staging/prod environment
+  - schema-drift              # Code assumes old shape after data model changed
+  - premature-abstraction     # Abstraction introduced before pattern was stable
+  - scope-creep               # Change expanded beyond its stated intent
+
+# ── Resolution types (shared across both tracks) ──────────────────────────────
+resolution_types:
+  - guard-added           # Null / bounds / type guard inserted at entry point
+  - refactored            # Code restructured without changing external behaviour
+  - dependency-updated    # Library version pinned, upgraded, or replaced
+  - algorithm-replaced    # Correct data structure or algorithm substituted
+  - validation-added      # Input sanitisation or schema validation introduced
+  - transaction-wrapped   # Operations grouped under atomic commit
+  - lock-added            # Mutex, semaphore, or barrier inserted
+  - config-fixed          # Environment variable, secret, or config corrected
+  - test-added            # Regression test added to prevent recurrence
+  - documented            # Decision or constraint recorded; no code change
+
+# ── Solution doc frontmatter schema ──────────────────────────────────────────
+# Every file in docs/solutions/**/*.md must begin with this frontmatter.
+# Fields marked (required) must be present; others may be omitted.
+#
+# ---
+# track: bug | knowledge                    (required)
+# problem_type: <value from above list>     (required)
+# root_cause: <value from root_causes>      (required for bug; optional for knowledge)
+# resolution_type: <value from list>        (required for bug; optional for knowledge)
+# severity: critical | high | medium | low  (required for bug; omit for knowledge)
+# title: "Short human-readable title"       (required)
+# slug: kebab-case-unique-id                (required — used in filename)
+# date: YYYY-MM-DD                          (required)
+# phase_id: "26"                            (required — phase that produced this doc)
+# generalizable: true | false               (required)
+# one_sentence_lesson: "..."                (required — must fit one sentence)
+# tags: [optional, free-form, keywords]     (optional)
+# ---

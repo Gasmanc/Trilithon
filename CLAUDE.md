@@ -182,3 +182,11 @@ _(Project-specific terminology and invariants go here.)_
 - Scope optional but encouraged: `feat(parser): handle trailing commas`.
 - Branch names: `feat/short-description`, `fix/short-description`.
 - Keep commits focused. Several small commits beat one sprawling one.
+
+## Knowledge Store
+
+Before implementing any new pattern in this codebase, search `docs/solutions/` using
+the learnings-researcher agent. This is mandatory, not optional.
+
+After completing a phase, run `/compound <phase-id>` if `/review-remediate` flagged
+compound candidates.

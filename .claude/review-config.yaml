@@ -1,0 +1,8 @@
+# Review workflow configuration — read by review-aggregate, review-remediate, review-triage
+# Paths are relative to the project root.
+version: 1
+in_flight_dir: docs/In_Flight_Reviews
+findings_dir: docs/End_of_Phase_Reviews/Findings
+fixed_dir: docs/End_of_Phase_Reviews/Fixed
+unfixed_dir: docs/End_of_Phase_Reviews/Unfixed
+aggregate_dir: docs/Codebase_MultiReview_Aggregate

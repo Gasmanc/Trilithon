@@ -1,12 +1,12 @@
 ─────────────────────────────────────────────────────────────────────────
-Wiring the Rust XCFramework into your Xcode project (.)
+Wiring the Rust XCFramework into your Xcode project (Trilithon)
 ─────────────────────────────────────────────────────────────────────────
 
 The build script produces:
 
-    core/target/xcframework/..xcframework
+    core/target/xcframework/Trilithon.xcframework
     core/target/xcframework/Generated/         (Swift bindings)
-    app/Sources/./Generated/    (synced via `just sync-bindings`)
+    app/Sources/Trilithon/Generated/    (synced via `just sync-bindings`)
 
 ONE-TIME SETUP IN XCODE
 ───────────────────────
@@ -19,14 +19,14 @@ ONE-TIME SETUP IN XCODE
 
        just open-app
 
-3. Drag ..xcframework into the project navigator.
-   When prompted: "Copy items if needed" OFF, "Add to target: ." ON.
+3. Drag Trilithon.xcframework into the project navigator.
+   When prompted: "Copy items if needed" OFF, "Add to target: Trilithon" ON.
 
-4. Project settings → . target → "Frameworks, Libraries,
+4. Project settings → Trilithon target → "Frameworks, Libraries,
    and Embedded Content" → confirm the .xcframework is set to
    "Embed & Sign".
 
-5. Project settings → . target → "Build Phases" → "+" →
+5. Project settings → Trilithon target → "Build Phases" → "+" →
    "New Run Script Phase". Drag it BEFORE "Compile Sources":
 
        cd "$SRCROOT/../core" && bash scripts/build-xcframework.sh
@@ -35,7 +35,7 @@ ONE-TIME SETUP IN XCODE
 
 6. Build & run. From Swift you can now call:
 
-       import ._ffi  // module name comes from the .udl namespace
+       import Trilithon_ffi  // module name comes from the .udl namespace
 
        let v = version()            // calls into Rust core
        try boot()                   // calls into Rust adapters

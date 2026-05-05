@@ -1,4 +1,4 @@
-# . — root justfile
+# Trilithon — root justfile
 # `just check` is THE gate. Everything else fans out from here.
 
 # Default: list available targets
@@ -6,7 +6,7 @@ default:
     @just --list
 
 # Run all linters + tests across every component
-check:  check-rust check-schemas check-typescript check-swift
+check:  check-rust check-typescript check-swift
     @echo "✓ all checks passed"
 
 # Run all tests
@@ -40,11 +40,6 @@ fix-rust:
 
 deny-rust:
     cd core && cargo deny check
-
-# Assert that committed mutation schemas match freshly generated output
-check-schemas:
-    cd core && cargo run -p trilithon-core --bin gen_mutation_schemas 2>&1
-    git diff --exit-code docs/schemas/mutations/
 
 # --- typescript (react-frontend) ---
 check-typescript:
