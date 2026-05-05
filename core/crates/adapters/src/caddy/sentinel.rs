@@ -142,25 +142,30 @@ pub async fn ensure_sentinel(
                     Some(event),
                 ))
             } else {
+                tracing::error!(
+                    expected = %installation_id,
+                    found = %previous,
+                    "caddy.ownership-sentinel.conflict",
+                );
                 Err(conflict_error(installation_id, previous))
             }
         }
         _ => {
             // Multiple sentinels — unexpected state; report the first one.
-            Err(conflict_error(installation_id, sentinels[0].to_owned()))
+            let found = sentinels[0].to_owned();
+            tracing::error!(
+                expected = %installation_id,
+                found = %found,
+                "caddy.ownership-sentinel.conflict",
+            );
+            Err(conflict_error(installation_id, found))
         }
     }
 }
 
-/// Emit the `caddy.ownership-sentinel.conflict` tracing event and return the
-/// corresponding error.  Extracted to avoid duplicating the emit + construction
-/// between the single-foreign and multiple-sentinels match arms.
+/// Build the conflict error.  Callers are responsible for emitting the
+/// `caddy.ownership-sentinel.conflict` tracing event.
 fn conflict_error(ours: &str, found: String) -> SentinelError {
-    tracing::error!(
-        expected = %ours,
-        found = %found,
-        "caddy.ownership-sentinel.conflict",
-    );
     SentinelError::Conflict {
         found,
         ours: ours.to_owned(),
