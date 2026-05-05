@@ -11,6 +11,8 @@ use trilithon_core::{
 };
 use ulid::Ulid;
 
+use crate::db_errors::sqlx_err;
+
 /// Persists capability-probe results to the `capability_probe_results` table.
 pub struct CapabilityStore {
     pool: SqlitePool,
@@ -72,33 +74,5 @@ impl CapabilityStore {
         tx.commit().await.map_err(sqlx_err)?;
 
         Ok(())
-    }
-}
-
-#[allow(clippy::needless_pass_by_value)]
-// reason: `sqlx::Error` is non-Copy; value must be owned to call `.to_string()` in the wildcard arm
-fn sqlx_err(e: sqlx::Error) -> StorageError {
-    match &e {
-        sqlx::Error::Database(db_err) => {
-            let code: i32 = db_err.code().as_deref().unwrap_or("").parse().unwrap_or(0);
-            // Mask to the primary error code (low 8 bits) so that extended
-            // codes such as SQLITE_BUSY_RECOVERY (261) and
-            // SQLITE_BUSY_SNAPSHOT (517) are caught alongside the base codes.
-            match code & 0xFF {
-                5 | 6 => StorageError::SqliteBusy { retries: 0 },
-                11 => StorageError::Sqlite {
-                    kind: SqliteErrorKind::Corrupt,
-                },
-                19 => StorageError::Sqlite {
-                    kind: SqliteErrorKind::Constraint,
-                },
-                _ => StorageError::Sqlite {
-                    kind: SqliteErrorKind::Other(e.to_string()),
-                },
-            }
-        }
-        _ => StorageError::Sqlite {
-            kind: SqliteErrorKind::Other(e.to_string()),
-        },
     }
 }
