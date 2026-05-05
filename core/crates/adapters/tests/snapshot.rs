@@ -541,3 +541,166 @@ async fn immutability_delete_rejected() {
         "DELETE on snapshots must be rejected by immutability trigger"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Root snapshot NULL parent
+// ---------------------------------------------------------------------------
+
+/// The very first snapshot for an instance MUST have `parent_id IS NULL`.
+/// Subsequent snapshots MUST have a non-null `parent_id`.
+#[tokio::test]
+async fn root_snapshot_has_null_parent() {
+    let dir = TempDir::new().unwrap();
+    let store = open(&dir).await;
+
+    // First snapshot — no parent.
+    let root_id = "d1".repeat(32);
+    store
+        .insert_snapshot(make_snapshot(&root_id, 1, None, r#"{"routes":[]}"#))
+        .await
+        .expect("root insert should succeed");
+
+    let root = store
+        .get_snapshot(&SnapshotId(root_id.clone()))
+        .await
+        .expect("get_snapshot should succeed")
+        .expect("root snapshot should be Some");
+
+    assert!(
+        root.parent_id.is_none(),
+        "first snapshot must have parent_id IS NULL, got {:?}",
+        root.parent_id
+    );
+
+    // Second snapshot — parent is the root.
+    let child_id = "d2".repeat(32);
+    store
+        .insert_snapshot(make_snapshot(
+            &child_id,
+            2,
+            Some(&root_id),
+            r#"{"routes":[{}]}"#,
+        ))
+        .await
+        .expect("child insert should succeed");
+
+    let child = store
+        .get_snapshot(&SnapshotId(child_id.clone()))
+        .await
+        .expect("get_snapshot should succeed")
+        .expect("child snapshot should be Some");
+
+    assert!(
+        child.parent_id.is_some(),
+        "subsequent snapshot must have a non-null parent_id"
+    );
+    assert_eq!(
+        child.parent_id.as_ref().map(|p| &p.0),
+        Some(&root_id),
+        "child parent_id must point to root"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Monotonicity property tests (loop-based, no proptest dependency)
+// ---------------------------------------------------------------------------
+
+/// Property: strict monotonic increase of `config_version` per `caddy_instance_id`.
+///
+/// Simulates N sequential writes (each must succeed) and asserts that after each
+/// insertion the `config_version` is strictly greater than all previous versions.
+///
+/// The test also verifies that out-of-order or equal versions are correctly
+/// rejected even when interleaved with valid writes.
+mod props {
+    use super::*;
+
+    /// Helper: build a unique hex id for snapshot at index `i`.
+    fn snap_id(i: u64) -> String {
+        format!("{i:0>64x}")
+    }
+
+    /// Verify strict monotonic increase across N sequential writes to the same
+    /// `caddy_instance_id` ('local' — the fixed value used by `SqliteStorage`).
+    #[tokio::test]
+    async fn monotonic_version() {
+        const N: usize = 30;
+
+        let dir = TempDir::new().unwrap();
+        let store = open(&dir).await;
+
+        // Phase 1: Insert N snapshots with strictly increasing versions.
+        // Each insert must succeed; versions run 1, 2, … N.
+        let mut last_version: i64 = 0;
+        for i in 1..=N {
+            let version = i64::try_from(i).unwrap();
+            let id = snap_id(u64::try_from(i).unwrap());
+            let parent = if i == 1 {
+                None
+            } else {
+                Some(snap_id(u64::try_from(i - 1).unwrap()))
+            };
+            store
+                .insert_snapshot(make_snapshot(
+                    &id,
+                    version,
+                    parent.as_deref(),
+                    &format!(r#"{{"v":{i}}}"#),
+                ))
+                .await
+                .unwrap_or_else(|e| panic!("insert {i} must succeed: {e}"));
+
+            assert!(
+                version > last_version,
+                "version {version} not strictly greater than last {last_version}"
+            );
+            last_version = version;
+        }
+
+        // Phase 2: Verify that equal and lower versions are now rejected.
+        // Try inserting at the current max (N) — must fail.
+        let dup_id = snap_id(u64::try_from(N + 100).unwrap());
+        let err = store
+            .insert_snapshot(make_snapshot(
+                &dup_id,
+                i64::try_from(N).unwrap(),
+                None,
+                r#"{"v":"dup"}"#,
+            ))
+            .await
+            .expect_err("equal version must be rejected");
+        assert!(
+            matches!(err, StorageError::SnapshotVersionNotMonotonic { .. }),
+            "expected SnapshotVersionNotMonotonic for equal version, got {err:?}"
+        );
+
+        // Try inserting at N-1 (lower) — must fail.
+        let lower_id = snap_id(u64::try_from(N + 101).unwrap());
+        let err2 = store
+            .insert_snapshot(make_snapshot(
+                &lower_id,
+                i64::try_from(N - 1).unwrap(),
+                None,
+                r#"{"v":"lower"}"#,
+            ))
+            .await
+            .expect_err("lower version must be rejected");
+        assert!(
+            matches!(err2, StorageError::SnapshotVersionNotMonotonic { .. }),
+            "expected SnapshotVersionNotMonotonic for lower version, got {err2:?}"
+        );
+
+        // Phase 3: A new write at N+1 must still succeed after the failed
+        // attempts (failed transactions must not corrupt state).
+        let next_id = snap_id(u64::try_from(N + 1).unwrap());
+        store
+            .insert_snapshot(make_snapshot(
+                &next_id,
+                i64::try_from(N + 1).unwrap(),
+                None,
+                r#"{"v":"next"}"#,
+            ))
+            .await
+            .expect("insert at N+1 must succeed after failed attempts");
+    }
+}
