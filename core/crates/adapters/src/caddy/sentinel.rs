@@ -21,6 +21,10 @@ use trilithon_core::{
 pub const SENTINEL_ID: &str = "trilithon-owner";
 
 /// JSON Pointer to the sentinel server entry.
+///
+/// The server name `__trilithon_sentinel__` is a reserved Caddy server name;
+/// no user-defined server may use this name (enforced at config validation time).
+/// See ADR-0007 for the full reservation rationale.
 const SENTINEL_POINTER: &str = "/apps/http/servers/__trilithon_sentinel__";
 
 /// Outcome of a successful [`ensure_sentinel`] call.
