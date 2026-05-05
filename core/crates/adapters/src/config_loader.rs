@@ -220,10 +220,10 @@ fn byte_offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
 
 /// Apply a string value to a dotted key path inside a [`toml::Table`].
 ///
-/// The value is inserted as a TOML string token, then the table entry is
-/// re-parsed to the correct type (integer, bool, etc.) by trying TOML
-/// value parsing. If the key path does not exist in the original table the
-/// override is rejected as [`EnvOverrideReason::UnknownKey`].
+/// The parent section (e.g. `[concurrency]`) must already exist in the table;
+/// `UnknownKey` is returned if it is absent.  The leaf key need not exist —
+/// if absent it is inserted using type inference, so that Serde-defaulted
+/// fields (not present in the TOML text) can still be overridden via env vars.
 fn set_by_path(
     table: &mut toml::Table,
     dotted_key: &str,
@@ -231,10 +231,6 @@ fn set_by_path(
 ) -> Result<(), EnvOverrideReason> {
     match dotted_key.split_once('.') {
         None => {
-            // Leaf key — must already exist in the table.
-            if !table.contains_key(dotted_key) {
-                return Err(EnvOverrideReason::UnknownKey);
-            }
             let parsed = coerce_value(table.get(dotted_key), value)?;
             table.insert(dotted_key.to_string(), parsed);
             Ok(())
@@ -251,15 +247,31 @@ fn set_by_path(
 
 /// Coerce a string to the same TOML variant as the existing value.
 ///
-/// If the existing value is a string we keep the new value as a string.
-/// Otherwise we attempt to parse via `toml::from_str` using a dummy key.
+/// If there is no existing value (field absent from the TOML file), type
+/// inference is used: bool → integer → float → string.  If the existing
+/// value is a string the new value is kept as a string.  Otherwise the new
+/// value is parsed to match the existing variant.
 fn coerce_value(
     existing: Option<&toml::Value>,
     raw: &str,
 ) -> Result<toml::Value, EnvOverrideReason> {
     match existing {
+        None => {
+            // No existing value: infer type so that Serde-defaulted fields
+            // (absent from the TOML text) can still be overridden correctly.
+            if let Ok(b) = raw.parse::<bool>() {
+                return Ok(toml::Value::Boolean(b));
+            }
+            if let Ok(i) = raw.parse::<i64>() {
+                return Ok(toml::Value::Integer(i));
+            }
+            if let Ok(f) = raw.parse::<f64>() {
+                return Ok(toml::Value::Float(f));
+            }
+            Ok(toml::Value::String(raw.to_string()))
+        }
         // Keep as string if the current field is a string.
-        Some(toml::Value::String(_)) | None => Ok(toml::Value::String(raw.to_string())),
+        Some(toml::Value::String(_)) => Ok(toml::Value::String(raw.to_string())),
         Some(toml::Value::Integer(_)) => {
             raw.parse::<i64>().map(toml::Value::Integer).map_err(|e| {
                 EnvOverrideReason::ParseFailed {
