@@ -178,24 +178,37 @@ fn sqlx_err(e: sqlx::Error) -> StorageError {
 // ---------------------------------------------------------------------------
 
 fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageError> {
+    // Column names use the legacy schema names (pre-T1.2 migration).
+    // The Rust field names follow the T1.2 spec; the mapping is documented here:
+    //   DB column          → Rust field
+    //   id                 → snapshot_id
+    //   actor_id           → actor
+    //   created_at         → created_at_unix_seconds
+    //   created_at_ms      → created_at_monotonic_nanos (stored as ms; converted to ns)
+    //   (no DB column yet) → canonical_json_version (defaulted to 1)
     let actor_kind_str: String = row.try_get("actor_kind").map_err(sqlx_err)?;
-    let actor_kind = parse_actor_kind(&actor_kind_str)?;
+    let _ = parse_actor_kind(&actor_kind_str)?; // validate only; field not stored on Snapshot
     let snapshot_id: String = row.try_get("id").map_err(sqlx_err)?;
     let parent_id: Option<String> = row.try_get("parent_id").map_err(sqlx_err)?;
+    let created_at_ms: i64 = row.try_get("created_at_ms").map_err(sqlx_err)?;
 
     Ok(Snapshot {
-        id: SnapshotId(snapshot_id),
+        snapshot_id: SnapshotId(snapshot_id),
         parent_id: parent_id.map(SnapshotId),
-        caddy_instance_id: row.try_get("caddy_instance_id").map_err(sqlx_err)?,
-        actor_kind,
-        actor_id: row.try_get("actor_id").map_err(sqlx_err)?,
+        config_version: row.try_get("config_version").map_err(sqlx_err)?,
+        actor: row.try_get("actor_id").map_err(sqlx_err)?,
         intent: row.try_get("intent").map_err(sqlx_err)?,
         correlation_id: row.try_get("correlation_id").map_err(sqlx_err)?,
         caddy_version: row.try_get("caddy_version").map_err(sqlx_err)?,
         trilithon_version: row.try_get("trilithon_version").map_err(sqlx_err)?,
-        created_at: row.try_get("created_at").map_err(sqlx_err)?,
-        created_at_ms: row.try_get("created_at_ms").map_err(sqlx_err)?,
-        config_version: row.try_get("config_version").map_err(sqlx_err)?,
+        created_at_unix_seconds: row.try_get("created_at").map_err(sqlx_err)?,
+        // Legacy schema stores milliseconds; convert to nanoseconds for T1.2 field.
+        #[allow(clippy::cast_sign_loss)]
+        // reason: created_at_ms is always non-negative for valid epoch times
+        created_at_monotonic_nanos: (created_at_ms as u64)
+            .saturating_mul(1_000_000),
+        // Legacy schema predates T1.2; assume version 1 for all existing rows.
+        canonical_json_version: trilithon_core::canonical_json::CANONICAL_JSON_VERSION,
         desired_state_json: row.try_get("desired_state_json").map_err(sqlx_err)?,
     })
 }
@@ -207,9 +220,15 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
 #[async_trait]
 impl Storage for SqliteStorage {
     async fn insert_snapshot(&self, snapshot: Snapshot) -> Result<SnapshotId, StorageError> {
-        let id = snapshot.id.0.clone();
+        let id = snapshot.snapshot_id.0.clone();
         let parent_id = snapshot.parent_id.as_ref().map(|p| p.0.clone());
-        let actor_kind = actor_kind_str(snapshot.actor_kind);
+        // Legacy schema uses actor_kind / actor_id columns.
+        // We store a fixed "system" kind and the actor identity string in actor_id.
+        let actor_kind = "system";
+        // Convert nanoseconds back to milliseconds for legacy created_at_ms column.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        // reason: monotonic_nanos / 1_000_000 always fits in i64 for sane epoch timestamps
+        let created_at_ms = (snapshot.created_at_monotonic_nanos / 1_000_000) as i64;
 
         let rows_affected = sqlx::query(
             r"
@@ -217,20 +236,19 @@ impl Storage for SqliteStorage {
                 (id, parent_id, caddy_instance_id, actor_kind, actor_id,
                  intent, correlation_id, caddy_version, trilithon_version,
                  created_at, created_at_ms, config_version, desired_state_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(&id)
         .bind(&parent_id)
-        .bind(&snapshot.caddy_instance_id)
         .bind(actor_kind)
-        .bind(&snapshot.actor_id)
+        .bind(&snapshot.actor)
         .bind(&snapshot.intent)
         .bind(&snapshot.correlation_id)
         .bind(&snapshot.caddy_version)
         .bind(&snapshot.trilithon_version)
-        .bind(snapshot.created_at)
-        .bind(snapshot.created_at_ms)
+        .bind(snapshot.created_at_unix_seconds)
+        .bind(created_at_ms)
         .bind(snapshot.config_version)
         .bind(&snapshot.desired_state_json)
         .execute(&self.pool)
@@ -255,7 +273,9 @@ impl Storage for SqliteStorage {
                 return Ok(SnapshotId(id));
             }
 
-            return Err(StorageError::SnapshotDuplicate { id: snapshot.id });
+            return Err(StorageError::SnapshotDuplicate {
+                id: snapshot.snapshot_id,
+            });
         }
 
         Ok(SnapshotId(id))

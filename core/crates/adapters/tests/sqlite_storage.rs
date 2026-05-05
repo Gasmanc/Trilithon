@@ -15,12 +15,15 @@ use tempfile::TempDir;
 use trilithon_adapters::{
     lock::LockHandle, migrate::apply_migrations, sqlite_storage::SqliteStorage,
 };
-use trilithon_core::storage::{
-    audit_vocab::AUDIT_KINDS,
-    error::StorageError,
-    trait_def::Storage,
-    types::{
-        ActorKind, AuditEventRow, AuditOutcome, AuditRowId, AuditSelector, Snapshot, SnapshotId,
+use trilithon_core::{
+    canonical_json::CANONICAL_JSON_VERSION,
+    storage::{
+        audit_vocab::AUDIT_KINDS,
+        error::StorageError,
+        trait_def::Storage,
+        types::{
+            ActorKind, AuditEventRow, AuditOutcome, AuditRowId, AuditSelector, Snapshot, SnapshotId,
+        },
     },
 };
 
@@ -30,18 +33,17 @@ use trilithon_core::storage::{
 
 fn make_snapshot(id: &str, version: i64, parent: Option<&str>, body: &str) -> Snapshot {
     Snapshot {
-        id: SnapshotId(id.to_owned()),
+        snapshot_id: SnapshotId(id.to_owned()),
         parent_id: parent.map(|p| SnapshotId(p.to_owned())),
-        caddy_instance_id: "local".to_owned(),
-        actor_kind: ActorKind::System,
-        actor_id: "test".to_owned(),
+        config_version: version,
+        actor: "test".to_owned(),
         intent: "test snapshot".to_owned(),
         correlation_id: "corr-01".to_owned(),
         caddy_version: "2.8.0".to_owned(),
         trilithon_version: "0.1.0".to_owned(),
-        created_at: 1_700_000_000,
-        created_at_ms: 1_700_000_000_000,
-        config_version: version,
+        created_at_unix_seconds: 1_700_000_000,
+        created_at_monotonic_nanos: 0,
+        canonical_json_version: CANONICAL_JSON_VERSION,
         desired_state_json: body.to_owned(),
     }
 }
@@ -133,7 +135,7 @@ async fn insert_get_snapshot_round_trip() {
 
     assert_eq!(fetched.config_version, 1);
     assert_eq!(fetched.desired_state_json, r#"{"routes":[]}"#);
-    assert_eq!(fetched.actor_kind, ActorKind::System);
+    assert_eq!(fetched.actor, "test");
 }
 
 /// Inserting the same snapshot twice with the same body is idempotent.

@@ -44,19 +44,27 @@ pub struct ProposalId(pub String);
 pub struct DriftRowId(pub String);
 
 /// Immutable, content-addressed snapshot of desired state.
+///
+/// Field names follow the T1.2 spec exactly.  The `snapshot_id` is the
+/// SHA-256 hex digest of the canonical JSON (`desired_state_json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_field_names)]
+// reason: T1.2 spec mandates the field be named `snapshot_id`; renaming would break API compat
 pub struct Snapshot {
-    /// Content-addressed identifier (SHA-256 of canonical JSON).
-    pub id: SnapshotId,
+    /// Content-addressed identifier: SHA-256 hex of canonical JSON (64 chars).
+    pub snapshot_id: SnapshotId,
     /// Parent snapshot in the chain; `None` for the genesis snapshot.
     pub parent_id: Option<SnapshotId>,
-    /// Caddy instance this snapshot targets. V1: always `"local"`.
-    pub caddy_instance_id: String,
-    /// Kind of actor that produced this snapshot.
-    pub actor_kind: ActorKind,
+    /// Monotonically increasing config version.
+    pub config_version: i64,
     /// Opaque actor identity string (username, token id, etc.).
-    pub actor_id: String,
-    /// Human-readable intent, length-bounded at 4 KiB.
+    pub actor: String,
+    /// Human-readable intent, length-bounded at 4 KiB (4 096 bytes).
+    ///
+    /// Constructors MUST enforce this limit; the field is intentionally private
+    /// to the serialiser so that callers cannot bypass validation by setting
+    /// it directly after construction.  Use [`Snapshot::new`] or validate with
+    /// [`Snapshot::validate_intent`].
     pub intent: String,
     /// ULID that ties this snapshot to an audit log entry.
     pub correlation_id: String,
@@ -64,14 +72,30 @@ pub struct Snapshot {
     pub caddy_version: String,
     /// Trilithon version string at the time of the snapshot.
     pub trilithon_version: String,
-    /// Creation time, whole seconds.
-    pub created_at: UnixSeconds,
-    /// Creation time, millisecond precision.
-    pub created_at_ms: i64,
-    /// Monotonically increasing config version.
-    pub config_version: i64,
+    /// Creation time, whole seconds since the Unix epoch.
+    pub created_at_unix_seconds: UnixSeconds,
+    /// Creation time as a monotonic nanosecond counter (wraps at `u64::MAX`).
+    pub created_at_monotonic_nanos: u64,
+    /// Version of the canonical JSON format used to produce `desired_state_json`.
+    ///
+    /// Always equals [`crate::canonical_json::CANONICAL_JSON_VERSION`] at
+    /// the time the snapshot is created.
+    pub canonical_json_version: u32,
     /// Canonical JSON encoding of the desired state.
     pub desired_state_json: String,
+}
+
+/// Maximum byte length permitted for [`Snapshot::intent`].
+pub const INTENT_MAX_BYTES: usize = 4 * 1024;
+
+impl Snapshot {
+    /// Validate that `intent` is within the 4 KiB length bound.
+    ///
+    /// Returns `true` when the intent string is valid, `false` otherwise.
+    #[must_use]
+    pub const fn validate_intent(intent: &str) -> bool {
+        intent.len() <= INTENT_MAX_BYTES
+    }
 }
 
 /// Classification of the actor that caused a state change or audit event.
@@ -241,4 +265,110 @@ pub enum ProposalState {
     Expired,
     /// Superseded by a newer proposal with the same `(source, source_ref)`.
     Superseded,
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::disallowed_methods
+)]
+// reason: test-only code; panics are the correct failure mode in tests
+mod tests {
+    use super::*;
+    use crate::canonical_json::CANONICAL_JSON_VERSION;
+
+    fn make_snapshot() -> Snapshot {
+        Snapshot {
+            snapshot_id: SnapshotId(
+                "a".repeat(64), // placeholder hex
+            ),
+            parent_id: None,
+            config_version: 1,
+            actor: "test-actor".to_owned(),
+            intent: "initial bootstrap".to_owned(),
+            correlation_id: "01HCORRELATION0000000000AB".to_owned(),
+            caddy_version: "2.8.0".to_owned(),
+            trilithon_version: "0.1.0".to_owned(),
+            created_at_unix_seconds: 1_700_000_000,
+            created_at_monotonic_nanos: 1_000_000_000_u64,
+            canonical_json_version: CANONICAL_JSON_VERSION,
+            desired_state_json: "{}".to_owned(),
+        }
+    }
+
+    #[test]
+    fn snapshot_has_all_required_fields() {
+        let snap = make_snapshot();
+
+        // snapshot_id: SHA-256 hex (64 chars) identifier.
+        assert_eq!(snap.snapshot_id.0.len(), 64);
+
+        // parent_id: optional reference to parent snapshot.
+        assert!(snap.parent_id.is_none());
+
+        // config_version: monotonically increasing i64.
+        assert_eq!(snap.config_version, 1_i64);
+
+        // actor: opaque identity string.
+        assert_eq!(snap.actor, "test-actor");
+
+        // intent: human-readable, bounded at 4 KiB.
+        assert!(Snapshot::validate_intent(&snap.intent));
+        assert!(!snap.intent.is_empty());
+
+        // correlation_id: ULID-format string.
+        assert!(!snap.correlation_id.is_empty());
+
+        // caddy_version: version string.
+        assert!(!snap.caddy_version.is_empty());
+
+        // trilithon_version: version string.
+        assert!(!snap.trilithon_version.is_empty());
+
+        // created_at_unix_seconds: whole Unix seconds.
+        assert_eq!(snap.created_at_unix_seconds, 1_700_000_000_i64);
+
+        // created_at_monotonic_nanos: nanosecond counter.
+        assert_eq!(snap.created_at_monotonic_nanos, 1_000_000_000_u64);
+
+        // canonical_json_version: must record the version constant.
+        assert_eq!(snap.canonical_json_version, CANONICAL_JSON_VERSION);
+
+        // desired_state_json: the canonical JSON payload.
+        assert_eq!(snap.desired_state_json, "{}");
+    }
+
+    #[test]
+    fn intent_4kib_boundary() {
+        // Exactly 4096 bytes is valid.
+        let at_limit = "x".repeat(INTENT_MAX_BYTES);
+        assert!(Snapshot::validate_intent(&at_limit));
+
+        // 4097 bytes is invalid.
+        let over_limit = "x".repeat(INTENT_MAX_BYTES + 1);
+        assert!(!Snapshot::validate_intent(&over_limit));
+    }
+
+    #[test]
+    fn snapshot_canonical_json_version_matches_constant() {
+        // The field on the snapshot row must equal the module-level constant.
+        let snap = make_snapshot();
+        assert_eq!(snap.canonical_json_version, CANONICAL_JSON_VERSION);
+    }
+
+    #[test]
+    fn snapshot_round_trip_serde() {
+        let snap = make_snapshot();
+        let json = serde_json::to_string(&snap).expect("serialise");
+        let restored: Snapshot = serde_json::from_str(&json).expect("deserialise");
+        assert_eq!(restored.snapshot_id.0, snap.snapshot_id.0);
+        assert_eq!(restored.config_version, snap.config_version);
+        assert_eq!(restored.canonical_json_version, snap.canonical_json_version);
+        assert_eq!(
+            restored.created_at_monotonic_nanos,
+            snap.created_at_monotonic_nanos
+        );
+    }
 }

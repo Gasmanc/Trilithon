@@ -68,8 +68,10 @@ impl Storage for InMemoryStorage {
         let mut snapshots = self.snapshots.lock().expect("snapshots lock poisoned");
         let mut latest_ptr = self.latest_ptr.lock().expect("latest_ptr lock poisoned");
 
-        if snapshots.contains_key(&snapshot.id) {
-            return Err(StorageError::SnapshotDuplicate { id: snapshot.id });
+        if snapshots.contains_key(&snapshot.snapshot_id) {
+            return Err(StorageError::SnapshotDuplicate {
+                id: snapshot.snapshot_id,
+            });
         }
 
         // Update latest_ptr if this snapshot has a higher config_version.
@@ -80,7 +82,7 @@ impl Storage for InMemoryStorage {
             snapshot.config_version > current_version
         });
 
-        let id = snapshot.id.clone();
+        let id = snapshot.snapshot_id.clone();
         snapshots.insert(id.clone(), snapshot);
 
         if should_update {
@@ -294,19 +296,19 @@ mod tests {
         };
 
         fn make_snapshot(id: &str, version: i64, parent: Option<&str>) -> Snapshot {
+            use crate::canonical_json::CANONICAL_JSON_VERSION;
             Snapshot {
-                id: SnapshotId(id.to_owned()),
+                snapshot_id: SnapshotId(id.to_owned()),
                 parent_id: parent.map(|p| SnapshotId(p.to_owned())),
-                caddy_instance_id: "local".to_owned(),
-                actor_kind: ActorKind::System,
-                actor_id: "test".to_owned(),
+                config_version: version,
+                actor: "test".to_owned(),
                 intent: "test snapshot".to_owned(),
                 correlation_id: "corr-01".to_owned(),
                 caddy_version: "2.8.0".to_owned(),
                 trilithon_version: "0.1.0".to_owned(),
-                created_at: 1_700_000_000,
-                created_at_ms: 1_700_000_000_000,
-                config_version: version,
+                created_at_unix_seconds: 1_700_000_000,
+                created_at_monotonic_nanos: 0,
+                canonical_json_version: CANONICAL_JSON_VERSION,
                 desired_state_json: "{}".to_owned(),
             }
         }

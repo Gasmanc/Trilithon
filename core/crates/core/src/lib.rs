@@ -9,6 +9,7 @@ use thiserror::Error;
 
 pub mod audit;
 pub mod caddy;
+pub mod canonical_json;
 pub mod config;
 pub mod exit;
 pub mod lifecycle;
