@@ -55,3 +55,17 @@ Lines: 69-71
 Description: `sort_unstable_by` applied to flattened (key, value) pairs does not guarantee stable relative order between equal keys. If a custom Serialize impl emits duplicate JSON object keys, two logically identical maps could produce different canonical bytes and different content addresses.
 Technique: Assumption Violation
 Suggestion: Add duplicate-key detection in `canonicalise_value`, or use `sort_by` (stable) and document that duplicate keys produce undefined behaviour.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | Hardcoded caddy_instance_id BREAKS MULTI-INSTANCE MONOTONICITY CHECK | 🚫 Won't Fix | — | — | — | V1 single-instance design; documented inline with ADR-0009 references |
+| 2 | InMemoryStorage DIVERGES FROM SqliteStorage ON DUPLICATE SEMANTICS | ✅ Fixed | pre-review | — | 2026-05-05 | Already implemented in Phase 5 before reviews |
+| 3 | DEDUPLICATION PATH RETURNS EARLY INSIDE AN OPEN TRANSACTION | ✅ Fixed | pre-review | — | 2026-05-05 | Already implemented — explicit ROLLBACK before each early return |
+| 4 | MONOTONICITY GUARD DEDUP BYPASS MASKS STALE VERSION | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F009: dedup path now checks config_version matches stored row |
+| 5 | fetch_by_date_range WITH EMPTY RANGE PERFORMS FULL TABLE SCAN | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F010: added max_results to SnapshotDateRange, LIMIT always bound |
+| 6 | IMMUTABILITY TRIGGERS DO NOT EXIST UNTIL MIGRATION 0004 RUNS | 🚫 Won't Fix | — | — | — | open() docstring requires callers to run migrations; run.rs always does |
+| 7 | canonicalise_value SORTS KEYS WITH sort_unstable_by — DUPLICATE KEYS UNDEFINED ORDER | 🚫 Won't Fix | — | — | — | serde_json::Map structurally disallows duplicate keys |

@@ -36,3 +36,15 @@ File: core/crates/adapters/src/sqlite_storage.rs
 Lines: 96-121
 Description: `fetch_by_config_version` fetches snapshots matching a version but does not filter by `caddy_instance_id`, which could return unrelated snapshots in multi-instance deployments.
 Suggestion: Add a `caddy_instance_id` parameter to `fetch_by_config_version`.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | Canonicalizer Corrupts Large Integers | ✅ Fixed | pre-review | — | 2026-05-05 | is_f64() guard already in canonical_json.rs |
+| 2 | Missing Database Schema Updates | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F006: migration 0005 adds canonical_json_version column |
+| 3 | Low-Precision Monotonic Clock Implementation | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F008: doc comment corrected to reflect wall-clock ms basis |
+| 4 | Non-Atomic Transaction in Snapshot Insertion | ✅ Fixed | pre-review | — | 2026-05-05 | BEGIN IMMEDIATE already in insert_snapshot_inner |
+| 5 | Missing Instance Filtering in Version Fetch | 🚫 Won't Fix | — | — | — | V1 single-instance design; caddy_instance_id always 'local' per ADR-0009 |

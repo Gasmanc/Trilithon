@@ -30,3 +30,14 @@ File: core/crates/adapters/src/sqlite_storage.rs
 Lines: 303
 Description: `#[allow(clippy::cast_sign_loss)]` on `(created_at_ms as u64)` relies on an implicit invariant that SQLite never produces negative timestamps.
 Suggestion: Consider adding a runtime assertion or use `saturating_cast` to make the assumption explicit.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | Hardcoded caddy_instance_id breaks monotonicity check | 🚫 Won't Fix | — | — | — | V1 single-instance design; documented inline with ADR-0009 references |
+| 2 | fetch_by_parent_id ordering inconsistency | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F017: doc comment added explaining config_version sort order |
+| 3 | fetch_by_date_range dynamic SQL fragile | ✅ Fixed | pre-review | — | 2026-05-05 | Four static query strings already in use, no format! |
+| 4 | cast_sign_loss on created_at_ms relies on implicit invariant | ✅ Fixed | pre-review | — | 2026-05-05 | saturating_mul + zd: comment already in place |

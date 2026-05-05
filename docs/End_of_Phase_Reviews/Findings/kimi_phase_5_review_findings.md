@@ -48,3 +48,17 @@ File: core/crates/core/src/storage/types.rs
 Lines: 31-32
 Description: `SnapshotId` is an unvalidated String wrapper with no enforcement of the 64-character lowercase-hex invariant.
 Suggestion: Add a constructor or `TryFrom<String>` implementation validating the input is exactly 64 ASCII hex digits.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | Missing content-hash validation on snapshot insert | ✅ Fixed | pre-review | — | 2026-05-05 | validate_snapshot_invariants already recomputes SHA-256 and checks |
+| 2 | canonical_json_version not persisted to database | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F006: migration 0005 adds canonical_json_version column |
+| 3 | created_at_monotonic_nanos misnamed and loses sub-millisecond precision | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F008: doc comment corrected |
+| 4 | Snapshot fetches are not scoped to caddy_instance_id | 🚫 Won't Fix | — | — | — | V1 single-instance design; documented inline with ADR-0009 references |
+| 5 | Large integer precision loss in canonical JSON | ✅ Fixed | pre-review | — | 2026-05-05 | is_f64() guard already in canonical_json.rs |
+| 6 | Snapshot::intent documentation contradicts implementation | ✅ Fixed | pre-review | — | 2026-05-05 | Doc updated; enforcement at write path via validate_snapshot_invariants |
+| 7 | SnapshotId accepts arbitrary strings | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F022: added SnapshotId::try_from_hex |

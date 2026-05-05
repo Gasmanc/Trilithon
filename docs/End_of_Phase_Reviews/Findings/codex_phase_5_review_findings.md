@@ -24,3 +24,13 @@ File: core/README.md
 Lines: 111
 Description: The link target `docs/adr/0009-...` is relative to `core/README.md`, so it resolves to `core/docs/adr/...` (nonexistent) instead of the repository-level `docs/adr/...`.
 Suggestion: Update the link to `../docs/adr/0009-immutable-content-addressed-snapshots-and-audit-log.md`.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | MONOTONICITY_CHECK_IS_RACEABLE | ✅ Fixed | pre-review | — | 2026-05-05 | BEGIN IMMEDIATE already in place in insert_snapshot_inner |
+| 2 | CANONICALIZER_CAN_MUTATE_LARGE_INTEGER_VALUES | ✅ Fixed | pre-review | — | 2026-05-05 | is_f64() guard already in canonical_json.rs |
+| 3 | BROKEN_ADR_LINK_IN_CORE_README | ✅ Fixed | pre-review | — | 2026-05-05 | Link already uses ../docs/adr/0009-... |

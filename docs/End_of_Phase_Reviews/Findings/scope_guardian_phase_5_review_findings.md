@@ -45,3 +45,15 @@ Lines: 608-705
 Description: The TODO says "A property test MUST assert strict monotonic increase per instance across interleaved writes." The test is a sequential deterministic loop, not a randomised property test. The module is named `props` but no proptest crate is used.
 Question: Coherence
 Suggestion: Either add proptest and convert to a proptest! macro, or explicitly document that a deterministic exhaustive loop was accepted as the substitute.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | Web frontend changes have no Phase 5 work unit | 🔕 Superseded | — | — | — | Self-noted by scope_guardian as baseline formatter fixes; excluded from scope |
+| 2 | Canonical hash not computed in the write path | ✅ Fixed | pre-review | — | 2026-05-05 | validate_snapshot_invariants already recomputes SHA-256 and checks |
+| 3 | SnapshotWriter not a named struct | 🚫 Won't Fix | — | — | — | Methods on SqliteStorage is the accepted Phase 5 approach |
+| 4 | caddy_instance_id hardcoded to 'local' without comment | 🚫 Won't Fix | — | — | — | V1 design; inline comments reference ADR-0009 |
+| 5 | Monotonicity property test uses loop, not proptest | 🚫 Won't Fix | — | — | — | Comment documents loop-based approach as accepted substitute |

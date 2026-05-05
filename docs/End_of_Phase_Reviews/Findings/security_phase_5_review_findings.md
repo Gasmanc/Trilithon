@@ -44,3 +44,15 @@ Lines: 305-306, 343
 Description: On write, actor_kind is hardcoded to "system". On read, actor_kind is parsed (to validate) then discarded. The audit trail cannot distinguish user-initiated from system-initiated snapshots, and any existing rows with actor_kind = 'user' or 'token' have that information permanently ignored.
 Category: Sensitive data handling
 Suggestion: Either preserve actor_kind in the Snapshot struct or document the intentional decision with a tracked issue reference.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | INTENT FIELD BOUND IS ADVISORY, NOT ENFORCED AT WRITE PATH | ✅ Fixed | pre-review | — | 2026-05-05 | validate_snapshot_invariants calls validate_intent before touching DB |
+| 2 | caddy_instance_id HARDCODED TO 'local' — MONOTONICITY BYPASS POSSIBLE | 🚫 Won't Fix | — | — | — | V1 single-instance design; documented inline with ADR-0009 references |
+| 3 | fetch_by_date_range CONSTRUCTS SQL WITH format! — STRUCTURALLY FRAGILE | ✅ Fixed | pre-review | — | 2026-05-05 | Four static query strings already in use |
+| 4 | snapshot_id IS NOT VALIDATED AS 64-CHARACTER LOWERCASE HEX BEFORE STORAGE | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F022: SnapshotId::try_from_hex added; validate_snapshot_invariants also verifies at write path |
+| 5 | actor_kind IS SILENTLY DISCARDED ON READ; STORED AS FIXED "system" ON WRITE | 🚫 Won't Fix | — | — | — | Intentional V1 design with inline comment |

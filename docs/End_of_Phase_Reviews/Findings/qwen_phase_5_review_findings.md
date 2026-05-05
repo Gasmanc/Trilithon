@@ -36,3 +36,15 @@ File: core/crates/core/src/storage/in_memory.rs
 Lines: 67-93
 Description: `InMemoryStorage::insert_snapshot` always returns `StorageError::SnapshotDuplicate` when the id already exists. `SqliteStorage::insert_snapshot` returns the existing id when bodies are equal (idempotent). Tests against `InMemoryStorage` will observe different behavior.
 Suggestion: Align `InMemoryStorage` with `SqliteStorage` by checking body equality on duplicate id.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | created_at_monotonic_nanos semantic mismatch | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F008: doc comment corrected to reflect wall-clock ms basis |
+| 2 | caddy_instance_id hardcoded to 'local' in both write and read paths | 🚫 Won't Fix | — | — | — | V1 single-instance design; documented inline with ADR-0009 references |
+| 3 | let _ = parse_actor_kind(...) discards parsed value awkwardly | ✅ Fixed | pre-review | — | 2026-05-05 | Already uses statement form parse_actor_kind(&actor_kind_str)? |
+| 4 | canonical_json_version defaults to current constant on every read | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F006: migration 0005 adds column; row_to_snapshot reads it |
+| 5 | InMemoryStorage diverges from SqliteStorage on duplicate handling | ✅ Fixed | pre-review | — | 2026-05-05 | in_memory.rs already checks body equality on duplicate id |

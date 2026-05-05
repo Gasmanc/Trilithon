@@ -48,3 +48,17 @@ File: core/crates/adapters/src/sqlite_storage.rs
 Lines: 389, 411
 Description: The monotonicity check and INSERT both hardcode `caddy_instance_id = 'local'` rather than binding it from the Snapshot struct. The Snapshot struct no longer carries caddy_instance_id.
 Suggestion: Add a brief comment on the struct noting caddy_instance_id is intentionally omitted for V1, or bind the value from a field if multi-instance is planned.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-05 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | IN_MEMORY_STORAGE_DEADLOCK_RISK | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F014: latest_desired_state now acquires snapshots → latest_ptr (same order as insert_snapshot) |
+| 2 | IN_MEMORY_DUPLICATE_DIVERGENCE | ✅ Fixed | pre-review | — | 2026-05-05 | in_memory.rs already checks body equality on duplicate id |
+| 3 | INTENT_PRIVACY_DOC_MISMATCH | ✅ Fixed | pre-review | — | 2026-05-05 | Doc comment updated; validate_snapshot_invariants enforces at write path |
+| 4 | SUPPRESSION_MISSING_TRACKED_ID | ✅ Fixed | pre-review | — | 2026-05-05 | All suppressions already have zd:phase-05 expires:... format |
+| 5 | DUPLICATE_CONTENT_ADDRESS | 🚫 Won't Fix | — | — | — | Functions serve different purposes (DesiredState vs bytes); not duplication |
+| 6 | MONOTONIC_NANOS_SEMANTIC_CONFUSION | ✅ Fixed | 9c9fa93 | — | 2026-05-05 | F008: doc comment corrected to reflect wall-clock ms basis |
+| 7 | HARDCODED_LOCAL_INSTANCE_ID | 🚫 Won't Fix | — | — | — | V1 single-instance design; documented inline with ADR-0009 references |
