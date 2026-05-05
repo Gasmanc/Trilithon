@@ -1,8 +1,12 @@
 //! Loopback-only policy enforcement for the Caddy admin endpoint.
 //!
 //! Any [`CaddyEndpoint`] that resolves to a host outside the loopback set
-//! (`127.0.0.1`, `::1`, `localhost`) or that is not a Unix socket is
-//! rejected with [`EndpointPolicyError::NonLoopback`].
+//! (`127.0.0.1`, `::1`) or that is not a Unix socket is rejected with
+//! [`EndpointPolicyError::NonLoopback`].
+//!
+//! `localhost` is explicitly rejected: DNS resolution of `localhost` is
+//! platform-dependent and can resolve to non-loopback addresses in
+//! containerised environments. Use an explicit loopback IP instead.
 //!
 //! ADR-0011 mandates this restriction for V1.
 
@@ -25,10 +29,14 @@ pub enum EndpointPolicyError {
 /// Validate that `endpoint` refers only to the loopback interface or a Unix
 /// socket.
 ///
+/// `localhost` is rejected even though it typically resolves to a loopback
+/// address, because DNS resolution is platform-dependent. Use `127.0.0.1`
+/// or `[::1]` directly.
+///
 /// # Errors
 ///
 /// Returns [`EndpointPolicyError::NonLoopback`] if the endpoint's host is
-/// not one of `127.0.0.1`, `::1`, or `localhost`.
+/// not one of `127.0.0.1` or `::1`.
 pub fn validate_loopback_only(endpoint: &CaddyEndpoint) -> Result<(), EndpointPolicyError> {
     match endpoint {
         // Unix-domain sockets are local by definition.
@@ -36,7 +44,6 @@ pub fn validate_loopback_only(endpoint: &CaddyEndpoint) -> Result<(), EndpointPo
         CaddyEndpoint::LoopbackTls { url, .. } => match url.host() {
             Some(url::Host::Ipv4(addr)) if addr.is_loopback() => Ok(()),
             Some(url::Host::Ipv6(addr)) if addr == Ipv6Addr::LOCALHOST => Ok(()),
-            Some(url::Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => Ok(()),
             Some(host) => Err(EndpointPolicyError::NonLoopback {
                 host: host.to_string(),
             }),
@@ -87,8 +94,13 @@ mod tests {
     }
 
     #[test]
-    fn loopback_localhost_ok() {
-        assert!(validate_loopback_only(&loopback_tls("https://localhost:2019")).is_ok());
+    fn loopback_localhost_rejected() {
+        // localhost DNS resolution is platform-dependent; require explicit IPs.
+        let ep = loopback_tls("https://localhost:2019");
+        assert!(matches!(
+            validate_loopback_only(&ep).unwrap_err(),
+            EndpointPolicyError::NonLoopback { ref host } if host == "localhost"
+        ));
     }
 
     #[test]
