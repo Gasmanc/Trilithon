@@ -491,3 +491,53 @@ async fn fetch_by_date_range_no_bounds_returns_all() {
 
     assert_eq!(results.len(), 2, "expected all snapshots with no bounds");
 }
+
+// ---------------------------------------------------------------------------
+// Immutability (migration 0004 — ADR-0009)
+// ---------------------------------------------------------------------------
+
+/// UPDATE on a snapshots row must be rejected by the database-level trigger.
+#[tokio::test]
+async fn immutability_update_rejected() {
+    let dir = TempDir::new().unwrap();
+    let store = open(&dir).await;
+
+    let id = "c1".repeat(32);
+    store
+        .insert_snapshot(make_snapshot(&id, 1, None, r#"{"routes":[]}"#))
+        .await
+        .expect("insert should succeed");
+
+    let result = sqlx::query("UPDATE snapshots SET intent = 'tampered' WHERE id = ?")
+        .bind(&id)
+        .execute(store.pool())
+        .await;
+
+    assert!(
+        result.is_err(),
+        "UPDATE on snapshots must be rejected by immutability trigger"
+    );
+}
+
+/// DELETE on a snapshots row must be rejected by the database-level trigger.
+#[tokio::test]
+async fn immutability_delete_rejected() {
+    let dir = TempDir::new().unwrap();
+    let store = open(&dir).await;
+
+    let id = "c2".repeat(32);
+    store
+        .insert_snapshot(make_snapshot(&id, 1, None, r#"{"routes":[]}"#))
+        .await
+        .expect("insert should succeed");
+
+    let result = sqlx::query("DELETE FROM snapshots WHERE id = ?")
+        .bind(&id)
+        .execute(store.pool())
+        .await;
+
+    assert!(
+        result.is_err(),
+        "DELETE on snapshots must be rejected by immutability trigger"
+    );
+}
