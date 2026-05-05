@@ -1,0 +1,24 @@
+- finding_id: F001
+  fix_diff_summary: "canonical_json.rs already guards with is_f64() before any float conversion — i64/u64 values are never routed through f64"
+  generalizable: false
+
+- finding_id: F002
+  fix_diff_summary: "insert_snapshot_inner already uses BEGIN IMMEDIATE to acquire a write lock before the monotonicity read-check-insert sequence"
+  generalizable: false
+
+- finding_id: F004
+  fix_diff_summary: "InMemoryStorage::insert_snapshot already checks body equality on duplicate id, returning Ok on match and Err(SnapshotHashCollision) on mismatch"
+  generalizable: false
+
+- finding_id: F005
+  fix_diff_summary: "insert_snapshot_inner already calls ROLLBACK explicitly before each early-return in the dedup path"
+  generalizable: false
+
+- finding_id: F006
+  fix_diff_summary: "Added migration 0005 to persist canonical_json_version column; bound on INSERT, read back in row_to_snapshot; updated migration count tests"
+  generalizable: true
+  one_sentence_lesson: "When a Rust model field carries a schema-version marker, add a DB column for it immediately rather than defaulting at read time — retrofitting after a format bump is much more expensive than adding the column upfront"
+
+- finding_id: F007
+  fix_diff_summary: "validate_snapshot_invariants already recomputes SHA-256 of desired_state_json and returns Integrity error on mismatch"
+  generalizable: false
