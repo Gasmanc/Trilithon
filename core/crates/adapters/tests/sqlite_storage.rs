@@ -178,8 +178,8 @@ async fn insert_duplicate_different_body_returns_duplicate_error() {
         .expect_err("insert with different body should fail");
 
     assert!(
-        matches!(err, StorageError::SnapshotDuplicate { .. }),
-        "expected SnapshotDuplicate, got {err:?}"
+        matches!(err, StorageError::SnapshotHashCollision { .. }),
+        "expected SnapshotHashCollision (same id, different body), got {err:?}"
     );
 }
 

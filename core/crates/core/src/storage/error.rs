@@ -26,6 +26,31 @@ pub enum StorageError {
         id: SnapshotId,
     },
 
+    /// The parent snapshot referenced by `parent_id` does not exist.
+    #[error("parent snapshot {parent_id:?} does not exist")]
+    SnapshotParentNotFound {
+        /// The parent identifier that could not be resolved.
+        parent_id: SnapshotId,
+    },
+
+    /// The `config_version` is not strictly greater than the current maximum.
+    #[error("config_version {attempted} is not greater than current max {current_max}")]
+    SnapshotVersionNotMonotonic {
+        /// The `config_version` that was attempted.
+        attempted: i64,
+        /// The current maximum `config_version` for this instance.
+        current_max: i64,
+    },
+
+    /// Two distinct snapshots produced the same SHA-256 hash (collision).
+    ///
+    /// This is treated as a fatal integrity failure; the caller should abort.
+    #[error("SHA-256 collision detected for snapshot id {id:?}")]
+    SnapshotHashCollision {
+        /// The colliding snapshot identifier.
+        id: SnapshotId,
+    },
+
     /// An open proposal with the same `(source, source_ref)` already exists.
     ///
     /// The field is named `proposal_source` rather than `source` to avoid the
@@ -107,6 +132,16 @@ mod tests {
             },
             StorageError::SnapshotDuplicate {
                 id: SnapshotId("a".repeat(64)),
+            },
+            StorageError::SnapshotParentNotFound {
+                parent_id: SnapshotId("b".repeat(64)),
+            },
+            StorageError::SnapshotVersionNotMonotonic {
+                attempted: 3,
+                current_max: 5,
+            },
+            StorageError::SnapshotHashCollision {
+                id: SnapshotId("c".repeat(64)),
             },
             StorageError::ProposalDuplicate {
                 proposal_source: "docker".into(),

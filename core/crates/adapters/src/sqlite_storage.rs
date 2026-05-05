@@ -27,6 +27,15 @@ use trilithon_core::storage::{
 
 use crate::lock::LockHandle;
 
+/// Date range filter for snapshot fetch operations.
+#[derive(Debug, Clone, Default)]
+pub struct SnapshotDateRange {
+    /// Lower bound on `created_at_unix_seconds` (inclusive).
+    pub since: Option<UnixSeconds>,
+    /// Upper bound on `created_at_unix_seconds` (inclusive).
+    pub until: Option<UnixSeconds>,
+}
+
 /// `SQLite`-backed implementation of [`Storage`].
 pub struct SqliteStorage {
     pool: SqlitePool,
@@ -86,6 +95,113 @@ impl SqliteStorage {
     /// Return a reference to the underlying connection pool.
     pub const fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    /// Fetch all snapshots whose `config_version` equals the given value.
+    ///
+    /// Returns an empty `Vec` when no matching row exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] on database or row-mapping failure.
+    pub async fn fetch_by_config_version(
+        &self,
+        config_version: i64,
+    ) -> Result<Vec<Snapshot>, StorageError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                   intent, correlation_id, caddy_version, trilithon_version,
+                   created_at, created_at_ms, config_version, desired_state_json
+            FROM snapshots
+            WHERE config_version = ?
+            ORDER BY created_at ASC
+            ",
+        )
+        .bind(config_version)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_err)?;
+
+        rows.iter().map(row_to_snapshot).collect()
+    }
+
+    /// Fetch all snapshots whose `parent_id` equals the given value.
+    ///
+    /// Returns an empty `Vec` when no matching row exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] on database or row-mapping failure.
+    pub async fn fetch_by_parent_id(
+        &self,
+        parent_id: &SnapshotId,
+    ) -> Result<Vec<Snapshot>, StorageError> {
+        let rows = sqlx::query(
+            r"
+            SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                   intent, correlation_id, caddy_version, trilithon_version,
+                   created_at, created_at_ms, config_version, desired_state_json
+            FROM snapshots
+            WHERE parent_id = ?
+            ORDER BY config_version ASC
+            ",
+        )
+        .bind(&parent_id.0)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_err)?;
+
+        rows.iter().map(row_to_snapshot).collect()
+    }
+
+    /// Fetch snapshots within a `created_at_unix_seconds` date range.
+    ///
+    /// Both bounds are optional and inclusive.  Returns an empty `Vec` when no
+    /// rows match.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] on database or row-mapping failure.
+    pub async fn fetch_by_date_range(
+        &self,
+        range: &SnapshotDateRange,
+    ) -> Result<Vec<Snapshot>, StorageError> {
+        let mut conditions: Vec<&'static str> = Vec::new();
+        if range.since.is_some() {
+            conditions.push("created_at >= ?");
+        }
+        if range.until.is_some() {
+            conditions.push("created_at <= ?");
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let sql = format!(
+            r"
+            SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                   intent, correlation_id, caddy_version, trilithon_version,
+                   created_at, created_at_ms, config_version, desired_state_json
+            FROM snapshots
+            {where_clause}
+            ORDER BY created_at ASC
+            ",
+        );
+
+        let mut query = sqlx::query(&sql);
+        if let Some(since) = range.since {
+            query = query.bind(since);
+        }
+        if let Some(until) = range.until {
+            query = query.bind(until);
+        }
+
+        let rows = query.fetch_all(&self.pool).await.map_err(sqlx_err)?;
+        rows.iter().map(row_to_snapshot).collect()
     }
 }
 
@@ -230,9 +346,65 @@ impl Storage for SqliteStorage {
         // reason: monotonic_nanos / 1_000_000 always fits in i64 for sane epoch timestamps
         let created_at_ms = (snapshot.created_at_monotonic_nanos / 1_000_000) as i64;
 
-        let rows_affected = sqlx::query(
+        // Run all pre-insert checks and the INSERT in a single transaction so
+        // that concurrent writers cannot race past them.
+        let mut tx = self.pool.begin().await.map_err(sqlx_err)?;
+
+        // 1. Check whether this id already exists (deduplication + collision).
+        let existing_row = sqlx::query("SELECT desired_state_json FROM snapshots WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?;
+
+        if let Some(row) = existing_row {
+            let existing_json: String = row.try_get("desired_state_json").map_err(sqlx_err)?;
+            if existing_json == snapshot.desired_state_json {
+                // Byte-equal body — idempotent duplicate; return the existing id.
+                return Ok(SnapshotId(id));
+            }
+            // Same hash, different body — SHA-256 collision; treat as fatal.
+            return Err(StorageError::SnapshotHashCollision {
+                id: snapshot.snapshot_id,
+            });
+        }
+
+        // 2. Enforce parent existence when parent_id is Some.
+        if let Some(ref pid) = parent_id {
+            let parent_exists: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?)")
+                    .bind(pid)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(sqlx_err)?;
+            if !parent_exists {
+                return Err(StorageError::SnapshotParentNotFound {
+                    parent_id: SnapshotId(pid.clone()),
+                });
+            }
+        }
+
+        // 3. Enforce strict monotonic increase of config_version for this caddy_instance.
+        let current_max: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(config_version) FROM snapshots WHERE caddy_instance_id = 'local'",
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+
+        if let Some(max_ver) = current_max {
+            if snapshot.config_version <= max_ver {
+                return Err(StorageError::SnapshotVersionNotMonotonic {
+                    attempted: snapshot.config_version,
+                    current_max: max_ver,
+                });
+            }
+        }
+
+        // 4. INSERT in the same transaction.
+        sqlx::query(
             r"
-            INSERT OR IGNORE INTO snapshots
+            INSERT INTO snapshots
                 (id, parent_id, caddy_instance_id, actor_kind, actor_id,
                  intent, correlation_id, caddy_version, trilithon_version,
                  created_at, created_at_ms, config_version, desired_state_json)
@@ -251,32 +423,11 @@ impl Storage for SqliteStorage {
         .bind(created_at_ms)
         .bind(snapshot.config_version)
         .bind(&snapshot.desired_state_json)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map_err(sqlx_err)?
-        .rows_affected();
+        .map_err(sqlx_err)?;
 
-        if rows_affected == 0 {
-            // Row already exists — check whether it is an exact duplicate.
-            let existing_row = sqlx::query("SELECT desired_state_json FROM snapshots WHERE id = ?")
-                .bind(&id)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(sqlx_err)?;
-
-            let existing_json: String = existing_row
-                .try_get("desired_state_json")
-                .map_err(sqlx_err)?;
-
-            if existing_json == snapshot.desired_state_json {
-                // Idempotent — same body, return the existing id.
-                return Ok(SnapshotId(id));
-            }
-
-            return Err(StorageError::SnapshotDuplicate {
-                id: snapshot.snapshot_id,
-            });
-        }
+        tx.commit().await.map_err(sqlx_err)?;
 
         Ok(SnapshotId(id))
     }

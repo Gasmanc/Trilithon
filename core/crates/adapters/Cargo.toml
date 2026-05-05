@@ -39,6 +39,10 @@ httptest = "0.16"
 tracing-subscriber = { workspace = true }
 
 [[test]]
+name = "snapshot"
+path = "tests/snapshot.rs"
+
+[[test]]
 name = "caddy_hyper_real_caddy"
 path = "tests/caddy/hyper_real_caddy.rs"
 
