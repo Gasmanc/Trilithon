@@ -125,6 +125,14 @@ mod tests {
             unimplemented!("not needed in this test")
         }
 
+        async fn put_config(
+            &self,
+            _path: CaddyJsonPointer,
+            _value: serde_json::Value,
+        ) -> Result<(), CaddyError> {
+            unimplemented!("not needed in this test")
+        }
+
         async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
             unimplemented!("not needed in this test")
         }

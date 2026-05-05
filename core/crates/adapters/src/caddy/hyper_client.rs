@@ -523,6 +523,39 @@ impl CaddyClient for HyperCaddyClient {
         require_2xx(status, &resp_body)
     }
 
+    /// Set the value at `path` using Caddy's `PUT /config/[path]` endpoint.
+    #[instrument(skip(self, value), err)]
+    async fn put_config(
+        &self,
+        path: CaddyJsonPointer,
+        value: serde_json::Value,
+    ) -> Result<(), CaddyError> {
+        if !path.0.starts_with("/apps/") {
+            return Err(CaddyError::ProtocolViolation {
+                detail: "path must start with /apps/".into(),
+            });
+        }
+
+        let json = serde_json::to_vec(&value).map_err(|e| CaddyError::ProtocolViolation {
+            detail: format!("failed to serialise value: {e}"),
+        })?;
+
+        let api_path = format!("/config{}", path.0);
+        let (status, resp_body) = self
+            .execute_with_timeout(
+                self.apply_timeout,
+                RequestSpec {
+                    method: Method::PUT,
+                    api_path: &api_path,
+                    content_type: Some("application/json"),
+                    body: Bytes::from(json),
+                },
+            )
+            .await?;
+
+        require_2xx(status, &resp_body)
+    }
+
     /// Retrieve the full running Caddy configuration.
     #[instrument(skip(self), err)]
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {

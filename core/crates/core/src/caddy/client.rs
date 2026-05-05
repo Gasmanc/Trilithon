@@ -27,6 +27,17 @@ pub trait CaddyClient: Send + Sync + 'static {
         patch: JsonPatch,
     ) -> Result<(), CaddyError>;
 
+    /// Set the value at `path` using Caddy's `PUT /config/[path]` endpoint.
+    ///
+    /// This matches Caddy's native semantics: the body is the replacement JSON
+    /// value for the addressed config sub-tree. Use this instead of
+    /// `patch_config` when creating or replacing a known config path.
+    async fn put_config(
+        &self,
+        path: CaddyJsonPointer,
+        value: serde_json::Value,
+    ) -> Result<(), CaddyError>;
+
     /// Retrieve the full running Caddy configuration.
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError>;
 

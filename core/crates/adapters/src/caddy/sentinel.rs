@@ -13,11 +13,7 @@
 //!   [`StorageAuditEvent::OwnershipSentinelTakeover`] stub for Phase 6.
 
 use trilithon_core::{
-    caddy::{
-        client::CaddyClient,
-        error::CaddyError,
-        types::{CaddyJsonPointer, JsonPatch, JsonPatchOp},
-    },
+    caddy::{client::CaddyClient, error::CaddyError, types::CaddyJsonPointer},
     storage::StorageAuditEvent,
 };
 
@@ -112,12 +108,9 @@ pub async fn ensure_sentinel(
                 serde_json::Value::Object(map)
             };
             client
-                .patch_config(
+                .put_config(
                     CaddyJsonPointer(SENTINEL_POINTER.to_owned()),
-                    JsonPatch(vec![JsonPatchOp::Add {
-                        path: SENTINEL_POINTER.to_owned(),
-                        value: sentinel_value,
-                    }]),
+                    sentinel_value,
                 )
                 .await?;
             Ok((SentinelOutcome::Created, None))
@@ -131,12 +124,9 @@ pub async fn ensure_sentinel(
             if takeover {
                 let pointer = format!("{SENTINEL_POINTER}/installation_id");
                 client
-                    .patch_config(
-                        CaddyJsonPointer(SENTINEL_POINTER.to_owned()),
-                        JsonPatch(vec![JsonPatchOp::Replace {
-                            path: pointer,
-                            value: serde_json::Value::String(installation_id.to_owned()),
-                        }]),
+                    .put_config(
+                        CaddyJsonPointer(pointer),
+                        serde_json::Value::String(installation_id.to_owned()),
                     )
                     .await?;
 
@@ -233,8 +223,8 @@ mod tests {
         client::CaddyClient,
         error::CaddyError,
         types::{
-            CaddyConfig, CaddyJsonPointer, HealthState, JsonPatch, JsonPatchOp, LoadedModules,
-            TlsCertificate, UpstreamHealth,
+            CaddyConfig, CaddyJsonPointer, HealthState, JsonPatch, LoadedModules, TlsCertificate,
+            UpstreamHealth,
         },
     };
     use trilithon_core::storage::StorageAuditEvent;
@@ -245,22 +235,22 @@ mod tests {
     // Test double
     // -----------------------------------------------------------------------
 
-    /// A `CaddyClient` double that records patch calls and returns a fixed config.
+    /// A `CaddyClient` double that records `put_config` calls and returns a fixed config.
     struct CaddyClientDouble {
         config: serde_json::Value,
-        patches: Mutex<Vec<(CaddyJsonPointer, JsonPatch)>>,
+        puts: Mutex<Vec<(CaddyJsonPointer, serde_json::Value)>>,
     }
 
     impl CaddyClientDouble {
         fn new(config: serde_json::Value) -> Self {
             Self {
                 config,
-                patches: Mutex::new(Vec::new()),
+                puts: Mutex::new(Vec::new()),
             }
         }
 
-        fn recorded_patches(&self) -> Vec<(CaddyJsonPointer, JsonPatch)> {
-            self.patches.lock().unwrap().clone()
+        fn recorded_puts(&self) -> Vec<(CaddyJsonPointer, serde_json::Value)> {
+            self.puts.lock().unwrap().clone()
         }
     }
 
@@ -272,10 +262,18 @@ mod tests {
 
         async fn patch_config(
             &self,
-            pointer: CaddyJsonPointer,
-            ops: JsonPatch,
+            _pointer: CaddyJsonPointer,
+            _ops: JsonPatch,
         ) -> Result<(), CaddyError> {
-            self.patches.lock().unwrap().push((pointer, ops));
+            unimplemented!("not needed in sentinel tests")
+        }
+
+        async fn put_config(
+            &self,
+            path: CaddyJsonPointer,
+            value: serde_json::Value,
+        ) -> Result<(), CaddyError> {
+            self.puts.lock().unwrap().push((path, value));
             Ok(())
         }
 
@@ -343,16 +341,22 @@ mod tests {
         assert_eq!(outcome, SentinelOutcome::Created);
         assert!(event.is_none());
 
-        let patches = client.recorded_patches();
-        assert_eq!(patches.len(), 1, "expected exactly one patch call");
-        let (_, JsonPatch(ops)) = &patches[0];
-        assert_eq!(ops.len(), 1);
-        assert!(
-            matches!(&ops[0], JsonPatchOp::Add { value, path }
-                if value.get("@id").and_then(|v| v.as_str()) == Some(SENTINEL_ID)
-                && value.get("installation_id").and_then(|v| v.as_str()) == Some("our-id")
-                && path == SENTINEL_POINTER),
-            "Add op must carry correct sentinel payload; got {ops:?}",
+        let puts = client.recorded_puts();
+        assert_eq!(puts.len(), 1, "expected exactly one put_config call");
+        let (path, value) = &puts[0];
+        assert_eq!(
+            path.0, SENTINEL_POINTER,
+            "put path must be SENTINEL_POINTER"
+        );
+        assert_eq!(
+            value.get("@id").and_then(|v| v.as_str()),
+            Some(SENTINEL_ID),
+            "put value must carry correct @id",
+        );
+        assert_eq!(
+            value.get("installation_id").and_then(|v| v.as_str()),
+            Some("our-id"),
+            "put value must carry our installation_id",
         );
     }
 
@@ -368,8 +372,8 @@ mod tests {
         assert_eq!(outcome, SentinelOutcome::AlreadyOurs);
         assert!(event.is_none());
         assert!(
-            client.recorded_patches().is_empty(),
-            "no patches must be issued when sentinel matches",
+            client.recorded_puts().is_empty(),
+            "no put_config calls must be issued when sentinel matches",
         );
     }
 
@@ -412,8 +416,8 @@ mod tests {
             "unexpected error: {err}",
         );
         assert!(
-            client.recorded_patches().is_empty(),
-            "no patches must be issued on conflict",
+            client.recorded_puts().is_empty(),
+            "no put_config calls must be issued on conflict",
         );
 
         let emitted = events.lock().unwrap().clone();
@@ -450,14 +454,18 @@ mod tests {
             })
         );
 
-        let patches = client.recorded_patches();
-        assert_eq!(patches.len(), 1, "expected exactly one patch call");
-        let (_, JsonPatch(ops)) = &patches[0];
-        assert_eq!(ops.len(), 1);
-        assert!(
-            matches!(&ops[0], JsonPatchOp::Replace { value, .. }
-                if value.as_str() == Some("ours-id")),
-            "Replace op must carry our installation_id; got {ops:?}",
+        let puts = client.recorded_puts();
+        assert_eq!(puts.len(), 1, "expected exactly one put_config call");
+        let (path, value) = &puts[0];
+        assert_eq!(
+            path.0,
+            format!("{SENTINEL_POINTER}/installation_id"),
+            "put path must target the installation_id field",
+        );
+        assert_eq!(
+            value.as_str(),
+            Some("ours-id"),
+            "put value must be our installation_id",
         );
     }
 }

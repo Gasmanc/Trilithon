@@ -53,6 +53,14 @@ impl CaddyClient for FixedModulesClient {
         unimplemented!()
     }
 
+    async fn put_config(
+        &self,
+        _path: CaddyJsonPointer,
+        _value: serde_json::Value,
+    ) -> Result<(), CaddyError> {
+        unimplemented!()
+    }
+
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
         unimplemented!()
     }
