@@ -1,0 +1,106 @@
+{
+  "phase_id": "3",
+  "session_start": "2026-05-05T00:00:00Z",
+  "aggregate_file": "docs/Codebase_MultiReview_Aggregate/phase_3_aggregate.md",
+  "gate_command": "just check",
+  "findings": [
+    {
+      "id": "F001",
+      "title": "PATCH Semantics Do Not Match Caddy API",
+      "status": "fixed",
+      "commit": "189e3d0",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F002",
+      "title": "Sentinel Creation Uses Replace-Only Path Update",
+      "status": "fixed",
+      "commit": "189e3d0",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F003",
+      "title": "Reconnect Logic Test Incorrectly E2E-Gated",
+      "status": "fixed",
+      "commit": "f606ab3",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F004",
+      "title": "localhost Not A Reliable Loopback Indicator",
+      "status": "fixed",
+      "commit": "b74bee3",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F005",
+      "title": "Replace On Non-Existent Sub-Path In Takeover",
+      "status": "fixed",
+      "commit": "189e3d0",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F006",
+      "title": "sqlx_err Helper Duplicated",
+      "status": "fixed",
+      "commit": "c3ed136",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F007",
+      "title": "Two ShutdownObserver Traits",
+      "status": "fixed",
+      "commit": "9e18cf5",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F008",
+      "title": "conflict_error Embeds Logging Side Effect In Error Builder",
+      "status": "fixed",
+      "commit": "2931cbe",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F009",
+      "title": "Sentinel Pointer Could Collide With User Servers",
+      "status": "fixed",
+      "commit": "d734da4",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F010",
+      "title": "Sentinel Raw JSON Map With String Literals",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "Design-level change: define typed SentinelValue struct with Serialize/Deserialize. Deferred to Phase 6 sentinel redesign.",
+      "defer_to_phase": "6"
+    },
+    {
+      "id": "F011",
+      "title": "Unconditional DB Write On Every Probe",
+      "status": "fixed",
+      "commit": "24a7eb6",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    },
+    {
+      "id": "F012",
+      "title": "Double TOML Round-Trip In config_loader",
+      "status": "fixed",
+      "commit": "9ee9506",
+      "pr": null,
+      "resolved_date": "2026-05-05"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+- finding_id: F001
+  fix_diff_summary: "Added put_config(path, value) to CaddyClient trait using PUT method; sentinel.rs now uses it for both creation and takeover instead of patch_config with a JsonPatch array"
+  generalizable: true
+  one_sentence_lesson: "Caddy's admin API PUT /config/[path] expects the replacement value directly — not an RFC6902 JSON Patch ops array — so any mutation of live Caddy config must use PUT with the replacement value, not PATCH with a patch document"
+
+- finding_id: F002
+  fix_diff_summary: "Sentinel creation arm switched from patch_config(JsonPatchOp::Add) to put_config(SENTINEL_POINTER, sentinel_value); takeover arm switched from patch_config(JsonPatchOp::Replace) to put_config on the installation_id sub-path"
+  generalizable: true
+  one_sentence_lesson: "When a test double accepts any method/body, incorrect API call semantics can compile and pass tests while silently failing against a real server — verify API call shapes against the actual service documentation before writing the test double"
