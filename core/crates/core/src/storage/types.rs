@@ -72,7 +72,10 @@ pub struct Snapshot {
     pub trilithon_version: String,
     /// Creation time, whole seconds since the Unix epoch.
     pub created_at_unix_seconds: UnixSeconds,
-    /// Creation time as a monotonic nanosecond counter (wraps at `u64::MAX`).
+    /// Creation time in nanoseconds, derived from the wall-clock millisecond
+    /// timestamp stored in the legacy `created_at_ms` column (value × 1 000 000).
+    /// Sub-millisecond digits are always zero; the field is not a true monotonic
+    /// counter despite the name carried forward from the T1.2 spec.
     pub created_at_monotonic_nanos: u64,
     /// Version of the canonical JSON format used to produce `desired_state_json`.
     ///
@@ -93,6 +96,22 @@ impl Snapshot {
     #[must_use]
     pub const fn validate_intent(intent: &str) -> bool {
         intent.len() <= INTENT_MAX_BYTES
+    }
+}
+
+impl SnapshotId {
+    /// Construct a `SnapshotId` from a hex string, validating that it is
+    /// exactly 64 lowercase hexadecimal characters (`[0-9a-f]{64}`).
+    ///
+    /// # Errors
+    ///
+    /// Returns the invalid string unchanged when validation fails.
+    pub fn try_from_hex(s: String) -> Result<Self, String> {
+        if s.len() == 64 && s.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+            Ok(Self(s))
+        } else {
+            Err(s)
+        }
     }
 }
 

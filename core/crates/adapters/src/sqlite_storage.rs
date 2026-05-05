@@ -34,6 +34,9 @@ pub struct SnapshotDateRange {
     pub since: Option<UnixSeconds>,
     /// Upper bound on `created_at_unix_seconds` (inclusive).
     pub until: Option<UnixSeconds>,
+    /// Maximum number of rows to return.  `None` means no cap (use with care
+    /// on large tables — prefer setting an explicit limit in production).
+    pub max_results: Option<u32>,
 }
 
 /// `SQLite`-backed implementation of [`Storage`].
@@ -112,7 +115,8 @@ impl SqliteStorage {
             r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             WHERE config_version = ?
             ORDER BY created_at ASC
@@ -128,6 +132,11 @@ impl SqliteStorage {
 
     /// Fetch all snapshots whose `parent_id` equals the given value.
     ///
+    /// Results are ordered by `config_version ASC` to reflect commit-sequence
+    /// order for lineage traversal.  Other fetch methods use `created_at ASC`;
+    /// the difference is intentional — `config_version` is the natural
+    /// ordering for parent–child chains, `created_at` for time-based listing.
+    ///
     /// Returns an empty `Vec` when no matching row exists.
     ///
     /// # Errors
@@ -141,7 +150,8 @@ impl SqliteStorage {
             r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             WHERE parent_id = ?
             ORDER BY config_version ASC
@@ -170,56 +180,72 @@ impl SqliteStorage {
         // Use fully static query strings — one per combination of since/until
         // present or absent — to avoid any dynamic SQL construction that could
         // become a SQL injection vector if field types change in the future.
+        // LIMIT ? is always bound: -1 is the SQLite sentinel for "no limit".
         const SQL_NONE: &str = r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             ORDER BY created_at ASC
+            LIMIT ?
         ";
         const SQL_SINCE: &str = r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             WHERE created_at >= ?
             ORDER BY created_at ASC
+            LIMIT ?
         ";
         const SQL_UNTIL: &str = r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             WHERE created_at <= ?
             ORDER BY created_at ASC
+            LIMIT ?
         ";
         const SQL_BOTH: &str = r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             WHERE created_at >= ? AND created_at <= ?
             ORDER BY created_at ASC
+            LIMIT ?
         ";
+
+        // -1 is the SQLite sentinel for "no limit".
+        let limit: i64 = range.max_results.map_or(-1, i64::from);
 
         let rows = match (range.since, range.until) {
             (None, None) => sqlx::query(SQL_NONE)
+                .bind(limit)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(sqlx_err)?,
             (Some(since), None) => sqlx::query(SQL_SINCE)
                 .bind(since)
+                .bind(limit)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(sqlx_err)?,
             (None, Some(until)) => sqlx::query(SQL_UNTIL)
                 .bind(until)
+                .bind(limit)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(sqlx_err)?,
             (Some(since), Some(until)) => sqlx::query(SQL_BOTH)
                 .bind(since)
                 .bind(until)
+                .bind(limit)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(sqlx_err)?,
@@ -232,6 +258,9 @@ impl SqliteStorage {
     ///
     /// Precondition: `validate_snapshot_invariants` has already been called.
     /// Uses `BEGIN IMMEDIATE` to prevent TOCTOU races on the monotonicity check.
+    #[allow(clippy::too_many_lines)]
+    // zd:phase-05 expires:2026-11-01 reason: atomic transaction cannot be split without
+    //   sacrificing readability of the BEGIN IMMEDIATE → dedup → parent → monotonicity → INSERT flow
     async fn insert_snapshot_inner(&self, snapshot: Snapshot) -> Result<SnapshotId, StorageError> {
         let id = snapshot.snapshot_id.0.clone();
         let parent_id = snapshot.parent_id.as_ref().map(|p| p.0.clone());
@@ -253,25 +282,37 @@ impl SqliteStorage {
             .map_err(sqlx_err)?;
 
         // 1. Check for deduplication and hash collision.
-        let existing_row = sqlx::query("SELECT desired_state_json FROM snapshots WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&mut *conn)
-            .await
-            .map_err(sqlx_err)?;
+        let existing_row =
+            sqlx::query("SELECT desired_state_json, config_version FROM snapshots WHERE id = ?")
+                .bind(&id)
+                .fetch_optional(&mut *conn)
+                .await
+                .map_err(sqlx_err)?;
 
         if let Some(row) = existing_row {
             let existing_json: String = row.try_get("desired_state_json").map_err(sqlx_err)?;
+            let existing_version: i64 = row.try_get("config_version").map_err(sqlx_err)?;
             sqlx::query("ROLLBACK")
                 .execute(&mut *conn)
                 .await
                 .map_err(sqlx_err)?;
-            return if existing_json == snapshot.desired_state_json {
-                Ok(SnapshotId(id)) // byte-equal: idempotent duplicate
-            } else {
-                Err(StorageError::SnapshotHashCollision {
+            if existing_json != snapshot.desired_state_json {
+                return Err(StorageError::SnapshotHashCollision {
                     id: snapshot.snapshot_id,
-                })
-            };
+                });
+            }
+            // Byte-equal body — verify the caller's config_version is consistent
+            // with what was stored to prevent a stale version bypassing monotonicity.
+            if existing_version != snapshot.config_version {
+                return Err(StorageError::Integrity {
+                    detail: format!(
+                        "duplicate snapshot {id}: incoming config_version {} does not match \
+                         stored {}",
+                        snapshot.config_version, existing_version
+                    ),
+                });
+            }
+            return Ok(SnapshotId(id));
         }
 
         // 2. Enforce parent existence when parent_id is Some.
@@ -322,8 +363,9 @@ impl SqliteStorage {
             INSERT INTO snapshots
                 (id, parent_id, caddy_instance_id, actor_kind, actor_id,
                  intent, correlation_id, caddy_version, trilithon_version,
-                 created_at, created_at_ms, config_version, desired_state_json)
-            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 created_at, created_at_ms, config_version, canonical_json_version,
+                 desired_state_json)
+            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(&id)
@@ -337,6 +379,7 @@ impl SqliteStorage {
         .bind(snapshot.created_at_unix_seconds)
         .bind(created_at_ms)
         .bind(snapshot.config_version)
+        .bind(i64::from(snapshot.canonical_json_version))
         .bind(&snapshot.desired_state_json)
         .execute(&mut *conn)
         .await
@@ -442,17 +485,21 @@ fn sqlx_err(e: sqlx::Error) -> StorageError {
 fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageError> {
     // Column names use the legacy schema names (pre-T1.2 migration).
     // The Rust field names follow the T1.2 spec; the mapping is documented here:
-    //   DB column          → Rust field
-    //   id                 → snapshot_id
-    //   actor_id           → actor
-    //   created_at         → created_at_unix_seconds
-    //   created_at_ms      → created_at_monotonic_nanos (stored as ms; converted to ns)
-    //   (no DB column yet) → canonical_json_version (defaulted to 1)
+    //   DB column             → Rust field
+    //   id                    → snapshot_id
+    //   actor_id              → actor
+    //   created_at            → created_at_unix_seconds
+    //   created_at_ms         → created_at_monotonic_nanos (stored as ms; converted to ns)
+    //   canonical_json_version → canonical_json_version (migration 0005)
     let actor_kind_str: String = row.try_get("actor_kind").map_err(sqlx_err)?;
     parse_actor_kind(&actor_kind_str)?; // validate only; field not stored on Snapshot
     let snapshot_id: String = row.try_get("id").map_err(sqlx_err)?;
     let parent_id: Option<String> = row.try_get("parent_id").map_err(sqlx_err)?;
     let created_at_ms: i64 = row.try_get("created_at_ms").map_err(sqlx_err)?;
+    let cjv_raw: i64 = row.try_get("canonical_json_version").map_err(sqlx_err)?;
+    let canonical_json_version = u32::try_from(cjv_raw).map_err(|_| StorageError::Integrity {
+        detail: format!("canonical_json_version {cjv_raw} is out of u32 range"),
+    })?;
 
     Ok(Snapshot {
         snapshot_id: SnapshotId(snapshot_id),
@@ -467,10 +514,8 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
         // Legacy schema stores milliseconds; convert to nanoseconds for T1.2 field.
         #[allow(clippy::cast_sign_loss)]
         // zd:phase-05 expires:2026-11-01 reason: epoch ms is always non-negative for valid rows
-        created_at_monotonic_nanos: (created_at_ms as u64)
-            .saturating_mul(1_000_000),
-        // Legacy schema predates T1.2; assume version 1 for all existing rows.
-        canonical_json_version: trilithon_core::canonical_json::CANONICAL_JSON_VERSION,
+        created_at_monotonic_nanos: (created_at_ms as u64).saturating_mul(1_000_000),
+        canonical_json_version,
         desired_state_json: row.try_get("desired_state_json").map_err(sqlx_err)?,
     })
 }
@@ -526,7 +571,8 @@ impl Storage for SqliteStorage {
             r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             WHERE id = ?
             ",
@@ -553,24 +599,26 @@ impl Storage for SqliteStorage {
             WITH RECURSIVE chain(id, parent_id, caddy_instance_id, actor_kind,
                                   actor_id, intent, correlation_id, caddy_version,
                                   trilithon_version, created_at, created_at_ms,
-                                  config_version, desired_state_json, depth) AS (
+                                  config_version, canonical_json_version,
+                                  desired_state_json, depth) AS (
                 SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                        intent, correlation_id, caddy_version, trilithon_version,
-                       created_at, created_at_ms, config_version, desired_state_json,
-                       0 AS depth
+                       created_at, created_at_ms, config_version, canonical_json_version,
+                       desired_state_json, 0 AS depth
                 FROM snapshots WHERE id = ?
                 UNION ALL
                 SELECT s.id, s.parent_id, s.caddy_instance_id, s.actor_kind, s.actor_id,
                        s.intent, s.correlation_id, s.caddy_version, s.trilithon_version,
-                       s.created_at, s.created_at_ms, s.config_version, s.desired_state_json,
-                       c.depth + 1
+                       s.created_at, s.created_at_ms, s.config_version,
+                       s.canonical_json_version, s.desired_state_json, c.depth + 1
                 FROM snapshots s
                 JOIN chain c ON s.id = c.parent_id
                 WHERE c.depth < ?
             )
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json, depth
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json, depth
             FROM chain
             ORDER BY depth DESC
             ",
@@ -601,7 +649,8 @@ impl Storage for SqliteStorage {
             r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
-                   created_at, created_at_ms, config_version, desired_state_json
+                   created_at, created_at_ms, config_version, canonical_json_version,
+                   desired_state_json
             FROM snapshots
             ORDER BY config_version DESC
             LIMIT 1

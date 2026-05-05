@@ -142,8 +142,10 @@ impl Storage for InMemoryStorage {
     }
 
     async fn latest_desired_state(&self) -> Result<Option<Snapshot>, StorageError> {
-        let latest_ptr = self.latest_ptr.lock().expect("latest_ptr lock poisoned");
+        // Acquire in the same order as insert_snapshot (snapshots → latest_ptr)
+        // to prevent ABBA deadlock when both methods run concurrently.
         let snapshots = self.snapshots.lock().expect("snapshots lock poisoned");
+        let latest_ptr = self.latest_ptr.lock().expect("latest_ptr lock poisoned");
 
         let result = latest_ptr
             .as_ref()

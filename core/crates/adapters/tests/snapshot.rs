@@ -420,6 +420,7 @@ async fn fetch_by_date_range_filters() {
         .fetch_by_date_range(&SnapshotDateRange {
             since: Some(1_000),
             until: Some(2_000),
+            ..Default::default()
         })
         .await
         .expect("fetch_by_date_range should succeed");

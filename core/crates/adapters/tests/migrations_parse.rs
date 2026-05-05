@@ -10,8 +10,8 @@ async fn initial_schema_parses() -> Result<(), Box<dyn std::error::Error>> {
     let migrations_dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations"));
     let migrator = sqlx::migrate::Migrator::new(migrations_dir).await?;
     let count = migrator.iter().count();
-    if count != 4 {
-        return Err(format!("expected exactly four migration files, found {count}").into());
+    if count != 5 {
+        return Err(format!("expected exactly five migration files, found {count}").into());
     }
     Ok(())
 }
