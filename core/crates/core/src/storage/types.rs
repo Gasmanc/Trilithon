@@ -61,10 +61,8 @@ pub struct Snapshot {
     pub actor: String,
     /// Human-readable intent, length-bounded at 4 KiB (4 096 bytes).
     ///
-    /// Constructors MUST enforce this limit; the field is intentionally private
-    /// to the serialiser so that callers cannot bypass validation by setting
-    /// it directly after construction.  Use [`Snapshot::new`] or validate with
-    /// [`Snapshot::validate_intent`].
+    /// Callers that set this field directly MUST validate the value with
+    /// [`Snapshot::validate_intent`] before persisting the snapshot.
     pub intent: String,
     /// ULID that ties this snapshot to an audit log entry.
     pub correlation_id: String,

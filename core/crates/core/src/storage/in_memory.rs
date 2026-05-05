@@ -68,8 +68,13 @@ impl Storage for InMemoryStorage {
         let mut snapshots = self.snapshots.lock().expect("snapshots lock poisoned");
         let mut latest_ptr = self.latest_ptr.lock().expect("latest_ptr lock poisoned");
 
-        if snapshots.contains_key(&snapshot.snapshot_id) {
-            return Err(StorageError::SnapshotDuplicate {
+        if let Some(existing) = snapshots.get(&snapshot.snapshot_id) {
+            if existing.desired_state_json == snapshot.desired_state_json {
+                // Byte-equal body — idempotent duplicate; return the existing id.
+                return Ok(snapshot.snapshot_id);
+            }
+            // Same hash, different body — SHA-256 collision; treat as fatal.
+            return Err(StorageError::SnapshotHashCollision {
                 id: snapshot.snapshot_id,
             });
         }
@@ -374,7 +379,26 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn duplicate_snapshot_rejected() {
+        async fn duplicate_snapshot_byte_equal_is_idempotent() {
+            let store = InMemoryStorage::new();
+            let snap = make_snapshot("aabbcc", 1, None);
+            let id1 = store
+                .insert_snapshot(snap.clone())
+                .await
+                .expect("first insert should succeed");
+
+            // Byte-equal duplicate must succeed (idempotent), not error.
+            let id2 = store
+                .insert_snapshot(snap)
+                .await
+                .expect("byte-equal duplicate should succeed");
+
+            assert_eq!(id1, id2, "both inserts must return the same id");
+        }
+
+        #[tokio::test]
+        async fn duplicate_snapshot_different_body_is_collision() {
+            use crate::canonical_json::CANONICAL_JSON_VERSION;
             let store = InMemoryStorage::new();
             let snap = make_snapshot("aabbcc", 1, None);
             store
@@ -382,14 +406,29 @@ mod tests {
                 .await
                 .expect("first insert should succeed");
 
+            // Same id, different body → SnapshotHashCollision.
+            let collision = Snapshot {
+                snapshot_id: SnapshotId("aabbcc".to_owned()),
+                desired_state_json: r#"{"different":"body"}"#.to_owned(),
+                parent_id: None,
+                config_version: 1,
+                actor: "test".to_owned(),
+                intent: "test snapshot".to_owned(),
+                correlation_id: "corr-01".to_owned(),
+                caddy_version: "2.8.0".to_owned(),
+                trilithon_version: "0.1.0".to_owned(),
+                created_at_unix_seconds: 1_700_000_000,
+                created_at_monotonic_nanos: 0,
+                canonical_json_version: CANONICAL_JSON_VERSION,
+            };
             let err = store
-                .insert_snapshot(snap)
+                .insert_snapshot(collision)
                 .await
-                .expect_err("duplicate should fail");
+                .expect_err("different body should fail");
 
             assert!(
-                matches!(err, StorageError::SnapshotDuplicate { .. }),
-                "expected SnapshotDuplicate, got {err:?}"
+                matches!(err, StorageError::SnapshotHashCollision { .. }),
+                "expected SnapshotHashCollision, got {err:?}"
             );
         }
 

@@ -72,17 +72,25 @@ fn canonicalise_value(value: Value) -> Value {
         }
         Value::Array(arr) => Value::Array(arr.into_iter().map(canonicalise_value).collect()),
         Value::Number(n) => {
-            // If the number is a float that has no fractional part, convert it
-            // to an integer representation to produce a stable byte sequence.
-            if let Some(f) = n.as_f64() {
-                if f.fract() == 0.0 && f.is_finite() {
-                    // Prefer i64 representation for values in the i64 range.
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-                    // reason: fract()==0 and is_finite() guarantee truncation is exact;
-                    //         precision loss in bounds check is acceptable (boundary
-                    //         values round away from i64 range, never into it)
-                    if f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                        return Value::Number(serde_json::Number::from(f as i64));
+            // Only normalise numbers that are natively represented as f64 in
+            // serde_json (i.e. they came from a JSON float literal).  Integer
+            // values stored as i64/u64 are already in their canonical form and
+            // must not be converted through f64, which only represents integers
+            // exactly up to 2^53 — converting larger i64/u64 values via f64
+            // silently loses precision and corrupts the state before hashing.
+            if n.is_f64() {
+                if let Some(f) = n.as_f64() {
+                    if f.fract() == 0.0 && f.is_finite() {
+                        // Prefer i64 representation for values in the safe
+                        // integer range (−2^53 to 2^53).
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+                        // reason: fract()==0 and is_finite() guarantee truncation is exact;
+                        //         bounds are intentionally the f64-safe integer range so
+                        //         that round-trip through f64 is lossless
+                        if (-9_007_199_254_740_992.0_f64..=9_007_199_254_740_992.0_f64).contains(&f)
+                        {
+                            return Value::Number(serde_json::Number::from(f as i64));
+                        }
                     }
                 }
             }

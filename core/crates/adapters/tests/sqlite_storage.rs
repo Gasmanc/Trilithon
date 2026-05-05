@@ -17,6 +17,7 @@ use trilithon_adapters::{
 };
 use trilithon_core::{
     canonical_json::CANONICAL_JSON_VERSION,
+    mutation::types::content_address,
     storage::{
         audit_vocab::AUDIT_KINDS,
         error::StorageError,
@@ -31,10 +32,13 @@ use trilithon_core::{
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn make_snapshot(id: &str, version: i64, parent: Option<&str>, body: &str) -> Snapshot {
+/// Build a snapshot whose `snapshot_id` is the SHA-256 of `body`.
+fn make_snapshot(_label: &str, version: i64, parent_body: Option<&str>, body: &str) -> Snapshot {
+    let id = content_address(body.as_bytes());
+    let parent_id = parent_body.map(|pb| SnapshotId(content_address(pb.as_bytes())));
     Snapshot {
-        snapshot_id: SnapshotId(id.to_owned()),
-        parent_id: parent.map(|p| SnapshotId(p.to_owned())),
+        snapshot_id: SnapshotId(id),
+        parent_id,
         config_version: version,
         actor: "test".to_owned(),
         intent: "test snapshot".to_owned(),
@@ -121,7 +125,7 @@ async fn insert_get_snapshot_round_trip() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap = make_snapshot("aa".repeat(32).as_str(), 1, None, r#"{"routes":[]}"#);
+    let snap = make_snapshot("root", 1, None, r#"{"routes":[]}"#);
     let id = store
         .insert_snapshot(snap.clone())
         .await
@@ -144,7 +148,7 @@ async fn insert_duplicate_same_body_idempotent() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap = make_snapshot("bb".repeat(32).as_str(), 1, None, r#"{"routes":[]}"#);
+    let snap = make_snapshot("root", 1, None, r#"{"routes":[]}"#);
     let id1 = store
         .insert_snapshot(snap.clone())
         .await
@@ -157,23 +161,39 @@ async fn insert_duplicate_same_body_idempotent() {
     assert_eq!(id1, id2, "idempotent insert must return the same id");
 }
 
-/// Inserting a snapshot with the same id but a different body must fail.
+/// Inserting a snapshot with the same content-address but a different body must fail.
+///
+/// We inject a fake row via raw SQL to simulate a pre-existing row with a mismatched
+/// body (as would occur with a genuine SHA-256 collision or a corrupt older write),
+/// then verify the collision detection path fires.
 #[tokio::test]
 async fn insert_duplicate_different_body_returns_duplicate_error() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "cc".repeat(32);
-    let snap1 = make_snapshot(&id, 1, None, r#"{"routes":[]}"#);
-    let snap2 = make_snapshot(&id, 1, None, r#"{"routes":[{"handle":[]}]}"#);
+    let body_a = r#"{"routes":[]}"#;
+    let id_a = content_address(body_a.as_bytes());
 
-    store
-        .insert_snapshot(snap1)
-        .await
-        .expect("first insert should succeed");
+    // Inject a row with id_a but a different body directly into the DB.
+    let different_body = r#"{"injected":true}"#;
+    sqlx::query(
+        r"INSERT INTO snapshots
+            (id, parent_id, caddy_instance_id, actor_kind, actor_id,
+             intent, correlation_id, caddy_version, trilithon_version,
+             created_at, created_at_ms, config_version, desired_state_json)
+          VALUES (?, NULL, 'local', 'system', 'test', 'intent', 'corr-01',
+                  '2.8.0', '0.1.0', 1700000000, 1700000000000, 1, ?)",
+    )
+    .bind(&id_a)
+    .bind(different_body)
+    .execute(store.pool())
+    .await
+    .expect("raw SQL inject should succeed");
 
+    // Now insert via the normal path — writer finds id_a with a different body.
+    let snap = make_snapshot("root", 2, None, body_a);
     let err = store
-        .insert_snapshot(snap2)
+        .insert_snapshot(snap)
         .await
         .expect_err("insert with different body should fail");
 

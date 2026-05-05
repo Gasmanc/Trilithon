@@ -16,6 +16,7 @@ use trilithon_adapters::{
 };
 use trilithon_core::{
     canonical_json::CANONICAL_JSON_VERSION,
+    mutation::types::content_address,
     storage::{
         error::StorageError,
         trait_def::Storage,
@@ -27,10 +28,15 @@ use trilithon_core::{
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn make_snapshot(id: &str, version: i64, parent: Option<&str>, body: &str) -> Snapshot {
+/// Build a snapshot whose `snapshot_id` is the SHA-256 of `body`.
+/// The `_label` parameter is kept for readability at the call-site but is
+/// not used in the constructed value — all IDs are content-addressed.
+fn make_snapshot(_label: &str, version: i64, parent_body: Option<&str>, body: &str) -> Snapshot {
+    let id = content_address(body.as_bytes());
+    let parent_id = parent_body.map(|pb| SnapshotId(content_address(pb.as_bytes())));
     Snapshot {
-        snapshot_id: SnapshotId(id.to_owned()),
-        parent_id: parent.map(|p| SnapshotId(p.to_owned())),
+        snapshot_id: SnapshotId(id),
+        parent_id,
         config_version: version,
         actor: "test".to_owned(),
         intent: "test snapshot".to_owned(),
@@ -45,15 +51,17 @@ fn make_snapshot(id: &str, version: i64, parent: Option<&str>, body: &str) -> Sn
 }
 
 fn make_snapshot_with_ts(
-    id: &str,
+    _label: &str,
     version: i64,
-    parent: Option<&str>,
+    parent_body: Option<&str>,
     body: &str,
     ts: i64,
 ) -> Snapshot {
+    let id = content_address(body.as_bytes());
+    let parent_id = parent_body.map(|pb| SnapshotId(content_address(pb.as_bytes())));
     Snapshot {
-        snapshot_id: SnapshotId(id.to_owned()),
-        parent_id: parent.map(|p| SnapshotId(p.to_owned())),
+        snapshot_id: SnapshotId(id),
+        parent_id,
         config_version: version,
         actor: "test".to_owned(),
         intent: "test snapshot".to_owned(),
@@ -87,22 +95,23 @@ async fn write_and_fetch_by_id() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "aa".repeat(32);
-    let snap = make_snapshot(&id, 1, None, r#"{"routes":[]}"#);
+    let body = r#"{"routes":[]}"#;
+    let expected_id = content_address(body.as_bytes());
+    let snap = make_snapshot("root", 1, None, body);
     store
         .insert_snapshot(snap)
         .await
         .expect("insert should succeed");
 
     let fetched = store
-        .get_snapshot(&SnapshotId(id.clone()))
+        .get_snapshot(&SnapshotId(expected_id.clone()))
         .await
         .expect("get should succeed")
         .expect("snapshot should be Some");
 
-    assert_eq!(fetched.snapshot_id.0, id);
+    assert_eq!(fetched.snapshot_id.0, expected_id);
     assert_eq!(fetched.config_version, 1);
-    assert_eq!(fetched.desired_state_json, r#"{"routes":[]}"#);
+    assert_eq!(fetched.desired_state_json, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -116,8 +125,8 @@ async fn deduplication_same_body_idempotent() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "bb".repeat(32);
-    let snap = make_snapshot(&id, 1, None, r#"{"routes":[]}"#);
+    let body = r#"{"routes":[]}"#;
+    let snap = make_snapshot("root", 1, None, body);
 
     let id1 = store
         .insert_snapshot(snap.clone())
@@ -132,31 +141,45 @@ async fn deduplication_same_body_idempotent() {
 }
 
 /// Body equality check on hash match: same id, different body triggers
-/// `SnapshotHashCollision` (forced-collision path — sha-256 collision).
+/// `SnapshotHashCollision` (forced-collision path — simulates a SHA-256 collision).
 ///
-/// In production this would require a genuine hash collision; here we inject
-/// one by constructing a second snapshot with the same 64-char hex id but
-/// different `desired_state_json`.  The writer MUST detect the mismatch and
-/// return the collision error rather than silently overwriting.
+/// We inject a fake row via raw SQL (bypassing validation), then attempt to
+/// insert a snapshot whose body hashes to the same id — the writer MUST detect
+/// the body mismatch and return the collision error rather than silently overwriting.
 #[tokio::test]
 async fn body_equality_check_hash_collision_detected() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "cc".repeat(32);
-    let snap1 = make_snapshot(&id, 1, None, r#"{"routes":[]}"#);
-    // Same id (the "hash"), different body — simulates a forced SHA-256 collision.
-    let snap2 = make_snapshot(&id, 2, None, r#"{"routes":[{"handle":[]}]}"#);
+    let body_a = r#"{"routes":[]}"#;
+    // Compute the real content-address for body_a.
+    let id_a = content_address(body_a.as_bytes());
 
-    store
-        .insert_snapshot(snap1)
-        .await
-        .expect("first insert should succeed");
+    // Inject a row with id_a but a DIFFERENT body directly into the DB,
+    // bypassing the validation layer (this simulates a pre-existing corrupt row
+    // or a genuine SHA-256 collision that slipped through an older code path).
+    let different_body = r#"{"injected":true}"#;
+    sqlx::query(
+        r"INSERT INTO snapshots
+            (id, parent_id, caddy_instance_id, actor_kind, actor_id,
+             intent, correlation_id, caddy_version, trilithon_version,
+             created_at, created_at_ms, config_version, desired_state_json)
+          VALUES (?, NULL, 'local', 'system', 'test', 'intent', 'corr-01',
+                  '2.8.0', '0.1.0', 1700000000, 1700000000000, 1, ?)",
+    )
+    .bind(&id_a)
+    .bind(different_body)
+    .execute(store.pool())
+    .await
+    .expect("raw SQL insert of fake row should succeed");
 
+    // Now try to insert via the normal path with the correct body for id_a.
+    // The writer finds id_a in the DB with a DIFFERENT body → SnapshotHashCollision.
+    let snap = make_snapshot("root", 2, None, body_a);
     let err = store
-        .insert_snapshot(snap2)
+        .insert_snapshot(snap)
         .await
-        .expect_err("second insert with different body must fail");
+        .expect_err("insert with colliding id must fail");
 
     assert!(
         matches!(err, StorageError::SnapshotHashCollision { .. }),
@@ -174,8 +197,11 @@ async fn parent_enforcement_nonexistent_parent_rejected() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let ghost_parent = "dd".repeat(32);
-    let snap = make_snapshot(&"ee".repeat(32), 1, Some(&ghost_parent), r#"{"routes":[]}"#);
+    // The parent body is never inserted — only its content-addressed id appears
+    // as the parent_id of the child snapshot.
+    let ghost_parent_body = r#"{"ghost":true}"#;
+    let child_body = r#"{"routes":[]}"#;
+    let snap = make_snapshot("child", 1, Some(ghost_parent_body), child_body);
 
     let err = store
         .insert_snapshot(snap)
@@ -194,16 +220,16 @@ async fn parent_enforcement_valid_parent_accepted() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let parent_id = "ff".repeat(32);
-    let child_id = "00".repeat(32);
+    let parent_body = r#"{"routes":[]}"#;
+    let child_body = r#"{"routes":[{}]}"#;
 
-    let parent = make_snapshot(&parent_id, 1, None, r#"{"routes":[]}"#);
+    let parent = make_snapshot("parent", 1, None, parent_body);
     store
         .insert_snapshot(parent)
         .await
         .expect("parent insert should succeed");
 
-    let child = make_snapshot(&child_id, 2, Some(&parent_id), r#"{"routes":[{}]}"#);
+    let child = make_snapshot("child", 2, Some(parent_body), child_body);
     store
         .insert_snapshot(child)
         .await
@@ -221,14 +247,14 @@ async fn monotonicity_equal_version_rejected() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap1 = make_snapshot(&"11".repeat(32), 5, None, r#"{"routes":[]}"#);
+    let snap1 = make_snapshot("v5a", 5, None, r#"{"routes":[]}"#);
     store
         .insert_snapshot(snap1)
         .await
         .expect("first insert should succeed");
 
     // Same config_version — must be rejected.
-    let snap2 = make_snapshot(&"22".repeat(32), 5, None, r#"{"routes":[{}]}"#);
+    let snap2 = make_snapshot("v5b", 5, None, r#"{"routes":[{}]}"#);
     let err = store
         .insert_snapshot(snap2)
         .await
@@ -246,13 +272,13 @@ async fn monotonicity_lower_version_rejected() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap1 = make_snapshot(&"33".repeat(32), 10, None, r#"{"routes":[]}"#);
+    let snap1 = make_snapshot("v10", 10, None, r#"{"routes":[]}"#);
     store
         .insert_snapshot(snap1)
         .await
         .expect("first insert should succeed");
 
-    let snap2 = make_snapshot(&"44".repeat(32), 9, None, r#"{"routes":[{}]}"#);
+    let snap2 = make_snapshot("v9", 9, None, r#"{"routes":[{}]}"#);
     let err = store
         .insert_snapshot(snap2)
         .await
@@ -270,13 +296,13 @@ async fn monotonicity_higher_version_accepted() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap1 = make_snapshot(&"55".repeat(32), 1, None, r#"{"routes":[]}"#);
+    let snap1 = make_snapshot("v1", 1, None, r#"{"routes":[]}"#);
     store
         .insert_snapshot(snap1)
         .await
         .expect("first insert should succeed");
 
-    let snap2 = make_snapshot(&"66".repeat(32), 2, None, r#"{"routes":[{}]}"#);
+    let snap2 = make_snapshot("v2", 2, None, r#"{"routes":[{}]}"#);
     store
         .insert_snapshot(snap2)
         .await
@@ -293,8 +319,9 @@ async fn fetch_by_config_version_found() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "77".repeat(32);
-    let snap = make_snapshot(&id, 42, None, r#"{"routes":[]}"#);
+    let body = r#"{"routes":[]}"#;
+    let expected_id = content_address(body.as_bytes());
+    let snap = make_snapshot("v42", 42, None, body);
     store
         .insert_snapshot(snap)
         .await
@@ -306,7 +333,7 @@ async fn fetch_by_config_version_found() {
         .expect("fetch_by_config_version should succeed");
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].snapshot_id.0, id);
+    assert_eq!(results[0].snapshot_id.0, expected_id);
     assert_eq!(results[0].config_version, 42);
 }
 
@@ -337,27 +364,20 @@ async fn fetch_by_parent_id_returns_children() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let parent_id = "88".repeat(32);
-    let child1_id = "89".repeat(32);
-    let child2_id = "8a".repeat(32);
+    let parent_body = r#"{"a":1}"#;
+    let child1_body = r#"{"a":2}"#;
 
-    // In this test we use a single linear chain since the unique index on
-    // (caddy_instance_id, config_version) prevents two rows at the same
-    // version.  We insert parent at v1, child1 at v2, then fetch by
-    // parent_id to verify child1 is returned.
+    let parent_id = content_address(parent_body.as_bytes());
+    let child1_id = content_address(child1_body.as_bytes());
+
     store
-        .insert_snapshot(make_snapshot(&parent_id, 1, None, r#"{"a":1}"#))
+        .insert_snapshot(make_snapshot("parent", 1, None, parent_body))
         .await
         .expect("parent insert");
     store
-        .insert_snapshot(make_snapshot(&child1_id, 2, Some(&parent_id), r#"{"a":2}"#))
+        .insert_snapshot(make_snapshot("child1", 2, Some(parent_body), child1_body))
         .await
         .expect("child1 insert");
-
-    // child2 has a different parent so it does not appear.
-    // (Use a genesis snapshot to avoid monotonicity issues — we need a fresh store.)
-    // Instead, just verify the one child we have.
-    let _ = child2_id; // not inserted here
 
     let children = store
         .fetch_by_parent_id(&SnapshotId(parent_id.clone()))
@@ -378,9 +398,10 @@ async fn fetch_by_parent_id_no_children() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "99".repeat(32);
+    let body = r#"{"routes":[]}"#;
+    let id = content_address(body.as_bytes());
     store
-        .insert_snapshot(make_snapshot(&id, 1, None, r#"{"routes":[]}"#))
+        .insert_snapshot(make_snapshot("root", 1, None, body))
         .await
         .expect("insert should succeed");
 
@@ -405,33 +426,15 @@ async fn fetch_by_date_range_filters() {
 
     // Three snapshots at different timestamps.
     store
-        .insert_snapshot(make_snapshot_with_ts(
-            &"a1".repeat(32),
-            1,
-            None,
-            r#"{"v":1}"#,
-            1_000,
-        ))
+        .insert_snapshot(make_snapshot_with_ts("s1", 1, None, r#"{"v":1}"#, 1_000))
         .await
         .expect("s1 insert");
     store
-        .insert_snapshot(make_snapshot_with_ts(
-            &"a2".repeat(32),
-            2,
-            None,
-            r#"{"v":2}"#,
-            2_000,
-        ))
+        .insert_snapshot(make_snapshot_with_ts("s2", 2, None, r#"{"v":2}"#, 2_000))
         .await
         .expect("s2 insert");
     store
-        .insert_snapshot(make_snapshot_with_ts(
-            &"a3".repeat(32),
-            3,
-            None,
-            r#"{"v":3}"#,
-            3_000,
-        ))
+        .insert_snapshot(make_snapshot_with_ts("s3", 3, None, r#"{"v":3}"#, 3_000))
         .await
         .expect("s3 insert");
 
@@ -464,23 +467,11 @@ async fn fetch_by_date_range_no_bounds_returns_all() {
     let store = open(&dir).await;
 
     store
-        .insert_snapshot(make_snapshot_with_ts(
-            &"b1".repeat(32),
-            1,
-            None,
-            r#"{"v":1}"#,
-            100,
-        ))
+        .insert_snapshot(make_snapshot_with_ts("s1", 1, None, r#"{"v":1}"#, 100))
         .await
         .expect("s1 insert");
     store
-        .insert_snapshot(make_snapshot_with_ts(
-            &"b2".repeat(32),
-            2,
-            None,
-            r#"{"v":2}"#,
-            200,
-        ))
+        .insert_snapshot(make_snapshot_with_ts("s2", 2, None, r#"{"v":2}"#, 200))
         .await
         .expect("s2 insert");
 
@@ -502,9 +493,10 @@ async fn immutability_update_rejected() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "c1".repeat(32);
+    let body = r#"{"routes":[]}"#;
+    let id = content_address(body.as_bytes());
     store
-        .insert_snapshot(make_snapshot(&id, 1, None, r#"{"routes":[]}"#))
+        .insert_snapshot(make_snapshot("root", 1, None, body))
         .await
         .expect("insert should succeed");
 
@@ -525,9 +517,10 @@ async fn immutability_delete_rejected() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let id = "c2".repeat(32);
+    let body = r#"{"routes":[]}"#;
+    let id = content_address(body.as_bytes());
     store
-        .insert_snapshot(make_snapshot(&id, 1, None, r#"{"routes":[]}"#))
+        .insert_snapshot(make_snapshot("root", 1, None, body))
         .await
         .expect("insert should succeed");
 
@@ -553,10 +546,11 @@ async fn root_snapshot_has_null_parent() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    // First snapshot — no parent.
-    let root_id = "d1".repeat(32);
+    let root_body = r#"{"routes":[]}"#;
+    let root_id = content_address(root_body.as_bytes());
+
     store
-        .insert_snapshot(make_snapshot(&root_id, 1, None, r#"{"routes":[]}"#))
+        .insert_snapshot(make_snapshot("root", 1, None, root_body))
         .await
         .expect("root insert should succeed");
 
@@ -573,14 +567,10 @@ async fn root_snapshot_has_null_parent() {
     );
 
     // Second snapshot — parent is the root.
-    let child_id = "d2".repeat(32);
+    let child_body = r#"{"routes":[{}]}"#;
+    let child_id = content_address(child_body.as_bytes());
     store
-        .insert_snapshot(make_snapshot(
-            &child_id,
-            2,
-            Some(&root_id),
-            r#"{"routes":[{}]}"#,
-        ))
+        .insert_snapshot(make_snapshot("child", 2, Some(root_body), child_body))
         .await
         .expect("child insert should succeed");
 
@@ -615,11 +605,6 @@ async fn root_snapshot_has_null_parent() {
 mod props {
     use super::*;
 
-    /// Helper: build a unique hex id for snapshot at index `i`.
-    fn snap_id(i: u64) -> String {
-        format!("{i:0>64x}")
-    }
-
     /// Verify strict monotonic increase across N sequential writes to the same
     /// `caddy_instance_id` ('local' — the fixed value used by `SqliteStorage`).
     #[tokio::test]
@@ -630,23 +615,15 @@ mod props {
         let store = open(&dir).await;
 
         // Phase 1: Insert N snapshots with strictly increasing versions.
-        // Each insert must succeed; versions run 1, 2, … N.
+        // Each body is unique so that each content-address is distinct.
         let mut last_version: i64 = 0;
+        let mut prev_body: Option<String> = None;
         for i in 1..=N {
             let version = i64::try_from(i).unwrap();
-            let id = snap_id(u64::try_from(i).unwrap());
-            let parent = if i == 1 {
-                None
-            } else {
-                Some(snap_id(u64::try_from(i - 1).unwrap()))
-            };
+            let body = format!(r#"{{"v":{i}}}"#);
+            let snap = make_snapshot(&format!("s{i}"), version, prev_body.as_deref(), &body);
             store
-                .insert_snapshot(make_snapshot(
-                    &id,
-                    version,
-                    parent.as_deref(),
-                    &format!(r#"{{"v":{i}}}"#),
-                ))
+                .insert_snapshot(snap)
                 .await
                 .unwrap_or_else(|e| panic!("insert {i} must succeed: {e}"));
 
@@ -655,14 +632,14 @@ mod props {
                 "version {version} not strictly greater than last {last_version}"
             );
             last_version = version;
+            prev_body = Some(body);
         }
 
         // Phase 2: Verify that equal and lower versions are now rejected.
         // Try inserting at the current max (N) — must fail.
-        let dup_id = snap_id(u64::try_from(N + 100).unwrap());
         let err = store
             .insert_snapshot(make_snapshot(
-                &dup_id,
+                "dup",
                 i64::try_from(N).unwrap(),
                 None,
                 r#"{"v":"dup"}"#,
@@ -675,10 +652,9 @@ mod props {
         );
 
         // Try inserting at N-1 (lower) — must fail.
-        let lower_id = snap_id(u64::try_from(N + 101).unwrap());
         let err2 = store
             .insert_snapshot(make_snapshot(
-                &lower_id,
+                "lower",
                 i64::try_from(N - 1).unwrap(),
                 None,
                 r#"{"v":"lower"}"#,
@@ -692,10 +668,9 @@ mod props {
 
         // Phase 3: A new write at N+1 must still succeed after the failed
         // attempts (failed transactions must not corrupt state).
-        let next_id = snap_id(u64::try_from(N + 1).unwrap());
         store
             .insert_snapshot(make_snapshot(
-                &next_id,
+                "next",
                 i64::try_from(N + 1).unwrap(),
                 None,
                 r#"{"v":"next"}"#,

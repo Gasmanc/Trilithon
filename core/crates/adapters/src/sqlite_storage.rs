@@ -167,41 +167,187 @@ impl SqliteStorage {
         &self,
         range: &SnapshotDateRange,
     ) -> Result<Vec<Snapshot>, StorageError> {
-        let mut conditions: Vec<&'static str> = Vec::new();
-        if range.since.is_some() {
-            conditions.push("created_at >= ?");
-        }
-        if range.until.is_some() {
-            conditions.push("created_at <= ?");
-        }
-
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
-
-        let sql = format!(
-            r"
+        // Use fully static query strings — one per combination of since/until
+        // present or absent — to avoid any dynamic SQL construction that could
+        // become a SQL injection vector if field types change in the future.
+        const SQL_NONE: &str = r"
             SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
                    intent, correlation_id, caddy_version, trilithon_version,
                    created_at, created_at_ms, config_version, desired_state_json
             FROM snapshots
-            {where_clause}
             ORDER BY created_at ASC
-            ",
-        );
+        ";
+        const SQL_SINCE: &str = r"
+            SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                   intent, correlation_id, caddy_version, trilithon_version,
+                   created_at, created_at_ms, config_version, desired_state_json
+            FROM snapshots
+            WHERE created_at >= ?
+            ORDER BY created_at ASC
+        ";
+        const SQL_UNTIL: &str = r"
+            SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                   intent, correlation_id, caddy_version, trilithon_version,
+                   created_at, created_at_ms, config_version, desired_state_json
+            FROM snapshots
+            WHERE created_at <= ?
+            ORDER BY created_at ASC
+        ";
+        const SQL_BOTH: &str = r"
+            SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                   intent, correlation_id, caddy_version, trilithon_version,
+                   created_at, created_at_ms, config_version, desired_state_json
+            FROM snapshots
+            WHERE created_at >= ? AND created_at <= ?
+            ORDER BY created_at ASC
+        ";
 
-        let mut query = sqlx::query(&sql);
-        if let Some(since) = range.since {
-            query = query.bind(since);
-        }
-        if let Some(until) = range.until {
-            query = query.bind(until);
-        }
+        let rows = match (range.since, range.until) {
+            (None, None) => sqlx::query(SQL_NONE)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(sqlx_err)?,
+            (Some(since), None) => sqlx::query(SQL_SINCE)
+                .bind(since)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(sqlx_err)?,
+            (None, Some(until)) => sqlx::query(SQL_UNTIL)
+                .bind(until)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(sqlx_err)?,
+            (Some(since), Some(until)) => sqlx::query(SQL_BOTH)
+                .bind(since)
+                .bind(until)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(sqlx_err)?,
+        };
 
-        let rows = query.fetch_all(&self.pool).await.map_err(sqlx_err)?;
         rows.iter().map(row_to_snapshot).collect()
+    }
+
+    /// Perform the transactional insert of a validated snapshot.
+    ///
+    /// Precondition: `validate_snapshot_invariants` has already been called.
+    /// Uses `BEGIN IMMEDIATE` to prevent TOCTOU races on the monotonicity check.
+    async fn insert_snapshot_inner(&self, snapshot: Snapshot) -> Result<SnapshotId, StorageError> {
+        let id = snapshot.snapshot_id.0.clone();
+        let parent_id = snapshot.parent_id.as_ref().map(|p| p.0.clone());
+        // Legacy schema uses actor_kind / actor_id columns.
+        // We store a fixed "system" kind and the actor identity string in actor_id.
+        let actor_kind = "system";
+        // Convert nanoseconds back to milliseconds for legacy created_at_ms column.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        // zd:phase-05 expires:2026-11-01 reason: monotonic_nanos/1_000_000 fits in i64 for sane epoch timestamps
+        let created_at_ms = (snapshot.created_at_monotonic_nanos / 1_000_000) as i64;
+
+        // BEGIN IMMEDIATE acquires a write lock immediately, preventing two
+        // concurrent callers from both passing the monotonicity check against
+        // the same MAX(config_version) — TOCTOU race (ADR-0009).
+        let mut conn = self.pool.acquire().await.map_err(sqlx_err)?;
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .map_err(sqlx_err)?;
+
+        // 1. Check for deduplication and hash collision.
+        let existing_row = sqlx::query("SELECT desired_state_json FROM snapshots WHERE id = ?")
+            .bind(&id)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(sqlx_err)?;
+
+        if let Some(row) = existing_row {
+            let existing_json: String = row.try_get("desired_state_json").map_err(sqlx_err)?;
+            sqlx::query("ROLLBACK")
+                .execute(&mut *conn)
+                .await
+                .map_err(sqlx_err)?;
+            return if existing_json == snapshot.desired_state_json {
+                Ok(SnapshotId(id)) // byte-equal: idempotent duplicate
+            } else {
+                Err(StorageError::SnapshotHashCollision {
+                    id: snapshot.snapshot_id,
+                })
+            };
+        }
+
+        // 2. Enforce parent existence when parent_id is Some.
+        if let Some(ref pid) = parent_id {
+            let parent_exists: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?)")
+                    .bind(pid)
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(sqlx_err)?;
+            if !parent_exists {
+                sqlx::query("ROLLBACK")
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(sqlx_err)?;
+                return Err(StorageError::SnapshotParentNotFound {
+                    parent_id: SnapshotId(pid.clone()),
+                });
+            }
+        }
+
+        // 3. Enforce strict monotonic increase of config_version.
+        // V1: single local instance — caddy_instance_id is always 'local' (ADR-0009).
+        let current_max: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(config_version) FROM snapshots WHERE caddy_instance_id = 'local'",
+        )
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(sqlx_err)?;
+
+        if let Some(max_ver) = current_max {
+            if snapshot.config_version <= max_ver {
+                sqlx::query("ROLLBACK")
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(sqlx_err)?;
+                return Err(StorageError::SnapshotVersionNotMonotonic {
+                    attempted: snapshot.config_version,
+                    current_max: max_ver,
+                });
+            }
+        }
+
+        // 4. INSERT in the same transaction.
+        // V1: single local instance — caddy_instance_id is always 'local' (ADR-0009).
+        sqlx::query(
+            r"
+            INSERT INTO snapshots
+                (id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                 intent, correlation_id, caddy_version, trilithon_version,
+                 created_at, created_at_ms, config_version, desired_state_json)
+            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ",
+        )
+        .bind(&id)
+        .bind(&parent_id)
+        .bind(actor_kind)
+        .bind(&snapshot.actor)
+        .bind(&snapshot.intent)
+        .bind(&snapshot.correlation_id)
+        .bind(&snapshot.caddy_version)
+        .bind(&snapshot.trilithon_version)
+        .bind(snapshot.created_at_unix_seconds)
+        .bind(created_at_ms)
+        .bind(snapshot.config_version)
+        .bind(&snapshot.desired_state_json)
+        .execute(&mut *conn)
+        .await
+        .map_err(sqlx_err)?;
+
+        sqlx::query("COMMIT")
+            .execute(&mut *conn)
+            .await
+            .map_err(sqlx_err)?;
+
+        Ok(SnapshotId(id))
     }
 }
 
@@ -262,7 +408,7 @@ fn parse_outcome(s: &str) -> Result<AuditOutcome, StorageError> {
 /// `retries` is 0 because the `busy_timeout` pragma handles waits at the
 /// `SQLite` level; the storage layer does not retry.
 #[allow(clippy::needless_pass_by_value)]
-// reason: `sqlx::Error` is non-Copy; value must be owned to call `.to_string()`
+// zd:phase-05 expires:2026-11-01 reason: sqlx::Error is non-Copy; owned to call .to_string()
 fn sqlx_err(e: sqlx::Error) -> StorageError {
     match &e {
         sqlx::Error::Database(db_err) => {
@@ -303,7 +449,7 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
     //   created_at_ms      → created_at_monotonic_nanos (stored as ms; converted to ns)
     //   (no DB column yet) → canonical_json_version (defaulted to 1)
     let actor_kind_str: String = row.try_get("actor_kind").map_err(sqlx_err)?;
-    let _ = parse_actor_kind(&actor_kind_str)?; // validate only; field not stored on Snapshot
+    parse_actor_kind(&actor_kind_str)?; // validate only; field not stored on Snapshot
     let snapshot_id: String = row.try_get("id").map_err(sqlx_err)?;
     let parent_id: Option<String> = row.try_get("parent_id").map_err(sqlx_err)?;
     let created_at_ms: i64 = row.try_get("created_at_ms").map_err(sqlx_err)?;
@@ -330,106 +476,49 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
 }
 
 // ---------------------------------------------------------------------------
+// Storage trait implementation helpers
+// ---------------------------------------------------------------------------
+
+/// Validate snapshot invariants that must hold before any database write.
+///
+/// 1. `snapshot_id` must equal the SHA-256 hex digest of `desired_state_json`.
+/// 2. `intent` must not exceed `INTENT_MAX_BYTES`.
+fn validate_snapshot_invariants(snapshot: &Snapshot) -> Result<(), StorageError> {
+    let expected =
+        trilithon_core::mutation::types::content_address(snapshot.desired_state_json.as_bytes());
+    if expected != snapshot.snapshot_id.0 {
+        return Err(StorageError::Integrity {
+            detail: format!(
+                "snapshot_id {} does not match SHA-256 of desired_state_json (expected {expected})",
+                snapshot.snapshot_id.0
+            ),
+        });
+    }
+
+    if !trilithon_core::storage::types::Snapshot::validate_intent(&snapshot.intent) {
+        return Err(StorageError::Integrity {
+            detail: format!(
+                "intent field exceeds maximum length ({} bytes)",
+                snapshot.intent.len()
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Storage trait implementation
 // ---------------------------------------------------------------------------
 
 #[async_trait]
 impl Storage for SqliteStorage {
     async fn insert_snapshot(&self, snapshot: Snapshot) -> Result<SnapshotId, StorageError> {
-        let id = snapshot.snapshot_id.0.clone();
-        let parent_id = snapshot.parent_id.as_ref().map(|p| p.0.clone());
-        // Legacy schema uses actor_kind / actor_id columns.
-        // We store a fixed "system" kind and the actor identity string in actor_id.
-        let actor_kind = "system";
-        // Convert nanoseconds back to milliseconds for legacy created_at_ms column.
-        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-        // reason: monotonic_nanos / 1_000_000 always fits in i64 for sane epoch timestamps
-        let created_at_ms = (snapshot.created_at_monotonic_nanos / 1_000_000) as i64;
-
-        // Run all pre-insert checks and the INSERT in a single transaction so
-        // that concurrent writers cannot race past them.
-        let mut tx = self.pool.begin().await.map_err(sqlx_err)?;
-
-        // 1. Check whether this id already exists (deduplication + collision).
-        let existing_row = sqlx::query("SELECT desired_state_json FROM snapshots WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(sqlx_err)?;
-
-        if let Some(row) = existing_row {
-            let existing_json: String = row.try_get("desired_state_json").map_err(sqlx_err)?;
-            if existing_json == snapshot.desired_state_json {
-                // Byte-equal body — idempotent duplicate; return the existing id.
-                return Ok(SnapshotId(id));
-            }
-            // Same hash, different body — SHA-256 collision; treat as fatal.
-            return Err(StorageError::SnapshotHashCollision {
-                id: snapshot.snapshot_id,
-            });
-        }
-
-        // 2. Enforce parent existence when parent_id is Some.
-        if let Some(ref pid) = parent_id {
-            let parent_exists: bool =
-                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?)")
-                    .bind(pid)
-                    .fetch_one(&mut *tx)
-                    .await
-                    .map_err(sqlx_err)?;
-            if !parent_exists {
-                return Err(StorageError::SnapshotParentNotFound {
-                    parent_id: SnapshotId(pid.clone()),
-                });
-            }
-        }
-
-        // 3. Enforce strict monotonic increase of config_version for this caddy_instance.
-        let current_max: Option<i64> = sqlx::query_scalar(
-            "SELECT MAX(config_version) FROM snapshots WHERE caddy_instance_id = 'local'",
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(sqlx_err)?;
-
-        if let Some(max_ver) = current_max {
-            if snapshot.config_version <= max_ver {
-                return Err(StorageError::SnapshotVersionNotMonotonic {
-                    attempted: snapshot.config_version,
-                    current_max: max_ver,
-                });
-            }
-        }
-
-        // 4. INSERT in the same transaction.
-        sqlx::query(
-            r"
-            INSERT INTO snapshots
-                (id, parent_id, caddy_instance_id, actor_kind, actor_id,
-                 intent, correlation_id, caddy_version, trilithon_version,
-                 created_at, created_at_ms, config_version, desired_state_json)
-            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ",
-        )
-        .bind(&id)
-        .bind(&parent_id)
-        .bind(actor_kind)
-        .bind(&snapshot.actor)
-        .bind(&snapshot.intent)
-        .bind(&snapshot.correlation_id)
-        .bind(&snapshot.caddy_version)
-        .bind(&snapshot.trilithon_version)
-        .bind(snapshot.created_at_unix_seconds)
-        .bind(created_at_ms)
-        .bind(snapshot.config_version)
-        .bind(&snapshot.desired_state_json)
-        .execute(&mut *tx)
-        .await
-        .map_err(sqlx_err)?;
-
-        tx.commit().await.map_err(sqlx_err)?;
-
-        Ok(SnapshotId(id))
+        // Validate invariants before touching the database.
+        validate_snapshot_invariants(&snapshot)?;
+        // Run the transactional insert logic in a dedicated helper to keep
+        // the trait impl method under the too-many-lines lint threshold.
+        self.insert_snapshot_inner(snapshot).await
     }
 
     async fn get_snapshot(&self, id: &SnapshotId) -> Result<Option<Snapshot>, StorageError> {

@@ -108,4 +108,4 @@ Each snapshot row carries a `parent_id` foreign key that references the precedin
 
 The `snapshots` table is made append-only at the database layer by `BEFORE UPDATE` and `BEFORE DELETE` triggers introduced in migration `0004`. Any attempt to mutate or remove an existing row — whether from application code or a direct SQL client — is rejected immediately with an error. This guarantee holds regardless of the calling process, so audit trails built on the snapshot chain cannot be silently tampered with.
 
-See also: [ADR-0009](docs/adr/0009-immutable-content-addressed-snapshots-and-audit-log.md)
+See also: [ADR-0009](../docs/adr/0009-immutable-content-addressed-snapshots-and-audit-log.md)
