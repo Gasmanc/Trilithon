@@ -4,16 +4,15 @@
 //!
 //! 1. Read the file at `path`; `NotFound` → [`ConfigError::Missing`],
 //!    other I/O errors → [`ConfigError::ReadFailed`].
-//! 2. Parse into [`DaemonConfig`] via TOML; errors → [`ConfigError::MalformedToml`].
-//! 3. Re-serialize to a [`toml::Table`] so env overrides can be applied
-//!    as dotted-key mutations; serialisation failure → [`ConfigError::InternalSerialise`].
-//! 4. Collect `TRILITHON_*` env vars, map keys (lowercase, `__` → `.`),
+//! 2. Parse the TOML text directly into a [`toml::Table`]; errors →
+//!    [`ConfigError::MalformedToml`].
+//! 3. Collect `TRILITHON_*` env vars, map keys (lowercase, `__` → `.`),
 //!    apply as dotted-path overrides into the table.
-//! 5. Re-deserialize the mutated table back to [`DaemonConfig`].
-//! 6. Validate `concurrency.rebase_token_ttl_minutes` ∈ \[5, 1440\].
-//! 7. Validate `caddy.admin_endpoint` is loopback-only (ADR-0011).
-//! 8. Validate `storage.data_dir` is writable (create if absent; write probe).
-//! 9. Return `Ok(DaemonConfig)`.
+//! 4. Deserialize the (possibly mutated) table into [`DaemonConfig`].
+//! 5. Validate `concurrency.rebase_token_ttl_minutes` ∈ \[5, 1440\].
+//! 6. Validate `caddy.admin_endpoint` is loopback-only (ADR-0011).
+//! 7. Validate `storage.data_dir` is writable (create if absent; write probe).
+//! 8. Return `Ok(DaemonConfig)`.
 
 use std::fs;
 use std::io;
@@ -95,16 +94,6 @@ pub enum ConfigError {
         value: u32,
     },
 
-    /// Internal: serialising a valid `DaemonConfig` back to `toml::Table` failed.
-    ///
-    /// This should never occur in practice because we just successfully
-    /// deserialised the config from the same TOML format.
-    #[error("internal: failed to re-serialise config: {detail}")]
-    InternalSerialise {
-        /// The serialisation error message.
-        detail: String,
-    },
-
     /// The Caddy admin endpoint violates the loopback-only policy (ADR-0011).
     #[error("admin endpoint policy violation: {source}")]
     AdminEndpointPolicy {
@@ -136,8 +125,11 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
         }
     })?;
 
-    // 2. Parse TOML → DaemonConfig.
-    let config: DaemonConfig = toml::from_str(&text).map_err(|e| {
+    // 2. Parse TOML text directly into a mutable toml::Table.
+    // Parsing to a Table (rather than directly to DaemonConfig) lets us apply
+    // env-var overrides before the final deserialization, removing the need for
+    // an intermediate DaemonConfig→Table re-serialization round-trip.
+    let mut table: toml::Table = toml::from_str(&text).map_err(|e| {
         let span = e.span();
         // toml::de::Error span is a byte range; convert to line/col by
         // counting newlines up to the start of the span.
@@ -149,21 +141,7 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
         }
     })?;
 
-    // 3. Re-serialize to a mutable toml::Table so we can apply env overrides.
-    // DaemonConfig derives Serialize and we just deserialised it successfully,
-    // so serialisation failure is an internal invariant violation — surface it
-    // as InternalSerialise rather than silently defaulting to an empty table.
-    let value = toml::Value::try_from(&config).map_err(|e| ConfigError::InternalSerialise {
-        detail: e.to_string(),
-    })?;
-    let mut table: toml::Table =
-        value
-            .try_into()
-            .map_err(|e: toml::de::Error| ConfigError::InternalSerialise {
-                detail: e.to_string(),
-            })?;
-
-    // 4. Apply env overrides.
+    // 3. Apply env overrides.
     let overrides = env.vars_with_prefix("TRILITHON_");
     for (suffix, value) in overrides {
         let dotted_key = suffix.to_lowercase().replace("__", ".");
@@ -177,7 +155,7 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
         }
     }
 
-    // 5. Re-deserialize the (possibly mutated) table back to DaemonConfig.
+    // 4. Deserialize the (possibly mutated) table into DaemonConfig.
     // Any type mismatch from env overrides (e.g. bad bind address, bad integer)
     // surfaces here as MalformedToml. Span information is not available at this
     // stage because toml::de::Error spans refer to the original text positions,
@@ -191,17 +169,17 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
                 source: e,
             })?;
 
-    // 6. Validate rebase TTL.
+    // 5. Validate rebase TTL.
     let ttl = config.concurrency.rebase_token_ttl_minutes;
     if !(5..=1440).contains(&ttl) {
         return Err(ConfigError::RebaseTtlOutOfBounds { value: ttl });
     }
 
-    // 7. Validate admin endpoint is loopback-only (ADR-0011).
+    // 6. Validate admin endpoint is loopback-only (ADR-0011).
     validate_loopback_only(&config.caddy.admin_endpoint)
         .map_err(|source| ConfigError::AdminEndpointPolicy { source })?;
 
-    // 8. Validate data directory writability.
+    // 7. Validate data directory writability.
     // create_dir_all is idempotent: it succeeds when the directory already
     // exists, so no existence pre-check is needed (avoids a TOCTOU window).
     let data_dir = &config.storage.data_dir;
