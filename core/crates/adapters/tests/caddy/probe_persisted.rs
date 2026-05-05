@@ -16,7 +16,6 @@ use std::str::FromStr as _;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sqlx::Row as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use trilithon_adapters::{
     caddy::{cache::CapabilityCache, capability_store::CapabilityStore, probe::run_initial_probe},
@@ -115,8 +114,7 @@ async fn insert_instance(pool: &sqlx::SqlitePool, id: &str) {
 // ---------------------------------------------------------------------------
 
 /// First probe inserts one row with `is_current = 1`.
-/// Second probe demotes the first and inserts a second; total rows = 2,
-/// current rows = 1.
+/// Second probe with identical capabilities is a no-op: still 1 total row.
 #[tokio::test]
 async fn probe_writes_current_row() {
     let pool = make_pool().await;
@@ -126,7 +124,7 @@ async fn probe_writes_current_row() {
     let store = CapabilityStore::new(pool.clone());
     let client = FixedModulesClient { version: "v2.8.4" };
 
-    // First probe.
+    // First probe — creates the row.
     run_initial_probe(&client, Arc::clone(&cache), &store, "inst-1")
         .await
         .expect("first probe should succeed");
@@ -149,7 +147,7 @@ async fn probe_writes_current_row() {
         "expected exactly 1 is_current row after first probe"
     );
 
-    // Second probe.
+    // Second probe with identical capabilities — no new row should be written.
     run_initial_probe(&client, Arc::clone(&cache), &store, "inst-1")
         .await
         .expect("second probe should succeed");
@@ -160,26 +158,65 @@ async fn probe_writes_current_row() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(total2, 2, "expected 2 rows after second probe");
-
-    let current2: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM capability_probe_results WHERE caddy_instance_id = 'inst-1' AND is_current = 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
     assert_eq!(
-        current2, 1,
-        "expected exactly 1 is_current row after second probe"
+        total2, 1,
+        "identical capabilities: expected no new row after second probe"
     );
+}
 
-    // Verify the most-recent row is the one marked current.
-    let current_row = sqlx::query(
-        "SELECT caddy_version FROM capability_probe_results \
-         WHERE caddy_instance_id = 'inst-1' AND is_current = 1",
+/// When capabilities change between probes the new row is written and the old
+/// one is demoted: 2 total rows, exactly 1 `is_current = 1`.
+#[tokio::test]
+async fn probe_writes_new_row_when_capabilities_change() {
+    let pool = make_pool().await;
+    insert_instance(&pool, "inst-2").await;
+
+    let cache = Arc::new(CapabilityCache::default());
+    let store = CapabilityStore::new(pool.clone());
+
+    run_initial_probe(
+        &FixedModulesClient { version: "v2.8.4" },
+        Arc::clone(&cache),
+        &store,
+        "inst-2",
+    )
+    .await
+    .expect("first probe should succeed");
+
+    // Second probe with a different version simulates a Caddy upgrade.
+    run_initial_probe(
+        &FixedModulesClient { version: "v2.9.0" },
+        Arc::clone(&cache),
+        &store,
+        "inst-2",
+    )
+    .await
+    .expect("second probe should succeed");
+
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM capability_probe_results WHERE caddy_instance_id = 'inst-2'",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
-    let version: String = current_row.try_get("caddy_version").unwrap();
-    assert_eq!(version, "v2.8.4");
+    assert_eq!(total, 2, "expected 2 rows after capabilities changed");
+
+    let current: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM capability_probe_results WHERE caddy_instance_id = 'inst-2' AND is_current = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(current, 1, "expected exactly 1 is_current row");
+
+    let current_version: String = sqlx::query_scalar(
+        "SELECT caddy_version FROM capability_probe_results \
+         WHERE caddy_instance_id = 'inst-2' AND is_current = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        current_version, "v2.9.0",
+        "current row must reflect new version"
+    );
 }

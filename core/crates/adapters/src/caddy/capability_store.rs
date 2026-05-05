@@ -24,6 +24,40 @@ impl CapabilityStore {
         Self { pool }
     }
 
+    /// Retrieve the most-recent current capabilities for `instance_id`, or
+    /// `None` if no row exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Sqlite`] on any database error.
+    pub async fn fetch_current(
+        &self,
+        instance_id: &str,
+    ) -> Result<Option<CaddyCapabilities>, StorageError> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT capabilities_json \
+             FROM capability_probe_results \
+             WHERE caddy_instance_id = ? AND is_current = 1 \
+             LIMIT 1",
+        )
+        .bind(instance_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_err)?;
+
+        match row {
+            None => Ok(None),
+            Some((json,)) => {
+                let caps = serde_json::from_str::<CaddyCapabilities>(&json).map_err(|e| {
+                    StorageError::Sqlite {
+                        kind: SqliteErrorKind::Other(format!("deserialise capabilities: {e}")),
+                    }
+                })?;
+                Ok(Some(caps))
+            }
+        }
+    }
+
     /// Demote any existing current row for `instance_id`, then insert a new
     /// row with `is_current = 1`.
     ///

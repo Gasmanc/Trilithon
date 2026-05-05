@@ -64,7 +64,15 @@ pub async fn run_initial_probe(
     };
 
     cache.replace(caps.clone());
-    persistence.record_current(instance_id, &caps).await?;
+
+    let previous = persistence.fetch_current(instance_id).await?;
+    let capabilities_changed = previous.is_none_or(|p| {
+        p.caddy_version != caps.caddy_version || p.loaded_modules != caps.loaded_modules
+    });
+
+    if capabilities_changed {
+        persistence.record_current(instance_id, &caps).await?;
+    }
 
     let correlation_id = ulid::Ulid::new().to_string();
     tracing::info!(
