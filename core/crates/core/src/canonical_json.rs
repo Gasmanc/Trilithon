@@ -45,9 +45,6 @@ pub fn to_canonical_bytes(state: &DesiredState) -> Result<Vec<u8>, serde_json::E
 ///
 /// See [`to_canonical_bytes`].
 pub fn to_canonical_string(state: &DesiredState) -> Result<String, serde_json::Error> {
-    // `serde_json::to_string` returns a `String` directly without requiring
-    // an intermediate byte vec; we route through `to_value` + serialise to
-    // avoid duplicating the canonicalisation logic.
     let value = serde_json::to_value(state)?;
     let canonical = canonicalise_value(value);
     serde_json::to_string(&canonical)
@@ -109,10 +106,8 @@ fn canonicalise_value(value: Value) -> Value {
 ///
 /// Propagates any [`serde_json::Error`] from [`to_canonical_bytes`].
 pub fn content_address(state: &DesiredState) -> Result<String, serde_json::Error> {
-    use sha2::{Digest, Sha256};
     let bytes = to_canonical_bytes(state)?;
-    let digest = Sha256::digest(&bytes);
-    Ok(format!("{digest:x}"))
+    Ok(crate::mutation::types::content_address(&bytes))
 }
 
 #[cfg(test)]

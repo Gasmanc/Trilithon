@@ -1,0 +1,32 @@
+# Phase 5 — MiniMax Review Findings
+
+**Reviewer:** minimax
+**Date:** 2026-05-05
+**Diff range:** d4a320a..HEAD
+**Phase:** 5
+
+---
+
+[HIGH] Hardcoded caddy_instance_id breaks monotonicity check
+File: core/crates/adapters/src/sqlite_storage.rs
+Lines: 408, 420, 458
+Description: The monotonicity check query hardcodes `'local'` instead of using `snapshot.caddy_instance_id`. This makes the instance-scoped check ineffective — it always checks the same hardcoded instance. The same hardcoded literal appears in INSERT.
+Suggestion: Bind `snapshot.caddy_instance_id` as a parameter: `WHERE caddy_instance_id = ?` with `.bind(&snapshot.caddy_instance_id)`.
+
+[WARNING] fetch_by_parent_id ordering inconsistency
+File: core/crates/adapters/src/sqlite_storage.rs
+Lines: 182-195
+Description: `fetch_by_parent_id` hardcodes `ORDER BY config_version ASC` while `fetch_by_config_version` uses `ORDER BY created_at ASC`. Confirm whether config_version ordering is the intended sort for lineage queries.
+Suggestion: Document why the sort order differs, or make it consistent with other fetch methods.
+
+[WARNING] fetch_by_date_range dynamic SQL fragile
+File: core/crates/adapters/src/sqlite_storage.rs
+Lines: 200-228
+Description: `fetch_by_date_range` dynamically builds SQL via `format!` with static column names. The pattern is fragile if future optional filters are added.
+Suggestion: Consider a structured query builder or add an integration test covering the empty-range path.
+
+[SUGGESTION] cast_sign_loss on created_at_ms relies on implicit invariant
+File: core/crates/adapters/src/sqlite_storage.rs
+Lines: 303
+Description: `#[allow(clippy::cast_sign_loss)]` on `(created_at_ms as u64)` relies on an implicit invariant that SQLite never produces negative timestamps.
+Suggestion: Consider adding a runtime assertion or use `saturating_cast` to make the assumption explicit.

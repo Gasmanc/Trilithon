@@ -33,7 +33,7 @@ use trilithon_core::{
 // ---------------------------------------------------------------------------
 
 /// Build a snapshot whose `snapshot_id` is the SHA-256 of `body`.
-fn make_snapshot(_label: &str, version: i64, parent_body: Option<&str>, body: &str) -> Snapshot {
+fn make_snapshot(version: i64, parent_body: Option<&str>, body: &str) -> Snapshot {
     let id = content_address(body.as_bytes());
     let parent_id = parent_body.map(|pb| SnapshotId(content_address(pb.as_bytes())));
     Snapshot {
@@ -125,7 +125,7 @@ async fn insert_get_snapshot_round_trip() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap = make_snapshot("root", 1, None, r#"{"routes":[]}"#);
+    let snap = make_snapshot(1, None, r#"{"routes":[]}"#);
     let id = store
         .insert_snapshot(snap.clone())
         .await
@@ -148,7 +148,7 @@ async fn insert_duplicate_same_body_idempotent() {
     let dir = TempDir::new().unwrap();
     let store = open(&dir).await;
 
-    let snap = make_snapshot("root", 1, None, r#"{"routes":[]}"#);
+    let snap = make_snapshot(1, None, r#"{"routes":[]}"#);
     let id1 = store
         .insert_snapshot(snap.clone())
         .await
@@ -191,7 +191,7 @@ async fn insert_duplicate_different_body_returns_duplicate_error() {
     .expect("raw SQL inject should succeed");
 
     // Now insert via the normal path — writer finds id_a with a different body.
-    let snap = make_snapshot("root", 2, None, body_a);
+    let snap = make_snapshot(2, None, body_a);
     let err = store
         .insert_snapshot(snap)
         .await

@@ -1,0 +1,5 @@
+{"event": "surfaced", "phase_id": "5", "slug": "migrations-not-in-open-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
+{"event": "surfaced", "phase_id": "5", "slug": "seed-fk-parents-in-migration-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
+{"event": "surfaced", "phase_id": "5", "slug": "sync-all-before-atomic-rename-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
+{"event": "surfaced", "phase_id": "5", "slug": "sqlite-extended-error-codes-mask-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
+{"event": "surfaced", "phase_id": "5", "slug": "migration-bootstrap-no-such-table-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}

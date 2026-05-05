@@ -466,7 +466,7 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
         created_at_unix_seconds: row.try_get("created_at").map_err(sqlx_err)?,
         // Legacy schema stores milliseconds; convert to nanoseconds for T1.2 field.
         #[allow(clippy::cast_sign_loss)]
-        // reason: created_at_ms is always non-negative for valid epoch times
+        // zd:phase-05 expires:2026-11-01 reason: epoch ms is always non-negative for valid rows
         created_at_monotonic_nanos: (created_at_ms as u64)
             .saturating_mul(1_000_000),
         // Legacy schema predates T1.2; assume version 1 for all existing rows.
