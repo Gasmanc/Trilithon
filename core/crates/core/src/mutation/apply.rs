@@ -67,12 +67,12 @@ pub fn apply_mutation(
     let changes = apply_variant(state, &mut new_state, mutation)?;
 
     // 6. Audit kind selection.
-    let kind = audit_event_for(mutation.kind());
+    let audit_event = audit_event_for(mutation.kind());
 
     Ok(MutationOutcome {
         new_state,
         diff: Diff { changes },
-        kind,
+        audit_event,
     })
 }
 
@@ -503,6 +503,8 @@ const fn audit_event_for(kind: MutationKind) -> AuditEvent {
         MutationKind::DetachPolicy => AuditEvent::PolicyPresetDetached,
         MutationKind::UpgradePolicy => AuditEvent::PolicyPresetUpgraded,
         MutationKind::ImportFromCaddyfile => AuditEvent::ImportCaddyfile,
+        // Dead in Phase 4 — Rollback returns Forbidden before reaching apply_variant.
+        // Phase 7 will wire the snapshot resolver and make this arm live.
         MutationKind::Rollback => AuditEvent::ConfigRolledBack,
     }
 }
@@ -610,7 +612,7 @@ mod tests {
         };
         let outcome = apply_mutation(&state, &mutation, &full_caps()).unwrap();
         assert!(outcome.new_state.routes.contains_key(&route.id));
-        assert_eq!(outcome.kind, AuditEvent::MutationApplied);
+        assert_eq!(outcome.audit_event, AuditEvent::MutationApplied);
     }
 
     #[test]
@@ -806,7 +808,7 @@ mod tests {
             updated.policy_attachment.as_ref().unwrap().preset_version,
             3
         );
-        assert_eq!(outcome.kind, AuditEvent::PolicyPresetUpgraded);
+        assert_eq!(outcome.audit_event, AuditEvent::PolicyPresetUpgraded);
     }
 
     #[test]
@@ -849,7 +851,7 @@ mod tests {
         };
         let outcome = apply_mutation(&state, &mutation, &full_caps()).unwrap();
         assert!(outcome.new_state.upstreams.contains_key(&upstream.id));
-        assert_eq!(outcome.kind, AuditEvent::MutationApplied);
+        assert_eq!(outcome.audit_event, AuditEvent::MutationApplied);
     }
 
     #[test]
@@ -882,6 +884,6 @@ mod tests {
             route.policy_attachment.as_ref().unwrap().preset_id,
             preset_id
         );
-        assert_eq!(outcome.kind, AuditEvent::PolicyPresetAttached);
+        assert_eq!(outcome.audit_event, AuditEvent::PolicyPresetAttached);
     }
 }

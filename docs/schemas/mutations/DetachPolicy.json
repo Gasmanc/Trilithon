@@ -3,6 +3,5 @@
   "$ref": "Mutation.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Remove any policy attachment from a route.",
-  "title": "DetachPolicy",
-  "x-variant": "DetachPolicy"
+  "title": "DetachPolicy"
 }

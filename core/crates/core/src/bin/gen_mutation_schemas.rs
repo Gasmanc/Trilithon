@@ -81,7 +81,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // $ref points to the root schema file directly (no fragment — the root
         // schema object IS the full union, not a definitions sub-key).
         stub.insert("$ref", Value::String("Mutation.json".to_owned()));
-        stub.insert("x-variant", Value::String((*variant).to_owned()));
 
         let mut json = serde_json::to_string_pretty(&stub)?;
         json.push('\n');

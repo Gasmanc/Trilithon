@@ -3,6 +3,5 @@
   "$ref": "Mutation.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Apply a partial update to an existing upstream.",
-  "title": "UpdateUpstream",
-  "x-variant": "UpdateUpstream"
+  "title": "UpdateUpstream"
 }

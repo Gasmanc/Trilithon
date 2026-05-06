@@ -35,7 +35,6 @@ use crate::model::{
 /// Fields using dual-state: `hostnames`, `upstreams`, `matchers`, `headers`, `enabled`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[allow(clippy::option_option)]
 pub struct RoutePatch {
     /// New hostnames for the route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -54,6 +53,8 @@ pub struct RoutePatch {
     pub headers: Option<HeaderRules>,
 
     /// New or cleared redirect rule. `Some(None)` clears any redirect.
+    #[allow(clippy::option_option)]
+    // zd:TRIPLE-STATE-PATCH expires:2026-12-31 reason:Option<Option<T>> is the documented triple-state pattern for clearable fields
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -62,6 +63,8 @@ pub struct RoutePatch {
     pub redirects: Option<Option<RedirectRule>>,
 
     /// New or cleared policy attachment. `Some(None)` clears any attachment.
+    #[allow(clippy::option_option)]
+    // zd:TRIPLE-STATE-PATCH expires:2026-12-31 reason:Option<Option<T>> is the documented triple-state pattern for clearable fields
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -82,7 +85,6 @@ pub struct RoutePatch {
 /// - `Some(Some(value))` = set to value
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[allow(clippy::option_option)]
 pub struct UpstreamPatch {
     /// New destination for the upstream.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,6 +99,8 @@ pub struct UpstreamPatch {
     pub weight: Option<u16>,
 
     /// New or cleared max request bytes. `Some(None)` clears the limit.
+    #[allow(clippy::option_option)]
+    // zd:TRIPLE-STATE-PATCH expires:2026-12-31 reason:Option<Option<T>> is the documented triple-state pattern for clearable fields
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

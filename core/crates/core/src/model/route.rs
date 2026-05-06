@@ -66,6 +66,9 @@ pub enum HostnameError {
     /// The input string was empty.
     #[error("hostname is empty")]
     Empty,
+    /// A label is empty (consecutive dots, or leading/trailing dot).
+    #[error("hostname contains an empty label (consecutive dots or leading/trailing dot)")]
+    EmptyLabel,
     /// A label starts or ends with a hyphen.
     #[error("hostname label {label} starts or ends with hyphen")]
     HyphenBoundary {
@@ -147,7 +150,10 @@ fn validate_labels(s: &str) -> Result<(), HostnameError> {
     }
 
     for label in s.split('.') {
-        if label.is_empty() || label.starts_with('-') || label.ends_with('-') {
+        if label.is_empty() {
+            return Err(HostnameError::EmptyLabel);
+        }
+        if label.starts_with('-') || label.ends_with('-') {
             return Err(HostnameError::HyphenBoundary {
                 label: label.into(),
             });

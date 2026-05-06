@@ -184,11 +184,14 @@ fn check_route_exists(state: &DesiredState, id: &RouteId) -> Result<(), Mutation
 
 /// Verify that every upstream id in `ids` exists in `state`.
 fn check_upstreams_exist(state: &DesiredState, ids: &[UpstreamId]) -> Result<(), MutationError> {
-    for uid in ids {
+    for (i, uid) in ids.iter().enumerate() {
         if !state.upstreams.contains_key(uid) {
             return Err(MutationError::Validation {
                 rule: ValidationRule::UpstreamReferenceMissing,
-                path: JsonPointer::root().push("route").push("upstreams"),
+                path: JsonPointer::root()
+                    .push("route")
+                    .push("upstreams")
+                    .push(&i.to_string()),
                 hint: format!("upstream '{}' does not exist", uid.as_str()),
             });
         }

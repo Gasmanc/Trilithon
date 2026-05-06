@@ -177,7 +177,7 @@ fn mutation_for_variant(variant: u32, version: i64) -> Mutation {
 
 proptest! {
     #[test]
-    fn idempotency_on_mutation_id(version in 0_i64..=100_i64, variant in 0_u32..4) {
+    fn apply_mutation_is_deterministic(version in 0_i64..=100_i64, variant in 0_u32..4) {
         let state = DesiredState {
             version,
             ..DesiredState::default()

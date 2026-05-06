@@ -11,7 +11,7 @@ pub struct MutationOutcome {
     /// Structural diff between the previous and new desired state.
     pub diff: Diff,
     /// Audit event kind that describes this mutation.
-    pub kind: AuditEvent,
+    pub audit_event: AuditEvent,
 }
 
 /// Structural diff between two [`DesiredState`] snapshots.
@@ -61,10 +61,10 @@ mod tests {
         let outcome = MutationOutcome {
             new_state: state.clone(),
             diff: diff.clone(),
-            kind: AuditEvent::MutationApplied,
+            audit_event: AuditEvent::MutationApplied,
         };
         assert_eq!(outcome.new_state, state);
         assert_eq!(outcome.diff, diff);
-        assert_eq!(outcome.kind, AuditEvent::MutationApplied);
+        assert_eq!(outcome.audit_event, AuditEvent::MutationApplied);
     }
 }

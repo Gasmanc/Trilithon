@@ -3,6 +3,5 @@
   "$ref": "Mutation.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Merge routes and upstreams parsed from a Caddyfile.",
-  "title": "ImportFromCaddyfile",
-  "x-variant": "ImportFromCaddyfile"
+  "title": "ImportFromCaddyfile"
 }

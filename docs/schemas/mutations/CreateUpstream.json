@@ -3,6 +3,5 @@
   "$ref": "Mutation.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Create a new upstream.",
-  "title": "CreateUpstream",
-  "x-variant": "CreateUpstream"
+  "title": "CreateUpstream"
 }
