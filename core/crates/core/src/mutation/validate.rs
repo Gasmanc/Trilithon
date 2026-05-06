@@ -24,8 +24,10 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
             check_upstreams_exist(state, &route.upstreams)?;
             check_hostnames_valid(&route.hostnames)?;
             check_matchers_valid(&route.matchers)?;
+            check_route_has_destination(&route.upstreams, route.redirects.as_ref())?;
             if let Some(redirect) = &route.redirects {
                 check_redirect_url(&redirect.to)?;
+                check_redirect_status(redirect.status)?;
             }
             Ok(())
         }
@@ -134,8 +136,10 @@ fn check_import_caddyfile(
         }
         check_hostnames_valid(&route.hostnames)?;
         check_matchers_valid(&route.matchers)?;
+        check_route_has_destination(&route.upstreams, route.redirects.as_ref())?;
         if let Some(redirect) = &route.redirects {
             check_redirect_url(&redirect.to)?;
+            check_redirect_status(redirect.status)?;
         }
         // Check upstreams against both state and those introduced in this import.
         for uid in &route.upstreams {
@@ -230,6 +234,7 @@ fn check_update_route(
     }
     if let Some(Some(redirect)) = &patch.redirects {
         check_redirect_url(&redirect.to)?;
+        check_redirect_status(redirect.status)?;
     }
     Ok(())
 }
@@ -505,4 +510,38 @@ fn parse_cidr(cidr: &str) -> Result<(), String> {
     Err(format!(
         "'{addr_part}' is not a valid IPv4 or IPv6 address in '{cidr}'"
     ))
+}
+
+/// Reject routes that have no upstream and no redirect — a black-hole route
+/// matches traffic but has no configured handler, producing an opaque Caddy error.
+fn check_route_has_destination(
+    upstreams: &[crate::model::identifiers::UpstreamId],
+    redirects: Option<&crate::model::redirect::RedirectRule>,
+) -> Result<(), MutationError> {
+    if upstreams.is_empty() && redirects.is_none() {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::NoOpMutation,
+            path: JsonPointer::root(),
+            hint: "route must have at least one upstream or a redirect rule".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// Valid HTTP redirect status codes.
+const VALID_REDIRECT_STATUSES: &[u16] = &[300, 301, 302, 303, 307, 308];
+
+/// Validate that a redirect status code is a recognised HTTP redirect code.
+fn check_redirect_status(status: u16) -> Result<(), MutationError> {
+    if !VALID_REDIRECT_STATUSES.contains(&status) {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::RedirectUrlInvalid,
+            path: JsonPointer::root().push("redirects").push("status"),
+            hint: format!(
+                "redirect status {status} is not a valid HTTP redirect code; \
+                 accepted values are 300, 301, 302, 303, 307, 308"
+            ),
+        });
+    }
+    Ok(())
 }

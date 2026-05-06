@@ -60,6 +60,10 @@ pub fn apply_mutation(
         })?;
 
     // 5. State application + diff building.
+    debug_assert!(
+        new_state.version == state.version + 1,
+        "apply_mutation post-condition violated: version must increment by exactly 1"
+    );
     let changes = apply_variant(state, &mut new_state, mutation)?;
 
     // 6. Audit kind selection.
@@ -382,23 +386,23 @@ fn apply_route_patch(
         .get_mut(id)
         .ok_or_else(|| missing_route_error(id.as_str()))?;
 
-    if let Some(hostnames) = route_patch.hostnames.clone() {
-        route.hostnames = hostnames;
+    if let Some(hostnames) = &route_patch.hostnames {
+        route.hostnames.clone_from(hostnames);
     }
-    if let Some(upstreams) = route_patch.upstreams.clone() {
-        route.upstreams = upstreams;
+    if let Some(upstreams) = &route_patch.upstreams {
+        route.upstreams.clone_from(upstreams);
     }
-    if let Some(matchers) = route_patch.matchers.clone() {
-        route.matchers = matchers;
+    if let Some(matchers) = &route_patch.matchers {
+        route.matchers.clone_from(matchers);
     }
-    if let Some(headers) = route_patch.headers.clone() {
-        route.headers = headers;
+    if let Some(headers) = &route_patch.headers {
+        route.headers.clone_from(headers);
     }
-    if let Some(redirects) = route_patch.redirects.clone() {
-        route.redirects = redirects;
+    if let Some(redirects) = &route_patch.redirects {
+        route.redirects.clone_from(redirects);
     }
-    if let Some(policy_attachment) = route_patch.policy_attachment.clone() {
-        route.policy_attachment = policy_attachment;
+    if let Some(policy_attachment) = &route_patch.policy_attachment {
+        route.policy_attachment.clone_from(policy_attachment);
     }
     if let Some(enabled) = route_patch.enabled {
         route.enabled = enabled;
@@ -427,11 +431,11 @@ fn apply_upstream_patch(
         .get_mut(id)
         .ok_or_else(|| missing_upstream_error(id.as_str()))?;
 
-    if let Some(destination) = upstream_patch.destination.clone() {
-        upstream.destination = destination;
+    if let Some(destination) = &upstream_patch.destination {
+        upstream.destination.clone_from(destination);
     }
-    if let Some(probe) = upstream_patch.probe.clone() {
-        upstream.probe = probe;
+    if let Some(probe) = &upstream_patch.probe {
+        upstream.probe.clone_from(probe);
     }
     if let Some(weight) = upstream_patch.weight {
         upstream.weight = weight;
@@ -575,7 +579,10 @@ mod tests {
             upstreams: vec![],
             matchers: MatcherSet::default(),
             headers: HeaderRules::default(),
-            redirects: None,
+            redirects: Some(crate::model::redirect::RedirectRule {
+                to: "https://example.com".to_owned(),
+                status: 301,
+            }),
             policy_attachment: None,
             enabled: true,
             created_at: 0,
@@ -599,7 +606,7 @@ mod tests {
             expected_version: 0,
             route: route.clone(),
         };
-        let outcome = apply_mutation(&state, &mutation, &empty_caps()).unwrap();
+        let outcome = apply_mutation(&state, &mutation, &full_caps()).unwrap();
         assert!(outcome.new_state.routes.contains_key(&route.id));
         assert_eq!(outcome.kind, AuditEvent::MutationApplied);
     }
@@ -826,7 +833,7 @@ mod tests {
             expected_version: 7,
             route: minimal_route("route-8"),
         };
-        let outcome = apply_mutation(&state, &mutation, &empty_caps()).unwrap();
+        let outcome = apply_mutation(&state, &mutation, &full_caps()).unwrap();
         assert_eq!(outcome.new_state.version, 8);
     }
 

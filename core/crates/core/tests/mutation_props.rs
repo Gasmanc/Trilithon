@@ -23,6 +23,7 @@ use trilithon_core::model::global::GlobalConfigPatch;
 use trilithon_core::model::header::HeaderRules;
 use trilithon_core::model::identifiers::{RouteId, UpstreamId};
 use trilithon_core::model::matcher::MatcherSet;
+use trilithon_core::model::redirect::RedirectRule;
 use trilithon_core::model::route::Route;
 use trilithon_core::model::tls::TlsConfigPatch;
 use trilithon_core::model::upstream::{Upstream, UpstreamDestination, UpstreamProbe};
@@ -42,7 +43,10 @@ fn minimal_route(id: RouteId, ts: UnixSeconds) -> Route {
         upstreams: vec![],
         matchers: MatcherSet::default(),
         headers: HeaderRules::default(),
-        redirects: None,
+        redirects: Some(RedirectRule {
+            to: "https://example.com".to_owned(),
+            status: 301,
+        }),
         policy_attachment: None,
         enabled: true,
         created_at: ts,
@@ -133,6 +137,16 @@ fn tls_caps() -> CapabilitySet {
     }
 }
 
+/// A `CapabilitySet` with `http.handlers.static_response` — required for
+/// `CreateRoute` mutations that include a redirect rule.
+fn static_response_caps() -> CapabilitySet {
+    CapabilitySet {
+        loaded_modules: BTreeSet::from(["http.handlers.static_response".to_owned()]),
+        caddy_version: "v2.8.4".to_owned(),
+        probed_at: 0,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Proptest strategies
 // ---------------------------------------------------------------------------
@@ -140,8 +154,9 @@ fn tls_caps() -> CapabilitySet {
 /// Return the `CapabilitySet` required for a given mutation variant index.
 fn caps_for_variant(variant: u32) -> CapabilitySet {
     match variant {
-        1 => proxy_caps(), // CreateUpstream needs reverse_proxy
-        3 => tls_caps(),   // SetTlsConfig needs tls
+        0 => static_response_caps(), // CreateRoute with redirect needs static_response
+        1 => proxy_caps(),           // CreateUpstream needs reverse_proxy
+        3 => tls_caps(),             // SetTlsConfig needs tls
         _ => empty_caps(),
     }
 }
@@ -199,7 +214,7 @@ proptest! {
             version,
             ..DesiredState::default()
         };
-        let caps = empty_caps();
+        let caps = static_response_caps();
 
         // Two CreateRoute mutations with different RouteIds.
         let id_a = RouteId::new();
