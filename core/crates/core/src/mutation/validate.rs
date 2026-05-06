@@ -76,8 +76,19 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
 
         Mutation::ImportFromCaddyfile { parsed, .. } => check_import_caddyfile(state, parsed),
 
-        // No pre-condition failures for these variants.
-        Mutation::SetGlobalConfig { .. } | Mutation::SetTlsConfig { .. } => Ok(()),
+        Mutation::SetGlobalConfig { patch, .. } => {
+            if patch.is_noop() {
+                return Err(MutationError::Validation {
+                    rule: ValidationRule::NoOpMutation,
+                    path: JsonPointer::root().push("patch"),
+                    hint: "all patch fields are None — mutation would make no change".to_owned(),
+                });
+            }
+            Ok(())
+        }
+
+        // SetTlsConfig: no pre-condition failures beyond schema validation.
+        Mutation::SetTlsConfig { .. } => Ok(()),
     }
 }
 

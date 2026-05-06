@@ -5,7 +5,7 @@
 //! full discriminated union.
 //!
 //! Run via:
-//!   `cargo run -p trilithon-core --bin gen_mutation_schemas`
+//!   `cargo run -p trilithon-core --features schema --bin gen_mutation_schemas`
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -70,12 +70,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "$schema",
             Value::String("http://json-schema.org/draft-07/schema#".to_owned()),
         );
+        stub.insert(
+            "$id",
+            Value::String(format!(
+                "https://trilithon.internal/schemas/mutations/{variant}.json"
+            )),
+        );
         stub.insert("title", Value::String((*variant).to_owned()));
         stub.insert("description", Value::String((*description).to_owned()));
-        stub.insert(
-            "$ref",
-            Value::String("Mutation.json#/definitions/Mutation".to_owned()),
-        );
+        // $ref points to the root schema file directly (no fragment — the root
+        // schema object IS the full union, not a definitions sub-key).
+        stub.insert("$ref", Value::String("Mutation.json".to_owned()));
         stub.insert("x-variant", Value::String((*variant).to_owned()));
 
         let mut json = serde_json::to_string_pretty(&stub)?;
@@ -92,9 +97,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() {
-    if let Err(e) = run() {
-        eprintln!("gen_mutation_schemas failed: {e}");
-        std::process::exit(1);
-    }
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    run()
 }

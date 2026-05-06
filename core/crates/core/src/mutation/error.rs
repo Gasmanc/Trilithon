@@ -73,6 +73,8 @@ pub enum ValidationRule {
     PolicyAttachmentMissing,
     /// The upstream being deleted is still referenced by one or more routes.
     UpstreamStillReferenced,
+    /// Every field in a patch is `None`, so the mutation would make no change.
+    NoOpMutation,
 }
 
 /// Kinds of schema violations.

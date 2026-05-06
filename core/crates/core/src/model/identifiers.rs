@@ -30,18 +30,8 @@ macro_rules! id_newtype {
         #[doc = "Values produced by [`Self::new()`] are ULID-format (26 chars, `[0-9A-Z]`)."]
         #[doc = "Values received via deserialization are not validated — use"]
         #[doc = "`TryFrom<String>` when ULID format must be enforced at a trust boundary."]
-        #[derive(
-            Debug,
-            Clone,
-            PartialEq,
-            Eq,
-            Hash,
-            PartialOrd,
-            Ord,
-            Serialize,
-            Deserialize,
-            schemars::JsonSchema,
-        )]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+        #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
         pub struct $name(pub String);
 
         impl $name {

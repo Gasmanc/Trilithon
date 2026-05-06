@@ -4,17 +4,19 @@
 //! the `gen_mutation_schemas` binary can locate it at runtime.
 
 fn main() {
-    // Emit the path to the workspace-level schema directory.
-    // CARGO_MANIFEST_DIR points to `core/crates/core/`; we go up three levels
-    // to reach the project root, then into `docs/schemas/mutations/`.
-    //
-    // CARGO_MANIFEST_DIR is always set by cargo when running a build script.
-    // We use `var_os` to avoid panicking via `expect`.
+    // Compute the workspace root from CARGO_MANIFEST_DIR (core/crates/core/ → root).
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
-        let manifest_dir = manifest_dir.to_string_lossy();
-        println!(
-            "cargo:rustc-env=TRILITHON_SCHEMA_DIR={manifest_dir}/../../../docs/schemas/mutations"
-        );
+        // CARGO_MANIFEST_DIR = core/crates/core/; nth(3) steps up to the repo root.
+        if let Some(workspace_root) = std::path::Path::new(&manifest_dir).ancestors().nth(3) {
+            let schema_dir = workspace_root.join("docs/schemas/mutations");
+            println!(
+                "cargo:rustc-env=TRILITHON_SCHEMA_DIR={}",
+                schema_dir.display()
+            );
+            // Re-run when schema files change so incremental builds detect drift
+            // without requiring a full `just check` invocation.
+            println!("cargo:rerun-if-changed={}", schema_dir.display());
+        }
     }
     println!("cargo:rerun-if-changed=build.rs");
 }

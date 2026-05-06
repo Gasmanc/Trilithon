@@ -38,9 +38,8 @@ pub type UnixSeconds = i64;
 /// JSON Pointer as defined by RFC 6901.
 ///
 /// Represents a reference to a specific value within a JSON document.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct JsonPointer(pub String);
 
 impl JsonPointer {
@@ -89,9 +88,8 @@ impl AsRef<str> for JsonPointer {
 /// Caddy module identifier.
 ///
 /// Represents a module name in Caddy's module ecosystem.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CaddyModule(pub String);
 
 impl CaddyModule {

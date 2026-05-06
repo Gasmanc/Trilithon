@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 /// A set of conditions that a request must match for a route to apply.
 ///
 /// All non-empty fields are AND-combined. An empty `MatcherSet` matches everything.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct MatcherSet {
     /// Path prefix or exact patterns.
     pub paths: Vec<PathMatcher>,
@@ -20,11 +21,13 @@ pub struct MatcherSet {
 }
 
 /// Matches a request path (exact or prefix).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PathMatcher(pub String);
 
 /// HTTP request methods supported for matching.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     /// HTTP GET
@@ -44,7 +47,8 @@ pub enum HttpMethod {
 }
 
 /// Matches a query parameter by key, and optionally by value.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct QueryMatcher {
     /// Query parameter name.
     pub key: String,
@@ -53,7 +57,8 @@ pub struct QueryMatcher {
 }
 
 /// Matches a request header by name, and optionally by value.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct HeaderMatcher {
     /// Header name (case-insensitive per HTTP spec).
     pub name: String,
@@ -62,7 +67,8 @@ pub struct HeaderMatcher {
 }
 
 /// Matches a remote IP address against a CIDR range (IPv4 or IPv6).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CidrMatcher(pub String);
 
 #[cfg(test)]

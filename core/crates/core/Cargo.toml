@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+schema = ["dep:schemars"]
+
 [dependencies]
 thiserror = { workspace = true }
 serde = { workspace = true }
@@ -12,7 +15,12 @@ url = { workspace = true }
 async-trait = { workspace = true }
 sha2 = { workspace = true }
 ulid = { workspace = true }
-schemars = "0.8"
+schemars = { version = "0.8", optional = true }
+
+[[bin]]
+name = "gen_mutation_schemas"
+path = "src/bin/gen_mutation_schemas.rs"
+required-features = ["schema"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

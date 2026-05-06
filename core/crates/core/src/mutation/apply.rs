@@ -282,6 +282,9 @@ fn apply_set_global_config(
         new_state.global.log_level.clone_from(log_level);
     }
     let after = to_json(&new_state.global);
+    if before == after {
+        return vec![];
+    }
     vec![DiffChange {
         path: pointer,
         before,
@@ -312,6 +315,9 @@ fn apply_set_tls_config(
         new_state.tls.default_issuer.clone_from(default_issuer);
     }
     let after = to_json(&new_state.tls);
+    if before == after {
+        return vec![];
+    }
     vec![DiffChange {
         path: pointer,
         before,
@@ -319,35 +325,41 @@ fn apply_set_tls_config(
     }]
 }
 
+/// Apply an import batch, emitting one [`DiffChange`] per inserted entity.
+///
+/// Collision policy: duplicate IDs are rejected by [`pre_conditions`] before
+/// this function is called, so every insertion here is guaranteed to be a new
+/// entity (`before: None`).
 fn apply_import_caddyfile(
     new_state: &mut DesiredState,
     parsed: &crate::mutation::patches::ParsedCaddyfile,
 ) -> Vec<DiffChange> {
-    let root = JsonPointer::root();
-    let before_routes = to_json(&new_state.routes);
-    let before_upstreams = to_json(&new_state.upstreams);
-    for route in &parsed.routes {
-        new_state.routes.insert(route.id.clone(), route.clone());
-    }
+    let mut diffs = Vec::with_capacity(parsed.upstreams.len() + parsed.routes.len());
     for upstream in &parsed.upstreams {
+        let pointer = JsonPointer::root()
+            .push("upstreams")
+            .push(upstream.id.as_str());
+        let after = to_json(upstream);
         new_state
             .upstreams
             .insert(upstream.id.clone(), upstream.clone());
+        diffs.push(DiffChange {
+            path: pointer,
+            before: None,
+            after,
+        });
     }
-    let after_routes = to_json(&new_state.routes);
-    let after_upstreams = to_json(&new_state.upstreams);
-    vec![
-        DiffChange {
-            path: root.push("routes"),
-            before: before_routes,
-            after: after_routes,
-        },
-        DiffChange {
-            path: root.push("upstreams"),
-            before: before_upstreams,
-            after: after_upstreams,
-        },
-    ]
+    for route in &parsed.routes {
+        let pointer = JsonPointer::root().push("routes").push(route.id.as_str());
+        let after = to_json(route);
+        new_state.routes.insert(route.id.clone(), route.clone());
+        diffs.push(DiffChange {
+            path: pointer,
+            before: None,
+            after,
+        });
+    }
+    diffs
 }
 
 /// Apply a [`RoutePatch`] to the route identified by `id` in `new_state`.

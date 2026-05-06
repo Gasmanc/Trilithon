@@ -28,19 +28,23 @@ pub enum StorageAuditEvent {
 pub use crate::model::primitive::UnixSeconds;
 
 /// Content-addressed snapshot identifier — SHA-256 hex, 64 chars.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SnapshotId(pub String);
 
 /// ULID-based identifier for an audit log row.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct AuditRowId(pub String);
 
 /// ULID-based identifier for a proposal row.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ProposalId(pub String);
 
 /// ULID-based identifier for a drift event row.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DriftRowId(pub String);
 
 /// Immutable, content-addressed snapshot of desired state.

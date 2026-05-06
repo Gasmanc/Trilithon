@@ -1,5 +1,6 @@
 {
-  "$ref": "Mutation.json#/definitions/Mutation",
+  "$id": "https://trilithon.internal/schemas/mutations/UpgradePolicy.json",
+  "$ref": "Mutation.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Upgrade an attached policy to a newer preset version.",
   "title": "UpgradePolicy",

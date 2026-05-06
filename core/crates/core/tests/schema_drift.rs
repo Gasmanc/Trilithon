@@ -3,7 +3,7 @@
 //!
 //! If this test fails it means the Mutation types changed but the schema files
 //! were not regenerated. Fix by running:
-//!   `cargo run -p trilithon-core --bin gen_mutation_schemas`
+//!   `cargo run -p trilithon-core --features schema --bin gen_mutation_schemas`
 
 #![allow(clippy::expect_used, clippy::disallowed_methods)]
 // reason: test-only code; panics are the correct failure mode in tests
@@ -17,12 +17,14 @@ fn schemas_match_committed() {
         .nth(3) // core/crates/core → core/crates → core → workspace root
         .expect("workspace root must be reachable from CARGO_MANIFEST_DIR");
 
-    // Run the schema generator.
+    // Run the schema generator (requires the `schema` feature for schemars derives).
     let gen_status = std::process::Command::new("cargo")
         .args([
             "run",
             "-p",
             "trilithon-core",
+            "--features",
+            "schema",
             "--bin",
             "gen_mutation_schemas",
         ])
@@ -45,6 +47,6 @@ fn schemas_match_committed() {
     assert!(
         diff_status.success(),
         "Schema files have drifted from the committed versions. \
-         Run `cargo run -p trilithon-core --bin gen_mutation_schemas` and commit the result."
+         Run `cargo run -p trilithon-core --features schema --bin gen_mutation_schemas` and commit the result."
     );
 }

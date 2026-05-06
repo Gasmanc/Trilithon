@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::identifiers::PresetId;
 
 /// A snapshot of a policy preset at a specific version.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PresetVersion {
     /// Identifier of the preset.
     pub preset_id: PresetId,
@@ -19,7 +20,8 @@ pub struct PresetVersion {
 ///
 /// Phase 18 supplies the resolved-attachment shape. For Phase 4 the
 /// attachment is the `(preset_id, version)` pair held alongside the route.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PolicyAttachment {
     /// Identifier of the attached preset.
     pub preset_id: PresetId,

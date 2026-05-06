@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::primitive::double_option;
 
 /// Global proxy configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct GlobalConfig {
     /// Address the Caddy admin API listens on.
     pub admin_listen: Option<String>,
@@ -23,7 +24,8 @@ pub struct GlobalConfig {
 /// - outer `Some(Some(v))` — set to `v`
 // The three-state patch pattern requires Option<Option<T>> by design.
 #[allow(clippy::option_option)] // zd:patch-triple-state expires:2027-01-01 reason:intentional absent/clear/set distinction
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct GlobalConfigPatch {
     /// Set, clear, or leave unchanged the admin listen address.
     #[serde(
@@ -48,6 +50,14 @@ pub struct GlobalConfigPatch {
     pub log_level: Option<Option<String>>,
 }
 
+impl GlobalConfigPatch {
+    /// Returns `true` when every field is `None` — the patch would make no change.
+    #[must_use]
+    pub const fn is_noop(&self) -> bool {
+        self.admin_listen.is_none() && self.default_sni.is_none() && self.log_level.is_none()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,5 +68,10 @@ mod tests {
         assert!(patch.admin_listen.is_none());
         assert!(patch.default_sni.is_none());
         assert!(patch.log_level.is_none());
+    }
+
+    #[test]
+    fn patch_default_is_noop() {
+        assert!(GlobalConfigPatch::default().is_noop());
     }
 }
