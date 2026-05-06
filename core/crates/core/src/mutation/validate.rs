@@ -23,6 +23,10 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
             check_route_id_unused(state, &route.id)?;
             check_upstreams_exist(state, &route.upstreams)?;
             check_hostnames_valid(&route.hostnames)?;
+            check_matchers_valid(&route.matchers)?;
+            if let Some(redirect) = &route.redirects {
+                check_redirect_url(&redirect.to)?;
+            }
             Ok(())
         }
 
@@ -87,8 +91,12 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
             Ok(())
         }
 
-        // SetTlsConfig: no pre-condition failures beyond schema validation.
-        Mutation::SetTlsConfig { .. } => Ok(()),
+        Mutation::SetTlsConfig { patch, .. } => {
+            if let Some(Some(ask_url)) = &patch.on_demand_ask_url {
+                check_on_demand_ask_url(ask_url)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -125,6 +133,10 @@ fn check_import_caddyfile(
             });
         }
         check_hostnames_valid(&route.hostnames)?;
+        check_matchers_valid(&route.matchers)?;
+        if let Some(redirect) = &route.redirects {
+            check_redirect_url(&redirect.to)?;
+        }
         // Check upstreams against both state and those introduced in this import.
         for uid in &route.upstreams {
             if !state.upstreams.contains_key(uid) && !seen_upstream_ids.contains(uid) {
@@ -213,6 +225,12 @@ fn check_update_route(
     if let Some(hostnames) = &patch.hostnames {
         check_hostnames_valid(hostnames)?;
     }
+    if let Some(matchers) = &patch.matchers {
+        check_matchers_valid(matchers)?;
+    }
+    if let Some(Some(redirect)) = &patch.redirects {
+        check_redirect_url(&redirect.to)?;
+    }
     Ok(())
 }
 
@@ -223,6 +241,13 @@ fn check_attach_policy(
     preset_id: &PresetId,
     preset_version: u32,
 ) -> Result<(), MutationError> {
+    if preset_version == 0 {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::PolicyPresetVersionZero,
+            path: JsonPointer::root().push("preset_version"),
+            hint: "preset versions start at 1; version 0 is reserved".to_owned(),
+        });
+    }
     check_route_exists(state, route_id)?;
     match state.presets.get(preset_id) {
         None => Err(MutationError::Validation {
@@ -231,7 +256,7 @@ fn check_attach_policy(
             hint: "policy preset does not exist".to_owned(),
         }),
         Some(pv) if pv.version != preset_version => Err(MutationError::Validation {
-            rule: ValidationRule::PolicyPresetMissing,
+            rule: ValidationRule::PolicyPresetVersionMismatch,
             path: JsonPointer::root().push("preset_version"),
             hint: format!(
                 "preset version {preset_version} not available; current version is {}",
@@ -244,16 +269,20 @@ fn check_attach_policy(
 
 /// Pre-conditions for [`Mutation::DetachPolicy`].
 fn check_detach_policy(state: &DesiredState, route_id: &RouteId) -> Result<(), MutationError> {
-    check_route_exists(state, route_id)?;
-    // Safe: check_route_exists guarantees the key is present.
-    if let Some(route) = state.routes.get(route_id) {
-        if route.policy_attachment.is_none() {
-            return Err(MutationError::Validation {
-                rule: ValidationRule::PolicyAttachmentMissing,
-                path: JsonPointer::root().push("route_id"),
-                hint: "route does not carry a policy attachment".to_owned(),
-            });
-        }
+    // Single lookup: the missing-route guard and the attachment check share one get.
+    let Some(route) = state.routes.get(route_id) else {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::RouteMissing,
+            path: JsonPointer::root().push("id"),
+            hint: "route does not exist".to_owned(),
+        });
+    };
+    if route.policy_attachment.is_none() {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::PolicyAttachmentMissing,
+            path: JsonPointer::root().push("route_id"),
+            hint: "route does not carry a policy attachment".to_owned(),
+        });
     }
     Ok(())
 }
@@ -264,15 +293,14 @@ fn check_upgrade_policy(
     route_id: &RouteId,
     to_version: u32,
 ) -> Result<(), MutationError> {
-    check_route_exists(state, route_id)?;
-    let route = state
-        .routes
-        .get(route_id)
-        .ok_or_else(|| MutationError::Validation {
+    // Single lookup: eliminates the redundant get after check_route_exists.
+    let Some(route) = state.routes.get(route_id) else {
+        return Err(MutationError::Validation {
             rule: ValidationRule::RouteMissing,
             path: JsonPointer::root().push("id"),
             hint: "route does not exist".to_owned(),
-        })?;
+        });
+    };
     let attachment = route
         .policy_attachment
         .as_ref()
@@ -292,7 +320,7 @@ fn check_upgrade_policy(
         }
         Some(pv) if pv.version != to_version => {
             return Err(MutationError::Validation {
-                rule: ValidationRule::PolicyPresetMissing,
+                rule: ValidationRule::PolicyPresetVersionMismatch,
                 path: JsonPointer::root().push("to_version"),
                 hint: format!(
                     "preset version {to_version} not available; current version is {}",
@@ -337,4 +365,144 @@ fn check_delete_upstream(state: &DesiredState, id: &UpstreamId) -> Result<(), Mu
         }
     }
     Ok(())
+}
+
+/// Validate a redirect target URL — only http/https schemes are accepted.
+fn check_redirect_url(url: &str) -> Result<(), MutationError> {
+    match url::Url::parse(url) {
+        Ok(parsed) if parsed.scheme() == "http" || parsed.scheme() == "https" => Ok(()),
+        Ok(parsed) => Err(MutationError::Validation {
+            rule: ValidationRule::RedirectUrlInvalid,
+            path: JsonPointer::root().push("redirects").push("to"),
+            hint: format!(
+                "redirect URL scheme '{}' is not allowed; only http and https are accepted",
+                parsed.scheme()
+            ),
+        }),
+        Err(_) => Err(MutationError::Validation {
+            rule: ValidationRule::RedirectUrlInvalid,
+            path: JsonPointer::root().push("redirects").push("to"),
+            hint: format!("redirect URL '{url}' is not a valid URL"),
+        }),
+    }
+}
+
+/// Validate the on-demand TLS ask URL — must be https and must not target
+/// loopback or RFC 1918 addresses (SSRF guard).
+fn check_on_demand_ask_url(url: &str) -> Result<(), MutationError> {
+    let parsed = url::Url::parse(url).map_err(|_| MutationError::Validation {
+        rule: ValidationRule::OnDemandAskUrlInvalid,
+        path: JsonPointer::root().push("on_demand_ask_url"),
+        hint: format!("on-demand ask URL '{url}' is not a valid URL"),
+    })?;
+
+    if parsed.scheme() != "https" {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::OnDemandAskUrlInvalid,
+            path: JsonPointer::root().push("on_demand_ask_url"),
+            hint: format!(
+                "on-demand ask URL must use https; got '{}'",
+                parsed.scheme()
+            ),
+        });
+    }
+
+    if let Some(host) = parsed.host_str() {
+        if is_loopback_or_private(host) {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::OnDemandAskUrlInvalid,
+                path: JsonPointer::root().push("on_demand_ask_url"),
+                hint: format!(
+                    "on-demand ask URL must not target a loopback or private address; got '{host}'"
+                ),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Returns `true` if `host` resolves to a loopback or RFC 1918 / RFC 4193
+/// address — used to block SSRF in on-demand TLS ask URLs.
+fn is_loopback_or_private(host: &str) -> bool {
+    use std::net::IpAddr;
+
+    // Try to parse directly as an IP first.
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return match ip {
+            IpAddr::V4(v4) => v4.is_loopback() || is_private_v4(v4),
+            IpAddr::V6(v6) => v6.is_loopback() || is_private_v6(v6),
+        };
+    }
+
+    // Known loopback hostnames.
+    matches!(host, "localhost" | "ip6-localhost" | "ip6-loopback")
+}
+
+fn is_private_v4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    // 10.0.0.0/8
+    octets[0] == 10
+        // 172.16.0.0/12
+        || (octets[0] == 172 && (16..=31).contains(&octets[1]))
+        // 192.168.0.0/16
+        || (octets[0] == 192 && octets[1] == 168)
+}
+
+const fn is_private_v6(ip: std::net::Ipv6Addr) -> bool {
+    // fc00::/7 — Unique Local Addresses
+    (ip.segments()[0] & 0xfe00) == 0xfc00
+}
+
+/// Validate that all CIDR matchers in a [`MatcherSet`] contain valid CIDR notation.
+fn check_matchers_valid(matchers: &crate::model::matcher::MatcherSet) -> Result<(), MutationError> {
+    for (i, cidr) in matchers.remote.iter().enumerate() {
+        parse_cidr(&cidr.0).map_err(|e| MutationError::Validation {
+            rule: ValidationRule::CidrInvalid,
+            path: JsonPointer::root()
+                .push("matchers")
+                .push("remote")
+                .push(&i.to_string()),
+            hint: e,
+        })?;
+    }
+    Ok(())
+}
+
+/// Parse and validate a CIDR string.  Returns `Err` with a human-readable
+/// message when the string is not valid IPv4 or IPv6 CIDR notation.
+fn parse_cidr(cidr: &str) -> Result<(), String> {
+    let Some(slash) = cidr.rfind('/') else {
+        return Err(format!(
+            "'{cidr}' is missing a prefix length (expected 'address/prefix')"
+        ));
+    };
+    let (addr_part, prefix_part) = cidr.split_at(slash);
+    let prefix_str = &prefix_part[1..]; // strip the '/'
+
+    let prefix: u8 = prefix_str
+        .parse()
+        .map_err(|_| format!("prefix length '{prefix_str}' is not a valid integer in '{cidr}'"))?;
+
+    if addr_part.parse::<std::net::Ipv4Addr>().is_ok() {
+        if prefix > 32 {
+            return Err(format!(
+                "IPv4 prefix length {prefix} exceeds 32 in '{cidr}'"
+            ));
+        }
+        return Ok(());
+    }
+
+    if addr_part.parse::<std::net::Ipv6Addr>().is_ok() {
+        if prefix > 128 {
+            return Err(format!(
+                "IPv6 prefix length {prefix} exceeds 128 in '{cidr}'"
+            ));
+        }
+        return Ok(());
+    }
+
+    Err(format!(
+        "'{addr_part}' is not a valid IPv4 or IPv6 address in '{cidr}'"
+    ))
 }

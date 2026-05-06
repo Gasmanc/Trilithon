@@ -894,7 +894,7 @@
       "type": "string"
     },
     "RoutePatch": {
-      "description": "Patch to apply to a route.\n\nAll fields follow the `Option<Option<T>>` convention where: - `None` = do not modify - `Some(None)` = clear the field - `Some(Some(value))` = set to value",
+      "description": "Patch to apply to a route.\n\nFields use two different option semantics depending on whether the field is clearable:\n\n**Triple-state (`Option<Option<T>>`)** — for clearable fields: - `None` = do not modify - `Some(None)` = clear the field (removes it) - `Some(Some(value))` = set to value\n\n**Dual-state (`Option<T>`)** — for non-clearable fields: - `None` = do not modify - `Some(value)` = replace with value\n\nFields using triple-state: `redirects`, `policy_attachment`. Fields using dual-state: `hostnames`, `upstreams`, `matchers`, `headers`, `enabled`.",
       "type": "object",
       "properties": {
         "enabled": {

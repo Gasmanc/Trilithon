@@ -47,7 +47,7 @@ pub enum MutationError {
     },
 
     /// The operation is not permitted in the current state.
-    #[error("forbidden: {reason:?}")]
+    #[error("forbidden: {reason}")]
     Forbidden {
         /// Why the operation is forbidden.
         reason: ForbiddenReason,
@@ -75,6 +75,16 @@ pub enum ValidationRule {
     UpstreamStillReferenced,
     /// Every field in a patch is `None`, so the mutation would make no change.
     NoOpMutation,
+    /// A policy preset exists in the registry but not at the requested version.
+    PolicyPresetVersionMismatch,
+    /// A preset version of 0 was supplied; preset versions start at 1.
+    PolicyPresetVersionZero,
+    /// A redirect URL has an invalid or disallowed scheme (only http/https are accepted).
+    RedirectUrlInvalid,
+    /// The on-demand TLS ask URL has an invalid scheme or disallowed destination.
+    OnDemandAskUrlInvalid,
+    /// A CIDR matcher string is not valid CIDR notation.
+    CidrInvalid,
 }
 
 /// Kinds of schema violations.
@@ -99,14 +109,20 @@ pub enum SchemaErrorKind {
 }
 
 /// Reasons a mutation may be forbidden.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ForbiddenReason {
     /// The rollback target snapshot is not known to the store.
+    #[error("rollback target snapshot is not available in the store")]
     RollbackTargetUnknown,
     /// The requested policy change would downgrade the effective security posture.
+    #[error("policy version downgrade is not permitted; use UpgradePolicy to advance versions")]
     PolicyDowngrade,
     /// The route does not have a policy attachment — cannot upgrade a non-existent attachment.
+    #[error("route has no policy attachment; attach a policy with AttachPolicy first")]
     PolicyAttachmentMissing,
+    /// The `DesiredState.version` counter has reached `i64::MAX` and cannot be incremented.
+    #[error("state version counter overflow; version has reached i64::MAX")]
+    VersionOverflow,
 }
 
 #[cfg(test)]

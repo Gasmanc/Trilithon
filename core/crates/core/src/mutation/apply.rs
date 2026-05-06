@@ -50,9 +50,14 @@ pub fn apply_mutation(
     // 3. Schema and pre-conditions.
     validate::pre_conditions(state, mutation)?;
 
-    // 4. Build new state (clone + increment version).
+    // 4. Build new state (clone + increment version, guarding against overflow).
     let mut new_state = state.clone();
-    new_state.version = state.version + 1;
+    new_state.version = state
+        .version
+        .checked_add(1)
+        .ok_or(MutationError::Forbidden {
+            reason: crate::mutation::error::ForbiddenReason::VersionOverflow,
+        })?;
 
     // 5. State application + diff building.
     let changes = apply_variant(state, &mut new_state, mutation)?;
@@ -443,13 +448,18 @@ fn apply_upstream_patch(
     }])
 }
 
-/// Serialize `v` to a [`serde_json::Value`], discarding serialization errors.
+/// Serialize `v` to a [`serde_json::Value`].
 ///
-/// Used throughout the diff-building helpers to snapshot state before/after.
-/// Serialization of well-typed domain models should never fail in practice;
-/// swallowing the error here matches the `Option<Value>` contract on `DiffChange`.
+/// Domain model types (structs/enums with derived `Serialize` and only serde-safe
+/// field types) are infallible in practice. The debug assertion surfaces any
+/// serialization error during development without changing production behavior.
 fn to_json<T: serde::Serialize>(v: &T) -> Option<serde_json::Value> {
-    serde_json::to_value(v).ok()
+    let result = serde_json::to_value(v);
+    debug_assert!(
+        result.is_ok(),
+        "domain model serialization must not fail: {result:?}"
+    );
+    result.ok()
 }
 
 /// Build a `MutationError::Validation` for a missing route.

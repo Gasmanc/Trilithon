@@ -62,6 +62,24 @@ pub fn parse_envelope(bytes: &[u8]) -> Result<MutationEnvelope, EnvelopeError> {
             detail: "missing mutation field".into(),
         })?;
 
+    // Verify the mutation is a JSON object before inspecting its keys.
+    // Non-object payloads (strings, arrays, numbers) would otherwise be
+    // misclassified as MissingExpectedVersion, misleading API consumers.
+    if !mutation_val.is_object() {
+        return Err(EnvelopeError::Malformed {
+            detail: format!(
+                "mutation must be a JSON object, got {}",
+                match mutation_val {
+                    serde_json::Value::Array(_) => "array",
+                    serde_json::Value::String(_) => "string",
+                    serde_json::Value::Number(_) => "number",
+                    serde_json::Value::Bool(_) => "boolean",
+                    serde_json::Value::Null => "null",
+                    serde_json::Value::Object(_) => "object",
+                }
+            ),
+        });
+    }
     if mutation_val.get("expected_version").is_none() {
         return Err(EnvelopeError::MissingExpectedVersion);
     }
@@ -118,5 +136,16 @@ mod tests {
     fn rejects_malformed_json() {
         let err = parse_envelope(b"not valid json").expect_err("should reject malformed JSON");
         assert!(matches!(err, EnvelopeError::Malformed { .. }));
+    }
+
+    #[test]
+    fn rejects_non_object_mutation_as_malformed_not_missing_version() {
+        // A string payload should be Malformed, not MissingExpectedVersion.
+        let json = r#"{"mutation_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "mutation": "not-an-object"}"#;
+        let err = parse_envelope(json.as_bytes()).expect_err("should reject non-object mutation");
+        assert!(
+            matches!(err, EnvelopeError::Malformed { .. }),
+            "non-object mutation payload must be Malformed, not MissingExpectedVersion"
+        );
     }
 }

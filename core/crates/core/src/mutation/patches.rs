@@ -19,10 +19,20 @@ use crate::model::{
 
 /// Patch to apply to a route.
 ///
-/// All fields follow the `Option<Option<T>>` convention where:
+/// Fields use two different option semantics depending on whether the field
+/// is clearable:
+///
+/// **Triple-state (`Option<Option<T>>`)** — for clearable fields:
 /// - `None` = do not modify
-/// - `Some(None)` = clear the field
+/// - `Some(None)` = clear the field (removes it)
 /// - `Some(Some(value))` = set to value
+///
+/// **Dual-state (`Option<T>`)** — for non-clearable fields:
+/// - `None` = do not modify
+/// - `Some(value)` = replace with value
+///
+/// Fields using triple-state: `redirects`, `policy_attachment`.
+/// Fields using dual-state: `hostnames`, `upstreams`, `matchers`, `headers`, `enabled`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[allow(clippy::option_option)]

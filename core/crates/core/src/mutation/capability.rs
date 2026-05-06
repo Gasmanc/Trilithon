@@ -30,7 +30,7 @@ impl Mutation {
                     mods.insert(CaddyModule::new("http.handlers.reverse_proxy"));
                 }
                 if !route.headers.request.is_empty() {
-                    mods.insert(CaddyModule::new("http.handlers.rewrite"));
+                    mods.insert(CaddyModule::new("http.handlers.headers"));
                 }
                 if !route.headers.response.is_empty() {
                     mods.insert(CaddyModule::new("http.handlers.headers"));
@@ -50,7 +50,7 @@ impl Mutation {
                 }
                 if let Some(headers) = &patch.headers {
                     if !headers.request.is_empty() {
-                        mods.insert(CaddyModule::new("http.handlers.rewrite"));
+                        mods.insert(CaddyModule::new("http.handlers.headers"));
                     }
                     if !headers.response.is_empty() {
                         mods.insert(CaddyModule::new("http.handlers.headers"));
@@ -111,7 +111,13 @@ impl Mutation {
 
             Self::SetTlsConfig { patch, .. } => {
                 let mut mods = BTreeSet::new();
-                if matches!(&patch.email, Some(Some(_))) {
+                // Require the tls module whenever any TLS field is being set or cleared,
+                // not just when an ACME email is provided.
+                let any_set = patch.email.is_some()
+                    || patch.on_demand_enabled.is_some()
+                    || patch.on_demand_ask_url.is_some()
+                    || patch.default_issuer.is_some();
+                if any_set {
                     mods.insert(CaddyModule::new("tls"));
                 }
                 mods

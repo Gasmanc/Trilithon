@@ -41,6 +41,11 @@ fix-rust:
 deny-rust:
     cd core && cargo deny check
 
+# Regenerate mutation schemas and verify they match what is committed.
+check-schemas:
+    cd core && cargo run -p trilithon-core --features schema --bin gen_mutation_schemas
+    git diff --exit-code docs/schemas/mutations/
+
 # --- typescript (react-frontend) ---
 check-typescript:
     cd web && pnpm install --frozen-lockfile || pnpm install

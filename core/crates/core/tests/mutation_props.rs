@@ -2,8 +2,8 @@
 //!
 //! Tests:
 //! 1. `idempotency_on_mutation_id`  — same inputs → same result (determinism).
-//! 2. `ordering_of_independent_mutations_is_irrelevant` — two `CreateRoute`
-//!    mutations on different IDs commute.
+//! 2. `ordering_of_independent_mutations_is_irrelevant` — two independent create
+//!    mutations commute regardless of application order.
 //! 3. `postconditions_hold` — on success, `new_state.version == state.version + 1`.
 
 #![allow(
@@ -19,10 +19,13 @@ use std::collections::BTreeSet;
 use proptest::prelude::*;
 use trilithon_core::caddy::capabilities::CapabilitySet;
 use trilithon_core::model::desired_state::DesiredState;
+use trilithon_core::model::global::GlobalConfigPatch;
 use trilithon_core::model::header::HeaderRules;
-use trilithon_core::model::identifiers::RouteId;
+use trilithon_core::model::identifiers::{RouteId, UpstreamId};
 use trilithon_core::model::matcher::MatcherSet;
 use trilithon_core::model::route::Route;
+use trilithon_core::model::tls::TlsConfigPatch;
+use trilithon_core::model::upstream::{Upstream, UpstreamDestination, UpstreamProbe};
 use trilithon_core::mutation::apply::apply_mutation;
 use trilithon_core::mutation::types::Mutation;
 use trilithon_core::storage::types::UnixSeconds;
@@ -47,6 +50,20 @@ fn minimal_route(id: RouteId, ts: UnixSeconds) -> Route {
     }
 }
 
+/// Build a minimal `Upstream` with a caller-supplied `UpstreamId`.
+fn minimal_upstream(id: UpstreamId) -> Upstream {
+    Upstream {
+        id,
+        destination: UpstreamDestination::TcpAddr {
+            host: "127.0.0.1".to_owned(),
+            port: 8080,
+        },
+        probe: UpstreamProbe::Disabled,
+        weight: 1,
+        max_request_bytes: None,
+    }
+}
+
 /// A `CreateRoute` mutation whose `expected_version` matches `version`.
 fn create_route_mutation(version: i64) -> Mutation {
     Mutation::CreateRoute {
@@ -55,13 +72,87 @@ fn create_route_mutation(version: i64) -> Mutation {
     }
 }
 
+/// A `CreateUpstream` mutation whose `expected_version` matches `version`.
+fn create_upstream_mutation(version: i64) -> Mutation {
+    Mutation::CreateUpstream {
+        expected_version: version,
+        upstream: minimal_upstream(UpstreamId::new()),
+    }
+}
+
+/// A `SetGlobalConfig` mutation that sets `log_level` to "info".
+fn set_global_config_mutation(version: i64) -> Mutation {
+    Mutation::SetGlobalConfig {
+        expected_version: version,
+        patch: GlobalConfigPatch {
+            log_level: Some(Some("info".to_owned())),
+            ..GlobalConfigPatch::default()
+        },
+    }
+}
+
+/// A `SetTlsConfig` mutation that sets `on_demand_enabled`.
+fn set_tls_config_mutation(version: i64) -> Mutation {
+    Mutation::SetTlsConfig {
+        expected_version: version,
+        patch: TlsConfigPatch {
+            on_demand_enabled: Some(false),
+            ..TlsConfigPatch::default()
+        },
+    }
+}
+
 /// A `CapabilitySet` with no modules loaded — sufficient for `CreateRoute`
-/// mutations that have no upstreams, redirects, or header rules.
+/// mutations with no upstreams, redirects, or header rules, and for config-only
+/// mutations (`SetGlobalConfig`, `SetTlsConfig`).
 fn empty_caps() -> CapabilitySet {
     CapabilitySet {
         loaded_modules: BTreeSet::new(),
         caddy_version: "v2.8.4".to_owned(),
         probed_at: 0,
+    }
+}
+
+/// A `CapabilitySet` with `http.handlers.reverse_proxy` — required for any
+/// mutation that references an upstream (e.g. `CreateUpstream`).
+fn proxy_caps() -> CapabilitySet {
+    CapabilitySet {
+        loaded_modules: BTreeSet::from(["http.handlers.reverse_proxy".to_owned()]),
+        caddy_version: "v2.8.4".to_owned(),
+        probed_at: 0,
+    }
+}
+
+/// A `CapabilitySet` with `tls` — required for `SetTlsConfig` mutations that
+/// set any TLS field.
+fn tls_caps() -> CapabilitySet {
+    CapabilitySet {
+        loaded_modules: BTreeSet::from(["tls".to_owned()]),
+        caddy_version: "v2.8.4".to_owned(),
+        probed_at: 0,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Proptest strategies
+// ---------------------------------------------------------------------------
+
+/// Return the `CapabilitySet` required for a given mutation variant index.
+fn caps_for_variant(variant: u32) -> CapabilitySet {
+    match variant {
+        1 => proxy_caps(), // CreateUpstream needs reverse_proxy
+        3 => tls_caps(),   // SetTlsConfig needs tls
+        _ => empty_caps(),
+    }
+}
+
+/// Build one mutation by variant index (0-3).
+fn mutation_for_variant(variant: u32, version: i64) -> Mutation {
+    match variant {
+        0 => create_route_mutation(version),
+        1 => create_upstream_mutation(version),
+        2 => set_global_config_mutation(version),
+        _ => set_tls_config_mutation(version),
     }
 }
 
@@ -71,13 +162,13 @@ fn empty_caps() -> CapabilitySet {
 
 proptest! {
     #[test]
-    fn idempotency_on_mutation_id(version in 0_i64..=100_i64) {
+    fn idempotency_on_mutation_id(version in 0_i64..=100_i64, variant in 0_u32..4) {
         let state = DesiredState {
             version,
             ..DesiredState::default()
         };
-        let mutation = create_route_mutation(version);
-        let caps = empty_caps();
+        let mutation = mutation_for_variant(variant, version);
+        let caps = caps_for_variant(variant);
 
         let result1 = apply_mutation(&state, &mutation, &caps);
         let result2 = apply_mutation(&state, &mutation, &caps);
@@ -154,13 +245,13 @@ proptest! {
 
 proptest! {
     #[test]
-    fn postconditions_hold(version in 0_i64..=100_i64) {
+    fn postconditions_hold(version in 0_i64..=100_i64, variant in 0_u32..4) {
         let state = DesiredState {
             version,
             ..DesiredState::default()
         };
-        let mutation = create_route_mutation(version);
-        let caps = empty_caps();
+        let mutation = mutation_for_variant(variant, version);
+        let caps = caps_for_variant(variant);
 
         let outcome = apply_mutation(&state, &mutation, &caps)
             .expect("compatible mutation must succeed");

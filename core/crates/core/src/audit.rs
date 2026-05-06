@@ -153,58 +153,66 @@ impl fmt::Display for AuditEvent {
     }
 }
 
+/// Canonical audit event kind vocabulary (§6.6).
+///
+/// Every [`AuditEvent`] variant's `Display` output must appear in this list.
+/// Phase 6's audit-row writer imports this constant to populate the `kind`
+/// column without re-declaring the vocabulary.
+pub const AUDIT_KIND_VOCAB: &[&str] = &[
+    "auth.bootstrap-credentials-rotated",
+    "auth.login-failed",
+    "auth.login-succeeded",
+    "auth.logout",
+    "auth.session-revoked",
+    "caddy.capability-probe-completed",
+    "caddy.ownership-sentinel-conflict",
+    "caddy.reconnected",
+    "caddy.unreachable",
+    "config.applied",
+    "config.apply-failed",
+    "config.drift-detected",
+    "config.drift-resolved",
+    "config.rebased",
+    "config.rolled-back",
+    "docker.socket-trust-grant",
+    "export.bundle",
+    "export.caddy-json",
+    "export.caddyfile",
+    "import.caddyfile",
+    "mutation.applied",
+    "mutation.conflicted",
+    "mutation.proposed",
+    "mutation.rebase.expired",
+    "mutation.rebased.auto",
+    "mutation.rebased.manual",
+    "mutation.rejected",
+    "mutation.rejected.missing-expected-version",
+    "mutation.submitted",
+    "policy-preset.attached",
+    "policy-preset.detached",
+    "policy-preset.upgraded",
+    "policy.registry-mismatch",
+    "proposal.approved",
+    "proposal.expired",
+    "proposal.rejected",
+    "secrets.master-key-rotated",
+    "secrets.revealed",
+    "tool-gateway.session-closed",
+    "tool-gateway.session-opened",
+    "tool-gateway.tool-invoked",
+];
+
+/// Expected count of [`AuditEvent`] variants. Changing this constant requires
+/// updating `AUDIT_KIND_VOCAB` and the test helper `all_variants()`.
+#[cfg(test)]
+const AUDIT_EVENT_VARIANT_COUNT: usize = 41;
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use std::collections::HashSet;
 
     use super::*;
-
-    /// §6.6 vocabulary — embedded here because `core::storage::audit_vocab`
-    /// does not yet exist in Phase 4.
-    const VOCAB: &[&str] = &[
-        "auth.bootstrap-credentials-rotated",
-        "auth.login-failed",
-        "auth.login-succeeded",
-        "auth.logout",
-        "auth.session-revoked",
-        "caddy.capability-probe-completed",
-        "caddy.ownership-sentinel-conflict",
-        "caddy.reconnected",
-        "caddy.unreachable",
-        "config.applied",
-        "config.apply-failed",
-        "config.drift-detected",
-        "config.drift-resolved",
-        "config.rebased",
-        "config.rolled-back",
-        "docker.socket-trust-grant",
-        "export.bundle",
-        "export.caddy-json",
-        "export.caddyfile",
-        "import.caddyfile",
-        "mutation.applied",
-        "mutation.conflicted",
-        "mutation.proposed",
-        "mutation.rebase.expired",
-        "mutation.rebased.auto",
-        "mutation.rebased.manual",
-        "mutation.rejected",
-        "mutation.rejected.missing-expected-version",
-        "mutation.submitted",
-        "policy-preset.attached",
-        "policy-preset.detached",
-        "policy-preset.upgraded",
-        "policy.registry-mismatch",
-        "proposal.approved",
-        "proposal.expired",
-        "proposal.rejected",
-        "secrets.master-key-rotated",
-        "secrets.revealed",
-        "tool-gateway.session-closed",
-        "tool-gateway.session-opened",
-        "tool-gateway.tool-invoked",
-    ];
 
     fn all_variants() -> Vec<AuditEvent> {
         use AuditEvent::*;
@@ -254,8 +262,17 @@ mod tests {
     }
 
     #[test]
+    fn variant_count_matches_expected() {
+        assert_eq!(
+            all_variants().len(),
+            AUDIT_EVENT_VARIANT_COUNT,
+            "AuditEvent variant count changed — update AUDIT_EVENT_VARIANT_COUNT and all_variants()"
+        );
+    }
+
+    #[test]
     fn display_strings_match_six_six_vocab() {
-        let vocab_set: HashSet<&str> = VOCAB.iter().copied().collect();
+        let vocab_set: HashSet<&str> = AUDIT_KIND_VOCAB.iter().copied().collect();
         for event in all_variants() {
             let kind = event.to_string();
             assert!(
