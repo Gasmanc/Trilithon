@@ -14,6 +14,7 @@
 //! re-hashing all historical data.
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::model::desired_state::DesiredState;
 
@@ -97,6 +98,16 @@ fn canonicalise_value(value: Value) -> Value {
     }
 }
 
+/// Compute the SHA-256 content address of a canonical JSON byte string.
+///
+/// Returns a lowercase 64-character hex string.  This is the value stored in
+/// [`crate::storage::types::SnapshotId`].
+#[must_use]
+pub fn content_address_bytes(canonical_json_bytes: &[u8]) -> String {
+    let digest = Sha256::digest(canonical_json_bytes);
+    format!("{digest:x}")
+}
+
 /// Compute the SHA-256 content address of `state`'s canonical JSON bytes.
 ///
 /// Returns a lowercase hex string.  Used by tests to verify that semantically
@@ -107,7 +118,7 @@ fn canonicalise_value(value: Value) -> Value {
 /// Propagates any [`serde_json::Error`] from [`to_canonical_bytes`].
 pub fn content_address(state: &DesiredState) -> Result<String, serde_json::Error> {
     let bytes = to_canonical_bytes(state)?;
-    Ok(crate::mutation::types::content_address(&bytes))
+    Ok(content_address_bytes(&bytes))
 }
 
 #[cfg(test)]

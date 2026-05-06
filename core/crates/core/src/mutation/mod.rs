@@ -11,10 +11,11 @@ pub mod patches;
 pub mod types;
 pub mod validate;
 
+pub use crate::canonical_json::content_address_bytes as content_address;
 pub use apply::apply_mutation;
 pub use capability::check_capabilities;
 pub use envelope::{EnvelopeError, MutationEnvelope, parse_envelope};
 pub use error::{ForbiddenReason, MutationError, SchemaErrorKind, ValidationRule};
 pub use outcome::{Diff, DiffChange, MutationOutcome};
 pub use patches::{ParsedCaddyfile, RoutePatch, UpstreamPatch};
-pub use types::{Mutation, MutationKind, content_address};
+pub use types::{Mutation, MutationKind};

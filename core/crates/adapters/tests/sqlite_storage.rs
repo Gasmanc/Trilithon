@@ -17,7 +17,7 @@ use trilithon_adapters::{
 };
 use trilithon_core::{
     canonical_json::CANONICAL_JSON_VERSION,
-    mutation::types::content_address,
+    canonical_json::content_address_bytes as content_address,
     storage::{
         audit_vocab::AUDIT_KINDS,
         error::StorageError,

@@ -1,7 +1,6 @@
 //! Core mutation variant types.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::model::{
     global::GlobalConfigPatch,
@@ -223,32 +222,6 @@ pub enum MutationKind {
     Rollback,
 }
 
-/// Compute the content address of a canonical JSON byte string.
-///
-/// The content address is the SHA-256 hash of the provided bytes, returned as
-/// a lowercase 64-character hex string.  This is the value stored in
-/// [`crate::storage::types::SnapshotId`] and in
-/// [`crate::storage::types::Snapshot::snapshot_id`].
-///
-/// # Example
-///
-/// ```
-/// use trilithon_core::canonical_json::to_canonical_bytes;
-/// use trilithon_core::mutation::types::content_address;
-/// use trilithon_core::model::desired_state::DesiredState;
-///
-/// let state = DesiredState::empty();
-/// let bytes = to_canonical_bytes(&state).unwrap();
-/// let addr = content_address(&bytes);
-/// assert_eq!(addr.len(), 64);
-/// assert!(addr.chars().all(|c| c.is_ascii_hexdigit()));
-/// ```
-#[must_use]
-pub fn content_address(canonical_json_bytes: &[u8]) -> String {
-    let digest = Sha256::digest(canonical_json_bytes);
-    format!("{digest:x}")
-}
-
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -307,37 +280,5 @@ mod tests {
             target: SnapshotId("abc".into()),
         };
         assert_eq!(m.kind(), MutationKind::Rollback);
-    }
-
-    #[test]
-    fn content_address_is_stable() {
-        use crate::canonical_json::to_canonical_bytes;
-        use crate::model::desired_state::DesiredState;
-
-        // A fixed input must always produce the same hex digest.
-        let state = DesiredState::empty();
-        let bytes = to_canonical_bytes(&state).expect("serialise");
-
-        let addr1 = content_address(&bytes);
-        let addr2 = content_address(&bytes);
-
-        // Must be 64 hex chars (SHA-256).
-        assert_eq!(addr1.len(), 64, "content address must be 64 hex chars");
-        assert!(
-            addr1.chars().all(|c| c.is_ascii_hexdigit()),
-            "content address must contain only hex digits"
-        );
-        // Must be stable across calls.
-        assert_eq!(addr1, addr2, "content_address must be deterministic");
-
-        // Different inputs must produce different digests.
-        let mut state2 = DesiredState::empty();
-        state2.version = 1;
-        let bytes2 = to_canonical_bytes(&state2).expect("serialise state2");
-        let addr3 = content_address(&bytes2);
-        assert_ne!(
-            addr1, addr3,
-            "different states must have different content addresses"
-        );
     }
 }

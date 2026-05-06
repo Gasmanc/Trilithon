@@ -492,8 +492,9 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
 /// 1. `snapshot_id` must equal the SHA-256 hex digest of `desired_state_json`.
 /// 2. `intent` must not exceed `INTENT_MAX_BYTES`.
 fn validate_snapshot_invariants(snapshot: &Snapshot) -> Result<(), StorageError> {
-    let expected =
-        trilithon_core::mutation::types::content_address(snapshot.desired_state_json.as_bytes());
+    let expected = trilithon_core::canonical_json::content_address_bytes(
+        snapshot.desired_state_json.as_bytes(),
+    );
     if expected != snapshot.snapshot_id.0 {
         return Err(StorageError::Integrity {
             detail: format!(
