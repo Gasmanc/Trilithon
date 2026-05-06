@@ -3,3 +3,9 @@
 {"event": "surfaced", "phase_id": "5", "slug": "sync-all-before-atomic-rename-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
 {"event": "surfaced", "phase_id": "5", "slug": "sqlite-extended-error-codes-mask-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
 {"event": "surfaced", "phase_id": "5", "slug": "migration-bootstrap-no-such-table-2026-05-03", "context": "pre-phase", "ts": "2026-05-05T06:59:23Z"}
+{"event":"surfaced","phase_id":"4","slug":"sqlite-begin-immediate-read-check-write","context":"review","ts":"2026-05-06T00:00:00Z"}
+{"event":"surfaced","phase_id":"4","slug":"no-unreachable-in-production-match-2026-05-03","context":"review","ts":"2026-05-06T00:00:00Z"}
+{"event":"surfaced","phase_id":"4","slug":"serde-json-number-variant-before-f64-cast","context":"review","ts":"2026-05-06T00:00:00Z"}
+{"event":"surfaced","phase_id":"4","slug":"schema-version-column-at-creation","context":"review","ts":"2026-05-06T00:00:00Z"}
+{"event":"surfaced","phase_id":"4","slug":"three-state-patch-double-option-2026-05-03","context":"review","ts":"2026-05-06T00:00:00Z"}
+{"event":"applied","phase_id":"4","slug":"three-state-patch-double-option-2026-05-03","matched_finding":"Patch struct doc comments misrepresent the Option<Option<T>> convention","ts":"2026-05-06T00:00:00Z"}

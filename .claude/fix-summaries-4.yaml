@@ -1,0 +1,44 @@
+- finding_id: F006
+  fix_diff_summary: "Added TryFrom<String>/TryFrom<&str> impls to all ID newtypes enforcing ULID format (26 chars, [0-9A-Z]); updated docs to distinguish generated vs deserialized IDs; added is_valid_ulid() helper"
+  generalizable: true
+  one_sentence_lesson: "Identifier newtypes whose docs claim ULID format must enforce it at TryFrom boundaries — deserialization alone is insufficient if callers can bypass the newtype constructor"
+
+- finding_id: F030
+  fix_diff_summary: "Created crates/core/tests/schema_drift.rs with schemas_match_committed() test that runs gen_mutation_schemas via cargo and asserts git diff --exit-code is clean"
+  generalizable: true
+  one_sentence_lesson: "Schema drift tests must run the generator and check git diff — gating only on manual just check misses incremental CI builds"
+
+- finding_id: F001
+  fix_diff_summary: "Added check_import_caddyfile() in validate.rs: validates hostnames, detects intra-import duplicate route/upstream IDs via BTreeSet, and checks upstream references against both state and the import batch"
+  generalizable: true
+  one_sentence_lesson: "Bulk-import mutations must run the same pre-condition validators as individual create mutations, including intra-batch duplicate detection, or they become a validation bypass vector"
+
+- finding_id: F031
+  fix_diff_summary: "policy_attachment_preamble and config apply helpers now accept the original state as a parameter; before-state values are read from original state before the clone is mutated"
+  generalizable: true
+  one_sentence_lesson: "Audit diff before-state must be captured from the original state before mutation, not from the clone being mutated — reading from new_state always produces identical before/after pairs"
+
+- finding_id: F032
+  fix_diff_summary: "apply_upgrade_policy uses ok_or(Forbidden::PolicyAttachmentMissing)? instead of if-let, so a missing attachment is an error; added PolicyAttachmentMissing variant to ForbiddenReason"
+  generalizable: true
+  one_sentence_lesson: "An apply function that silently no-ops when a required field is absent produces a successful mutation with no observable effect — always propagate an error so the caller knows the operation was a no-op"
+
+- finding_id: F036
+  fix_diff_summary: "Replaced bare state.version + 1 with checked_add(1).ok_or(Forbidden::VersionOverflow)?; added VersionOverflow variant to ForbiddenReason"
+  generalizable: true
+  one_sentence_lesson: "Version counters that use unchecked integer addition will panic at i64::MAX — use checked_add and map None to a domain error so the caller can handle it"
+
+- finding_id: F049
+  fix_diff_summary: "Added check_redirect_url() validating that redirect target uses http or https scheme only; called from CreateRoute, check_update_route, and check_import_caddyfile"
+  generalizable: true
+  one_sentence_lesson: "Redirect URL validation must reject non-http/https schemes at the mutation boundary — accepting javascript:, data:, or file: schemes enables open redirect to arbitrary protocol handlers"
+
+- finding_id: F050
+  fix_diff_summary: "Added check_on_demand_ask_url() requiring https and rejecting loopback and RFC 1918 hosts via is_loopback_or_private(); called from SetTlsConfig arm in pre_conditions"
+  generalizable: true
+  one_sentence_lesson: "Any user-supplied URL that triggers a server-side HTTP request (ask URL, webhook, etc.) must be validated to reject loopback and private-range addresses — otherwise it is an SSRF vector"
+
+- finding_id: F051
+  fix_diff_summary: "Added check_matchers_valid() calling parse_cidr() for each CIDR in MatcherSet.remote; parse_cidr() validates IPv4/IPv6 address and prefix length without adding new dependencies"
+  generalizable: true
+  one_sentence_lesson: "CIDR strings accepted at the API boundary must be validated at mutation time — invalid notation stored in DesiredState cannot be caught by Caddy until config push fails at apply time"
