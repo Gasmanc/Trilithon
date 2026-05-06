@@ -756,6 +756,7 @@
       "type": "string"
     },
     "PresetId": {
+      "description": "Values produced by [`Self::new()`] are ULID-format (26 chars, `[0-9A-Z]`). Values received via deserialization are not validated — use `TryFrom<String>` when ULID format must be enforced at a trust boundary.",
       "type": "string"
     },
     "QueryMatcher": {
@@ -889,6 +890,7 @@
       }
     },
     "RouteId": {
+      "description": "Values produced by [`Self::new()`] are ULID-format (26 chars, `[0-9A-Z]`). Values received via deserialization are not validated — use `TryFrom<String>` when ULID format must be enforced at a trust boundary.",
       "type": "string"
     },
     "RoutePatch": {
@@ -1226,6 +1228,7 @@
       ]
     },
     "UpstreamId": {
+      "description": "Values produced by [`Self::new()`] are ULID-format (26 chars, `[0-9A-Z]`). Values received via deserialization are not validated — use `TryFrom<String>` when ULID format must be enforced at a trust boundary.",
       "type": "string"
     },
     "UpstreamPatch": {
