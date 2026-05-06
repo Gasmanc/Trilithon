@@ -814,7 +814,7 @@
       ],
       "properties": {
         "created_at": {
-          "description": "Creation timestamp (Unix seconds).",
+          "description": "Creation timestamp (Unix seconds). Set when the route is first created.",
           "type": "integer",
           "format": "int64"
         },
@@ -876,7 +876,7 @@
           ]
         },
         "updated_at": {
-          "description": "Last-updated timestamp (Unix seconds).",
+          "description": "Last-updated timestamp (Unix seconds).\n\nNote: `apply_mutation` does not update this field — it is set by the persistence layer when writing to storage (Phase 5+). Until then, this field reflects the value carried in the mutation payload only.",
           "type": "integer",
           "format": "int64"
         },

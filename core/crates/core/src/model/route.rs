@@ -29,9 +29,13 @@ pub struct Route {
     pub policy_attachment: Option<RoutePolicyAttachment>,
     /// Whether this route is active.
     pub enabled: bool,
-    /// Creation timestamp (Unix seconds).
+    /// Creation timestamp (Unix seconds). Set when the route is first created.
     pub created_at: UnixSeconds,
     /// Last-updated timestamp (Unix seconds).
+    ///
+    /// Note: `apply_mutation` does not update this field — it is set by the
+    /// persistence layer when writing to storage (Phase 5+). Until then,
+    /// this field reflects the value carried in the mutation payload only.
     pub updated_at: UnixSeconds,
 }
 

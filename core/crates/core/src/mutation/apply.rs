@@ -91,15 +91,17 @@ fn apply_variant(
             preset_id,
             preset_version,
             ..
-        } => apply_attach_policy(new_state, route_id, preset_id, *preset_version),
-        Mutation::DetachPolicy { route_id, .. } => apply_detach_policy(new_state, route_id),
+        } => apply_attach_policy(state, new_state, route_id, preset_id, *preset_version),
+        Mutation::DetachPolicy { route_id, .. } => apply_detach_policy(state, new_state, route_id),
         Mutation::UpgradePolicy {
             route_id,
             to_version,
             ..
-        } => apply_upgrade_policy(new_state, route_id, *to_version),
-        Mutation::SetGlobalConfig { patch, .. } => Ok(apply_set_global_config(new_state, patch)),
-        Mutation::SetTlsConfig { patch, .. } => Ok(apply_set_tls_config(new_state, patch)),
+        } => apply_upgrade_policy(state, new_state, route_id, *to_version),
+        Mutation::SetGlobalConfig { patch, .. } => {
+            Ok(apply_set_global_config(state, new_state, patch))
+        }
+        Mutation::SetTlsConfig { patch, .. } => Ok(apply_set_tls_config(state, new_state, patch)),
         Mutation::ImportFromCaddyfile { parsed, .. } => {
             Ok(apply_import_caddyfile(new_state, parsed))
         }
@@ -176,18 +178,18 @@ fn apply_delete_upstream(
 /// Build the `policy_attachment` JSON pointer and snapshot the before-value.
 ///
 /// Shared preamble for the three policy mutation helpers (`attach`, `detach`,
-/// `upgrade`).  The caller is responsible for the `get_mut` call so that
-/// Rust's borrow checker can see the immutable read (before) ends before the
-/// mutable borrow begins.
+/// `upgrade`). Reads `before` from the original immutable `state` so that
+/// any future reordering within `apply_variant` cannot silently produce an
+/// incorrect audit diff.
 fn policy_attachment_preamble(
-    new_state: &DesiredState,
+    state: &DesiredState,
     route_id: &crate::model::identifiers::RouteId,
 ) -> (JsonPointer, Option<serde_json::Value>) {
     let pointer = JsonPointer::root()
         .push("routes")
         .push(route_id.as_str())
         .push("policy_attachment");
-    let before = new_state
+    let before = state
         .routes
         .get(route_id)
         .and_then(|r| r.policy_attachment.as_ref())
@@ -196,12 +198,13 @@ fn policy_attachment_preamble(
 }
 
 fn apply_attach_policy(
+    state: &DesiredState,
     new_state: &mut DesiredState,
     route_id: &crate::model::identifiers::RouteId,
     preset_id: &crate::model::identifiers::PresetId,
     preset_version: u32,
 ) -> Result<Vec<DiffChange>, MutationError> {
-    let (pointer, before) = policy_attachment_preamble(new_state, route_id);
+    let (pointer, before) = policy_attachment_preamble(state, route_id);
     let route = new_state
         .routes
         .get_mut(route_id)
@@ -219,10 +222,11 @@ fn apply_attach_policy(
 }
 
 fn apply_detach_policy(
+    state: &DesiredState,
     new_state: &mut DesiredState,
     route_id: &crate::model::identifiers::RouteId,
 ) -> Result<Vec<DiffChange>, MutationError> {
-    let (pointer, before) = policy_attachment_preamble(new_state, route_id);
+    let (pointer, before) = policy_attachment_preamble(state, route_id);
     let route = new_state
         .routes
         .get_mut(route_id)
@@ -236,18 +240,23 @@ fn apply_detach_policy(
 }
 
 fn apply_upgrade_policy(
+    state: &DesiredState,
     new_state: &mut DesiredState,
     route_id: &crate::model::identifiers::RouteId,
     to_version: u32,
 ) -> Result<Vec<DiffChange>, MutationError> {
-    let (pointer, before) = policy_attachment_preamble(new_state, route_id);
+    let (pointer, before) = policy_attachment_preamble(state, route_id);
     let route = new_state
         .routes
         .get_mut(route_id)
         .ok_or_else(|| missing_route_error(route_id.as_str()))?;
-    if let Some(attachment) = route.policy_attachment.as_mut() {
-        attachment.preset_version = to_version;
-    }
+    let attachment = route
+        .policy_attachment
+        .as_mut()
+        .ok_or(MutationError::Forbidden {
+            reason: crate::mutation::error::ForbiddenReason::PolicyAttachmentMissing,
+        })?;
+    attachment.preset_version = to_version;
     let after = route.policy_attachment.as_ref().and_then(to_json);
     Ok(vec![DiffChange {
         path: pointer,
@@ -257,11 +266,12 @@ fn apply_upgrade_policy(
 }
 
 fn apply_set_global_config(
+    state: &DesiredState,
     new_state: &mut DesiredState,
     global_patch: &crate::model::global::GlobalConfigPatch,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("global");
-    let before = to_json(&new_state.global);
+    let before = to_json(&state.global);
     if let Some(admin_listen) = &global_patch.admin_listen {
         new_state.global.admin_listen.clone_from(admin_listen);
     }
@@ -280,11 +290,12 @@ fn apply_set_global_config(
 }
 
 fn apply_set_tls_config(
+    state: &DesiredState,
     new_state: &mut DesiredState,
     tls_patch: &crate::model::tls::TlsConfigPatch,
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("tls");
-    let before = to_json(&new_state.tls);
+    let before = to_json(&state.tls);
     if let Some(email) = &tls_patch.email {
         new_state.tls.email.clone_from(email);
     }

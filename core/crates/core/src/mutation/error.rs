@@ -103,6 +103,8 @@ pub enum ForbiddenReason {
     RollbackTargetUnknown,
     /// The requested policy change would downgrade the effective security posture.
     PolicyDowngrade,
+    /// The route does not have a policy attachment — cannot upgrade a non-existent attachment.
+    PolicyAttachmentMissing,
 }
 
 #[cfg(test)]

@@ -74,11 +74,61 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
             reason: ForbiddenReason::RollbackTargetUnknown,
         }),
 
+        Mutation::ImportFromCaddyfile { parsed, .. } => check_import_caddyfile(state, parsed),
+
         // No pre-condition failures for these variants.
-        Mutation::SetGlobalConfig { .. }
-        | Mutation::SetTlsConfig { .. }
-        | Mutation::ImportFromCaddyfile { .. } => Ok(()),
+        Mutation::SetGlobalConfig { .. } | Mutation::SetTlsConfig { .. } => Ok(()),
     }
+}
+
+/// Pre-conditions for [`Mutation::ImportFromCaddyfile`].
+///
+/// Validates every route and upstream in the parsed payload with the same
+/// checks applied by `CreateRoute`/`CreateUpstream`, preventing crafted payloads
+/// from smuggling invalid hostnames, duplicate IDs, or dangling upstream
+/// references into `DesiredState`.
+fn check_import_caddyfile(
+    state: &DesiredState,
+    parsed: &crate::mutation::patches::ParsedCaddyfile,
+) -> Result<(), MutationError> {
+    // Track IDs introduced within this import so intra-import duplicates are caught.
+    let mut seen_route_ids = std::collections::BTreeSet::new();
+    let mut seen_upstream_ids = std::collections::BTreeSet::new();
+
+    for upstream in &parsed.upstreams {
+        if state.upstreams.contains_key(&upstream.id) || !seen_upstream_ids.insert(&upstream.id) {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::DuplicateUpstreamId,
+                path: JsonPointer::root().push("parsed").push("upstreams"),
+                hint: format!("upstream '{}' already exists", upstream.id.as_str()),
+            });
+        }
+    }
+
+    for route in &parsed.routes {
+        if state.routes.contains_key(&route.id) || !seen_route_ids.insert(&route.id) {
+            return Err(MutationError::Validation {
+                rule: ValidationRule::DuplicateRouteId,
+                path: JsonPointer::root().push("parsed").push("routes"),
+                hint: format!("route '{}' already exists", route.id.as_str()),
+            });
+        }
+        check_hostnames_valid(&route.hostnames)?;
+        // Check upstreams against both state and those introduced in this import.
+        for uid in &route.upstreams {
+            if !state.upstreams.contains_key(uid) && !seen_upstream_ids.contains(uid) {
+                return Err(MutationError::Validation {
+                    rule: ValidationRule::UpstreamReferenceMissing,
+                    path: JsonPointer::root()
+                        .push("parsed")
+                        .push("routes")
+                        .push("upstreams"),
+                    hint: format!("upstream '{}' does not exist", uid.as_str()),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Verify that the given route id is not already present in `state`.
