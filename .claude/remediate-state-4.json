@@ -1,0 +1,524 @@
+{
+  "phase_id": "4",
+  "session_start": "2026-05-06T00:00:00Z",
+  "aggregate_file": "docs/Codebase_MultiReview_Aggregate/phase_4_aggregate.md",
+  "gate_command": "just check",
+  "findings": [
+    {
+      "id": "F001",
+      "title": "ImportFromCaddyfile bypasses all pre-condition validators",
+      "status": "fixed",
+      "commit": "7d90fc1",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F002",
+      "title": "DesiredState.policies is dead state — never populated",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "policies field is Phase 5+ scope — removing requires spec alignment",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F003",
+      "title": "PolicyAttachment and RoutePolicyAttachment are structural duplicates",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "policy model consolidation is Phase 5+ scope",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F004",
+      "title": "ImportFromCaddyfile emits coarse whole-map diffs and silently overwrites entities",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F005",
+      "title": "apply_set_global_config and apply_set_tls_config emit no-op diffs",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F006",
+      "title": "Identifier newtypes accept any string — no ULID validation",
+      "status": "fixed",
+      "commit": "d826850",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F007",
+      "title": "schemars lives in core dependencies rather than gated as build/feature dep",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F008",
+      "title": "Hardcoded relative path in build.rs",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F009",
+      "title": "gen_mutation_schemas uses process::exit(1)",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F010",
+      "title": "Proptest only covers CreateRoute — missing CreateUpstream, SetGlobalConfig, SetTlsConfig",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F011",
+      "title": "All-None GlobalConfigPatch accepted as silent no-op",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F012",
+      "title": "build.rs missing cargo:rerun-if-changed for schema output directory",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F013",
+      "title": "ForbiddenReason does not implement Display — error messages show Debug output",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F014",
+      "title": "Per-variant schema stub files lack $id field",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F015",
+      "title": "Per-variant schema stub $ref points to a non-existent definition",
+      "status": "fixed",
+      "commit": "87e022a",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F016",
+      "title": "check_upstreams_exist error path omits the offending upstream index in JsonPointer",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F017",
+      "title": "Misleading error for empty hostname labels — EmptyLabel variant missing",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F018",
+      "title": "Test idempotency_on_mutation_id verifies determinism not idempotency — rename",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F019",
+      "title": "Outdated comment in build.rs references wrong path",
+      "status": "wont_fix",
+      "commit": null,
+      "pr": null,
+      "resolved_date": "2026-05-06",
+      "wont_fix_reason": "build.rs comment is accurate; no path mismatch found in current code"
+    },
+    {
+      "id": "F020",
+      "title": "allow(clippy::option_option) is struct-level, not field-level",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F021",
+      "title": "capability.rs zd suppression comment format",
+      "status": "wont_fix",
+      "commit": null,
+      "pr": null,
+      "resolved_date": "2026-05-06",
+      "wont_fix_reason": "already in correct zd: format per review"
+    },
+    {
+      "id": "F022",
+      "title": "gen_mutation_schemas binary lives in core crate — architectural concern",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "moving binary to a separate crate is a Phase 5+ build restructure",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F023",
+      "title": "RoutePatch triple-state semantics undocumented",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F024",
+      "title": "Schema stubs use non-standard x-variant extension field",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F025",
+      "title": "DesiredState::empty() is an alias for Default::default() — unnecessary API surface",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "18+ call sites; empty() has semantic value ('empty configuration snapshot' intent). Claude's own assessment: low priority.",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F026",
+      "title": "AuditEvent has both derived Debug and manual Display — unclear which is canonical",
+      "status": "wont_fix",
+      "commit": null,
+      "pr": null,
+      "resolved_date": "2026-05-06",
+      "wont_fix_reason": "clippy::mod_module_files prevents the rename; both impls serve different purposes (Debug for diagnostics, Display for audit vocab)"
+    },
+    {
+      "id": "F027",
+      "title": "Dead audit_event_for arm for Rollback should be annotated",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F028",
+      "title": "MutationOutcome.kind field should be renamed audit_event",
+      "status": "fixed",
+      "commit": "7f465f0",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F029",
+      "title": "to_json silent serialization failure",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F030",
+      "title": "schema_drift integration test missing — CI cannot detect schema drift",
+      "status": "fixed",
+      "commit": "d826850",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F031",
+      "title": "Audit diff before-state reads from mutated state, not original",
+      "status": "fixed",
+      "commit": "7d90fc1",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F032",
+      "title": "apply_upgrade_policy silently no-ops when policy_attachment is None",
+      "status": "fixed",
+      "commit": "7d90fc1",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F033",
+      "title": "updated_at field responsibility undocumented",
+      "status": "fixed",
+      "commit": "7d90fc1",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F034",
+      "title": "content_address SHA-256 utility out of scope in mutation/types.rs",
+      "status": "fixed",
+      "commit": "de47342",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F035",
+      "title": "DesiredState.version is public — callers can bypass +1 invariant",
+      "status": "fixed",
+      "commit": "3787298",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F036",
+      "title": "version increment unchecked — i64::MAX overflow causes panic",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F037",
+      "title": "AttachPolicy accepts preset_version == 0",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F038",
+      "title": "No justfile recipe for schema validation",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F039",
+      "title": "Non-object mutation payload produces MissingExpectedVersion instead of Malformed",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F040",
+      "title": "SetTlsConfig capability check only gates on ACME email, not all TLS fields",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F041",
+      "title": "CreateRoute capability uses wrong module name for header handler",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F042",
+      "title": "AttachPolicy/UpgradePolicy version mismatch uses generic ValidationRule",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F043",
+      "title": "check_detach_policy and check_upgrade_policy perform redundant map lookups",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F044",
+      "title": "AUDIT_KIND_VOCAB only accessible in test scope",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F045",
+      "title": "No compile-time guard against adding AuditEvent variants without updating VOCAB",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F046",
+      "title": "serde_json Number precision trap in DesiredState JSON canonicalization",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "forward-looking guard for Phase 5 canonicalization; no serde_json::Value::Number iteration exists in Phase 4 code",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F047",
+      "title": "Optimistic concurrency TOCTOU gap — needs BEGIN IMMEDIATE for SQLite",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "pure-core Phase 4 layer is fine; guidance is for Phase 5 SQLite adapter implementation",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F048",
+      "title": "Schema-version DB column should be in Phase 5 migration, not defaulted at read time",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "forward-looking note for Phase 5 migration authoring; no DB migration exists yet",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F049",
+      "title": "No validation of redirect URL scheme — open redirect to arbitrary protocols",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F050",
+      "title": "on_demand_ask_url accepts loopback and RFC 1918 addresses — SSRF vector",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F051",
+      "title": "CIDR matchers accept invalid notation — no parse-time validation",
+      "status": "fixed",
+      "commit": "21e330d",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F052",
+      "title": "RoutePatch/UpstreamPatch fields are .clone()d instead of moved — unnecessary allocation",
+      "status": "fixed",
+      "commit": "3787298",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F053",
+      "title": "check_detach_policy error-vs-no-op semantics are undocumented",
+      "status": "fixed",
+      "commit": "6e70eca",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F054",
+      "title": "apply_set_global_config clone_from semantics are non-obvious — needs a comment",
+      "status": "fixed",
+      "commit": "6e70eca",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F055",
+      "title": "Public enums lack #[non_exhaustive] — future variant additions are semver-breaking",
+      "status": "fixed",
+      "commit": "3971998",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F056",
+      "title": "schemars and proptest dependencies not version-pinned — supply-chain risk",
+      "status": "fixed",
+      "commit": "3971998",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F057",
+      "title": "Missing validation for black-hole routes (no upstream and no redirect rule)",
+      "status": "fixed",
+      "commit": "3787298",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F058",
+      "title": "Caddyfile import warnings are discarded — not surfaced in MutationOutcome",
+      "status": "deferred",
+      "commit": null,
+      "pr": null,
+      "resolved_date": null,
+      "defer_reason": "surfacing warnings in MutationOutcome requires MutationOutcome schema changes; deferred to Phase 5 when the apply layer is wired",
+      "defer_to_phase": "5"
+    },
+    {
+      "id": "F059",
+      "title": "HostPattern variant/content consistency not validated",
+      "status": "fixed",
+      "commit": "6e70eca",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F060",
+      "title": "RedirectRule.status accepts any u16 — not constrained to valid HTTP redirect codes",
+      "status": "fixed",
+      "commit": "3787298",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    },
+    {
+      "id": "F061",
+      "title": "audit.rs should be audit/mod.rs per spec — future submodule extensibility",
+      "status": "wont_fix",
+      "commit": null,
+      "pr": null,
+      "resolved_date": "2026-05-06",
+      "wont_fix_reason": "clippy::mod_module_files (workspace lint) forbids mod.rs — rename would fail the gate"
+    },
+    {
+      "id": "F062",
+      "title": "Extra ValidationRule variants diverge from phase spec without amendment note",
+      "status": "fixed",
+      "commit": "6e70eca",
+      "pr": null,
+      "resolved_date": "2026-05-06"
+    }
+  ]
+}
