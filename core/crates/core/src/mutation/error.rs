@@ -56,6 +56,7 @@ pub enum MutationError {
 
 /// Domain validation rules that a mutation can violate.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValidationRule {
     /// A hostname does not conform to RFC 1123.
     HostnameInvalid,
@@ -92,6 +93,7 @@ pub enum ValidationRule {
 
 /// Kinds of schema violations.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SchemaErrorKind {
     /// The field name is not recognised by the schema.
     UnknownField,
@@ -113,6 +115,7 @@ pub enum SchemaErrorKind {
 
 /// Reasons a mutation may be forbidden.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum ForbiddenReason {
     /// The rollback target snapshot is not known to the store.
     #[error("rollback target snapshot is not available in the store")]
