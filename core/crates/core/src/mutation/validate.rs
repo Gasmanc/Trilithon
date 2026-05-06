@@ -196,21 +196,48 @@ fn check_upstreams_exist(state: &DesiredState, ids: &[UpstreamId]) -> Result<(),
     Ok(())
 }
 
-/// Verify that every hostname pattern is RFC 1123-compliant.
+/// Verify that every hostname pattern is RFC 1123-compliant and that its
+/// variant matches the content (e.g. `HostPattern::Wildcard` must start with
+/// `*.`).
 fn check_hostnames_valid(hostnames: &[HostPattern]) -> Result<(), MutationError> {
     for (i, hp) in hostnames.iter().enumerate() {
         let raw = match hp {
             HostPattern::Exact(s) | HostPattern::Wildcard(s) => s.as_str(),
         };
-        if let Err(e) = validate_hostname(raw) {
-            return Err(MutationError::Validation {
-                rule: ValidationRule::HostnameInvalid,
-                path: JsonPointer::root()
-                    .push("route")
-                    .push("hostnames")
-                    .push(&i.to_string()),
-                hint: format!("hostname '{raw}': {e}"),
-            });
+        match validate_hostname(raw) {
+            Err(e) => {
+                return Err(MutationError::Validation {
+                    rule: ValidationRule::HostnameInvalid,
+                    path: JsonPointer::root()
+                        .push("route")
+                        .push("hostnames")
+                        .push(&i.to_string()),
+                    hint: format!("hostname '{raw}': {e}"),
+                });
+            }
+            Ok(canonical) if std::mem::discriminant(&canonical) != std::mem::discriminant(hp) => {
+                return Err(MutationError::Validation {
+                    rule: ValidationRule::HostnameInvalid,
+                    path: JsonPointer::root()
+                        .push("route")
+                        .push("hostnames")
+                        .push(&i.to_string()),
+                    hint: format!(
+                        "hostname '{raw}' is a {} pattern but was tagged as {}",
+                        if canonical == HostPattern::Wildcard(raw.to_owned()) {
+                            "wildcard"
+                        } else {
+                            "exact"
+                        },
+                        if matches!(hp, HostPattern::Wildcard(_)) {
+                            "Wildcard"
+                        } else {
+                            "Exact"
+                        }
+                    ),
+                });
+            }
+            Ok(_) => {}
         }
     }
     Ok(())
@@ -273,6 +300,9 @@ fn check_attach_policy(
 }
 
 /// Pre-conditions for [`Mutation::DetachPolicy`].
+///
+/// Detaching a policy from a route that has no attachment is an error (not a
+/// no-op): callers must only detach when they know a policy is attached.
 fn check_detach_policy(state: &DesiredState, route_id: &RouteId) -> Result<(), MutationError> {
     // Single lookup: the missing-route guard and the attachment check share one get.
     let Some(route) = state.routes.get(route_id) else {

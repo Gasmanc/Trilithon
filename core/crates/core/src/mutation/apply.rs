@@ -281,6 +281,8 @@ fn apply_set_global_config(
 ) -> Vec<DiffChange> {
     let pointer = JsonPointer::root().push("global");
     let before = to_json(&state.global);
+    // Three-state semantics: Some(None) = clear field, Some(Some(v)) = set field, None = no-op.
+    // clone_from() reuses the target's allocation when possible rather than dropping and reallocating.
     if let Some(admin_listen) = &global_patch.admin_listen {
         new_state.global.admin_listen.clone_from(admin_listen);
     }

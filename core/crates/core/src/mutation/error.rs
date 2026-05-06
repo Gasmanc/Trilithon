@@ -66,12 +66,15 @@ pub enum ValidationRule {
     /// A route id is already present in the desired state.
     DuplicateRouteId,
     /// An upstream id is already present in the desired state.
+    /// Added for Slice 4.9 (`CreateUpstream` / `ImportFromCaddyfile` pre-conditions).
     DuplicateUpstreamId,
     /// A route does not exist in the desired state.
+    /// Added for Slice 4.9 (`DeleteRoute` / `UpdateRoute` / `DetachPolicy` pre-conditions).
     RouteMissing,
     /// A route references a policy attachment that does not exist.
     PolicyAttachmentMissing,
     /// The upstream being deleted is still referenced by one or more routes.
+    /// Added for Slice 4.9 (`DeleteUpstream` referential integrity).
     UpstreamStillReferenced,
     /// Every field in a patch is `None`, so the mutation would make no change.
     NoOpMutation,
