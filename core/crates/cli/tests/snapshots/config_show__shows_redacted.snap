@@ -1,7 +1,7 @@
 ---
 source: crates/cli/tests/config_show.rs
-assertion_line: 27
-expression: stdout
+assertion_line: 33
+expression: normalized
 ---
 [server]
 bind = "127.0.0.1:7878"
@@ -16,7 +16,7 @@ transport = "unix"
 path = "/run/caddy/admin.sock"
 
 [storage]
-data_dir = "/tmp/trilithon-cs-test"
+data_dir = "[TEMP_DATA_DIR]"
 wal_checkpoint_pages = 1000
 
 [secrets.master_key_backend]

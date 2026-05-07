@@ -55,6 +55,13 @@ impl EnvProvider for MapEnvProvider {
     }
 }
 
+impl MapEnvProvider {
+    fn with_var(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.vars.push((key.into(), value.into()));
+        self
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -65,15 +72,30 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// Create a writable temp directory and return a [`MapEnvProvider`] that
+/// injects it as `TRILITHON_STORAGE__DATA_DIR` plus any extra vars.
+///
+/// The caller must hold the returned [`tempfile::TempDir`] for the duration of
+/// the test; dropping it removes the directory.
+fn env_with_tempdir(
+    extra_vars: impl IntoIterator<Item = (&'static str, &'static str)>,
+) -> (tempfile::TempDir, MapEnvProvider) {
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let data_dir = tmp.path().to_str().expect("UTF-8 path").to_owned();
+    let provider =
+        MapEnvProvider::new(extra_vars).with_var("TRILITHON_STORAGE__DATA_DIR", data_dir);
+    (tmp, provider)
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[test]
 fn happy_path_minimal() {
-    // The minimal fixture uses /tmp/trilithon-test-data which is writable.
-    let result = load_config(&fixture("minimal.toml"), &MapEnvProvider::empty());
-    let cfg = result.expect("minimal.toml must load successfully");
+    let (_tmp, env) = env_with_tempdir([]);
+    let cfg =
+        load_config(&fixture("minimal.toml"), &env).expect("minimal.toml must load successfully");
     assert_eq!(cfg.server.bind.to_string(), "127.0.0.1:7878", "server.bind");
     assert_eq!(
         cfg.concurrency.rebase_token_ttl_minutes, 30,
@@ -105,7 +127,7 @@ fn malformed_toml() {
 
 #[test]
 fn env_override_applied() {
-    let env = MapEnvProvider::new([("TRILITHON_SERVER__BIND", "127.0.0.1:9090")]);
+    let (_tmp, env) = env_with_tempdir([("TRILITHON_SERVER__BIND", "127.0.0.1:9090")]);
     let cfg = load_config(&fixture("minimal.toml"), &env).expect("env override must succeed");
     assert_eq!(
         cfg.server.bind.to_string(),
@@ -126,14 +148,15 @@ fn rebase_ttl_boundary_low() {
 
 #[test]
 fn rebase_ttl_boundary_low_inclusive() {
-    let env = MapEnvProvider::new([("TRILITHON_CONCURRENCY__REBASE_TOKEN_TTL_MINUTES", "5")]);
+    let (_tmp, env) = env_with_tempdir([("TRILITHON_CONCURRENCY__REBASE_TOKEN_TTL_MINUTES", "5")]);
     let result = load_config(&fixture("minimal.toml"), &env);
     assert!(result.is_ok(), "TTL=5 must be accepted, got {result:?}");
 }
 
 #[test]
 fn rebase_ttl_boundary_high_inclusive() {
-    let env = MapEnvProvider::new([("TRILITHON_CONCURRENCY__REBASE_TOKEN_TTL_MINUTES", "1440")]);
+    let (_tmp, env) =
+        env_with_tempdir([("TRILITHON_CONCURRENCY__REBASE_TOKEN_TTL_MINUTES", "1440")]);
     let result = load_config(&fixture("minimal.toml"), &env);
     assert!(result.is_ok(), "TTL=1440 must be accepted, got {result:?}");
 }
