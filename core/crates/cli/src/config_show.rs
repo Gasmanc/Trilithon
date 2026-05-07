@@ -28,6 +28,11 @@ fn run_inner(config_path: &Path) -> Result<(), anyhow::Error> {
     let env = trilithon_adapters::env_provider::StdEnvProvider;
     let config = trilithon_adapters::config_loader::load_config(config_path, &env)
         .map_err(anyhow::Error::from)?;
+
+    // Install subscriber with values from loaded config; ignore AlreadyInstalled
+    // (tests) and BadFilter (don't break config show due to a tracing misconfiguration).
+    let _ = crate::observability::init(&config.tracing);
+
     let redacted = config.redacted();
     let rendered = toml::to_string_pretty(&redacted)?;
     println!("{rendered}");

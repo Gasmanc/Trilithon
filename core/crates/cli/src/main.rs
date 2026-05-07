@@ -29,24 +29,8 @@ fn main() -> std::process::ExitCode {
     }
 
     let cli = Cli::parse();
-
-    // Initialise the tracing subscriber with a best-effort default config.
-    // If the subscriber is already installed (e.g. in tests) we continue
-    // without failing; any other error is logged to stderr and we carry on
-    // with a no-op subscriber.
-    let tracing_config = trilithon_core::config::TracingConfig {
-        log_filter: "info,trilithon=info".into(),
-        format: trilithon_core::config::LogFormat::Pretty,
-    };
-    if let Err(e) = observability::init(&tracing_config) {
-        match e {
-            observability::ObsError::AlreadyInstalled => {}
-            observability::ObsError::BadFilter { .. } => {
-                let mut stderr = std::io::stderr().lock();
-                let _ = writeln!(stderr, "trilithon: tracing init warning: {e}");
-            }
-        }
-    }
+    // Tracing subscriber is initialised later, inside run_daemon / config_show,
+    // after DaemonConfig is loaded so the configured log_filter and format are used.
 
     let code = dispatch(cli);
     exit::to_process_exit(code)
@@ -90,6 +74,15 @@ fn run_daemon(config_path: &std::path::Path, takeover: bool) -> trilithon_core::
             return trilithon_core::exit::ExitCode::ConfigError;
         }
     };
+
+    // Now that config is loaded, install the subscriber with the configured
+    // log_filter and format.  AlreadyInstalled is benign (e.g. in tests).
+    if let Err(e) = observability::init(&config.tracing) {
+        if !matches!(e, observability::ObsError::AlreadyInstalled) {
+            let mut stderr = std::io::stderr().lock();
+            let _ = writeln!(stderr, "trilithon: tracing init warning: {e}");
+        }
+    }
 
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
