@@ -32,4 +32,11 @@ pub enum CaddyError {
         /// Human-readable description of the violation.
         detail: String,
     },
+
+    /// The configured admin endpoint URL is not valid.
+    #[error("invalid caddy admin endpoint: {detail}")]
+    InvalidEndpoint {
+        /// Human-readable description of the problem.
+        detail: String,
+    },
 }

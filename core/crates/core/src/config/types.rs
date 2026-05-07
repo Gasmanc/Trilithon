@@ -7,7 +7,6 @@
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use url::Url;
 
 /// Placeholder used in redacted config output for every secret-bearing field.
 const REDACTED: &str = "***";
@@ -52,8 +51,9 @@ pub enum CaddyEndpoint {
     },
     /// Loopback HTTPS with mutual TLS.
     LoopbackTls {
-        /// Base URL of the admin API.
-        url: Url,
+        /// Base URL of the admin API (e.g. `https://127.0.0.1:2019`).
+        /// Validated and parsed in the adapters layer when a connection is made.
+        url: String,
         /// Path to the client certificate (secret).
         mtls_cert_path: PathBuf,
         /// Path to the client private key (secret).
@@ -241,7 +241,7 @@ pub enum RedactedCaddyEndpoint {
     /// Loopback TLS — cert and key paths redacted.
     LoopbackTls {
         /// Base URL.
-        url: Url,
+        url: String,
         /// Redacted client certificate path.
         mtls_cert_path: &'static str,
         /// Redacted client private key path.

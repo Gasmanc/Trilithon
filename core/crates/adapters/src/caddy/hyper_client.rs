@@ -100,15 +100,17 @@ impl HyperCaddyClient {
                 mtls_key_path,
                 mtls_ca_path,
             } => {
+                let base_url =
+                    url.parse::<url::Url>()
+                        .map_err(|e| CaddyError::InvalidEndpoint {
+                            detail: format!("admin URL {url:?} is not a valid URL: {e}"),
+                        })?;
                 let client = Box::new(build_tls_client(
                     mtls_ca_path,
                     mtls_cert_path,
                     mtls_key_path,
                 )?);
-                Inner::LoopbackTls {
-                    client,
-                    base_url: url.clone(),
-                }
+                Inner::LoopbackTls { client, base_url }
             }
         };
 

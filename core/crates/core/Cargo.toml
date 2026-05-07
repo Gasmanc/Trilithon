@@ -11,7 +11,6 @@ schema = ["dep:schemars"]
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-url = { workspace = true }
 async-trait = { workspace = true }
 sha2 = { workspace = true }
 ulid = { workspace = true }

@@ -407,17 +407,16 @@ fn check_delete_upstream(state: &DesiredState, id: &UpstreamId) -> Result<(), Mu
 
 /// Validate a redirect target URL — only http/https schemes are accepted.
 fn check_redirect_url(url: &str) -> Result<(), MutationError> {
-    match url::Url::parse(url) {
-        Ok(parsed) if parsed.scheme() == "http" || parsed.scheme() == "https" => Ok(()),
-        Ok(parsed) => Err(MutationError::Validation {
+    match parse_url_scheme(url) {
+        Some("http" | "https") => Ok(()),
+        Some(scheme) => Err(MutationError::Validation {
             rule: ValidationRule::RedirectUrlInvalid,
             path: JsonPointer::root().push("redirects").push("to"),
             hint: format!(
-                "redirect URL scheme '{}' is not allowed; only http and https are accepted",
-                parsed.scheme()
+                "redirect URL scheme '{scheme}' is not allowed; only http and https are accepted"
             ),
         }),
-        Err(_) => Err(MutationError::Validation {
+        None => Err(MutationError::Validation {
             rule: ValidationRule::RedirectUrlInvalid,
             path: JsonPointer::root().push("redirects").push("to"),
             hint: format!("redirect URL '{url}' is not a valid URL"),
@@ -428,36 +427,57 @@ fn check_redirect_url(url: &str) -> Result<(), MutationError> {
 /// Validate the on-demand TLS ask URL — must be https and must not target
 /// loopback or RFC 1918 addresses (SSRF guard).
 fn check_on_demand_ask_url(url: &str) -> Result<(), MutationError> {
-    let parsed = url::Url::parse(url).map_err(|_| MutationError::Validation {
-        rule: ValidationRule::OnDemandAskUrlInvalid,
-        path: JsonPointer::root().push("on_demand_ask_url"),
-        hint: format!("on-demand ask URL '{url}' is not a valid URL"),
-    })?;
+    let (scheme, host) =
+        parse_url_scheme_and_host(url).ok_or_else(|| MutationError::Validation {
+            rule: ValidationRule::OnDemandAskUrlInvalid,
+            path: JsonPointer::root().push("on_demand_ask_url"),
+            hint: format!("on-demand ask URL '{url}' is not a valid URL"),
+        })?;
 
-    if parsed.scheme() != "https" {
+    if scheme != "https" {
+        return Err(MutationError::Validation {
+            rule: ValidationRule::OnDemandAskUrlInvalid,
+            path: JsonPointer::root().push("on_demand_ask_url"),
+            hint: format!("on-demand ask URL must use https; got '{scheme}'"),
+        });
+    }
+
+    if is_loopback_or_private(&host) {
         return Err(MutationError::Validation {
             rule: ValidationRule::OnDemandAskUrlInvalid,
             path: JsonPointer::root().push("on_demand_ask_url"),
             hint: format!(
-                "on-demand ask URL must use https; got '{}'",
-                parsed.scheme()
+                "on-demand ask URL must not target a loopback or private address; got '{host}'"
             ),
         });
     }
 
-    if let Some(host) = parsed.host_str() {
-        if is_loopback_or_private(host) {
-            return Err(MutationError::Validation {
-                rule: ValidationRule::OnDemandAskUrlInvalid,
-                path: JsonPointer::root().push("on_demand_ask_url"),
-                hint: format!(
-                    "on-demand ask URL must not target a loopback or private address; got '{host}'"
-                ),
-            });
-        }
-    }
-
     Ok(())
+}
+
+/// Extract the scheme from a URL string (the part before `://`).
+/// Returns `None` if the string contains no `://` separator.
+fn parse_url_scheme(url: &str) -> Option<&str> {
+    url.split_once("://").map(|(scheme, _)| scheme)
+}
+
+/// Extract the scheme and host from a URL string without the `url` crate.
+///
+/// Strips port and brackets from IPv6 addresses so the returned host string
+/// can be passed directly to [`is_loopback_or_private`].
+/// Returns `None` if the URL has no `://` separator.
+fn parse_url_scheme_and_host(url: &str) -> Option<(&str, String)> {
+    let (scheme, rest) = url.split_once("://")?;
+    // Take the authority section (up to the first '/', '?', or '#').
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = if let Some(bracket_content) = authority.strip_prefix('[') {
+        // IPv6 literal like `[::1]` or `[::1]:2019` — strip brackets.
+        bracket_content.split(']').next()?.to_owned()
+    } else {
+        // hostname or IPv4 — strip optional port.
+        authority.split(':').next().unwrap_or(authority).to_owned()
+    };
+    Some((scheme, host))
 }
 
 /// Returns `true` if `host` resolves to a loopback or RFC 1918 / RFC 4193

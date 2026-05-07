@@ -41,16 +41,21 @@ pub fn validate_loopback_only(endpoint: &CaddyEndpoint) -> Result<(), EndpointPo
     match endpoint {
         // Unix-domain sockets are local by definition.
         CaddyEndpoint::Unix { .. } => Ok(()),
-        CaddyEndpoint::LoopbackTls { url, .. } => match url.host() {
-            Some(url::Host::Ipv4(addr)) if addr.is_loopback() => Ok(()),
-            Some(url::Host::Ipv6(addr)) if addr == Ipv6Addr::LOCALHOST => Ok(()),
-            Some(host) => Err(EndpointPolicyError::NonLoopback {
-                host: host.to_string(),
-            }),
-            None => Err(EndpointPolicyError::NonLoopback {
-                host: String::new(),
-            }),
-        },
+        CaddyEndpoint::LoopbackTls { url, .. } => {
+            let parsed = url
+                .parse::<url::Url>()
+                .map_err(|_| EndpointPolicyError::NonLoopback { host: url.clone() })?;
+            match parsed.host() {
+                Some(url::Host::Ipv4(addr)) if addr.is_loopback() => Ok(()),
+                Some(url::Host::Ipv6(addr)) if addr == Ipv6Addr::LOCALHOST => Ok(()),
+                Some(host) => Err(EndpointPolicyError::NonLoopback {
+                    host: host.to_string(),
+                }),
+                None => Err(EndpointPolicyError::NonLoopback {
+                    host: String::new(),
+                }),
+            }
+        }
     }
 }
 
@@ -64,11 +69,10 @@ pub fn validate_loopback_only(endpoint: &CaddyEndpoint) -> Result<(), EndpointPo
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use url::Url;
 
     fn loopback_tls(url: &str) -> CaddyEndpoint {
         CaddyEndpoint::LoopbackTls {
-            url: Url::parse(url).expect("valid URL"),
+            url: url.to_owned(),
             mtls_cert_path: PathBuf::from("/etc/certs/client.crt"),
             mtls_key_path: PathBuf::from("/etc/certs/client.key"),
             mtls_ca_path: PathBuf::from("/etc/certs/ca.crt"),
