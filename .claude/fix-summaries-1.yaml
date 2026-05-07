@@ -1,0 +1,54 @@
+- finding_id: F001
+  fix_diff_summary: "Removed assert_cmd, predicates, nix, regex, insta from [workspace.dependencies]; added layer-annotation comments; inlined those deps in per-crate [dev-dependencies]. Also pinned nix to 0.27 with only the features actually used."
+  generalizable: true
+  one_sentence_lesson: "Keep test-only crates out of [workspace.dependencies] and annotate workspace deps by architectural tier so manifest review alone can enforce the three-layer boundary."
+
+- finding_id: F002
+  fix_diff_summary: "Removed hardcoded pre-dispatch observability::init from main(); moved init into run_daemon() and config_show::run_inner() after DaemonConfig is loaded, so configured log_filter/format are actually applied."
+  generalizable: true
+  one_sentence_lesson: "Never install a global subscriber with hardcoded defaults before the config is loaded — defer init until after config load so user-configured log level and format actually take effect."
+
+- finding_id: F003
+  fix_diff_summary: "Replaced url::Url config field with String in CaddyEndpoint::LoopbackTls. Rewrote URL scheme/host validation in mutation/validate.rs using std-only string splitting. Moved URL parsing to adapters layer (hyper_client, validate_endpoint) where url crate is already a dependency."
+  generalizable: true
+  one_sentence_lesson: "In a three-layer architecture, I/O-adjacent crates (even pure parsers like 'url') belong in the adapters layer; represent external addresses as String in core types and parse them at the adapters boundary."
+
+- finding_id: F013
+  fix_diff_summary: "Moved pre-tracing stderr write from top of main() (before arg parsing) into the Command::Run dispatch branch only, so --help, --version, and fast-exit subcommands no longer emit startup noise. Updated test to use `run` subcommand."
+  generalizable: true
+  one_sentence_lesson: "Diagnostic startup sentinels belong on the daemon/work path only — emitting them unconditionally before arg parsing adds noise to every --help and --version invocation."
+
+- finding_id: F004
+  fix_diff_summary: "Replaced discarded tokio::spawn handles with JoinSet; all background tasks (integrity_loop, reconnect_loop, daemon_loop) are now drained within DRAIN_BUDGET on shutdown."
+  generalizable: true
+  one_sentence_lesson: "Every tokio::spawn handle must be tracked in a JoinSet (or Vec of JoinHandles) so tasks can be drained on shutdown — discarding handles means background work is aborted rather than cleanly wound down."
+
+- finding_id: F005
+  fix_diff_summary: "Replaced hardcoded relative .git/HEAD path with CARGO_MANIFEST_DIR-anchored path pointing to the workspace git root."
+  generalizable: true
+  one_sentence_lesson: "Build script cargo:rerun-if-changed paths must be absolute or anchored to CARGO_MANIFEST_DIR — bare relative paths resolve to the package directory, not the workspace or git root."
+
+- finding_id: F008
+  fix_diff_summary: "Added ConfigError::BindAddressInvalid variant and pre-validates server.bind as SocketAddr between env-override application and full deserialization."
+  generalizable: true
+  one_sentence_lesson: "Spec-required error variants must be implemented even when a generic fallback (MalformedToml) would technically work — each distinct failure mode needs its own variant for callers and tests to pattern-match."
+
+- finding_id: F018
+  fix_diff_summary: "Changed write probe filename from .trilithon-write-probe to .trilithon-write-probe.<pid> so concurrent daemon starts on the same data_dir don't race on the same probe file."
+  generalizable: true
+  one_sentence_lesson: "Temporary probe files used for writability checks must include the PID (or a UUID) to prevent race conditions when multiple processes test the same directory concurrently."
+
+- finding_id: F019
+  fix_diff_summary: "Replaced byte-arithmetic column calculation with chars().count() so multi-byte UTF-8 characters report the correct column number."
+  generalizable: true
+  one_sentence_lesson: "When computing column numbers in user-visible diagnostics, always count Unicode scalar values (chars()) not bytes — byte offsets produce wrong column numbers for any non-ASCII input."
+
+- finding_id: F020
+  fix_diff_summary: "Added 64KB MAX_BUF cap in TsWriterGuard::write() — silently truncates oversized log lines rather than growing the buffer unboundedly."
+  generalizable: true
+  one_sentence_lesson: "In-memory log-line buffers that accumulate bytes before flush must have an explicit upper bound; unbounded growth will OOM a process if a single event has a very large message field."
+
+- finding_id: F027
+  fix_diff_summary: "Added ExitCode::RuntimePanic=70; drain_tasks now returns bool indicating whether any task panicked; run_with_shutdown returns RuntimePanic if any task panicked."
+  generalizable: true
+  one_sentence_lesson: "Task panics are a distinct operational failure mode from clean shutdown — exit with a dedicated non-zero code (not 0) so monitors and process managers can distinguish a panic restart from a normal stop."
