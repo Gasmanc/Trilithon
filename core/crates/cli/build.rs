@@ -5,9 +5,17 @@
 //! time.
 
 fn main() {
-    // Only re-run this script when the git HEAD actually changes.
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs/heads/");
+    // Resolve the workspace .git directory relative to CARGO_MANIFEST_DIR so
+    // that `rerun-if-changed` points at the real files (the naive relative path
+    // would resolve to core/crates/cli/.git/HEAD, which never exists).
+    let manifest =
+        std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
+    let git_root = manifest.join("../../../.git");
+    println!("cargo:rerun-if-changed={}", git_root.join("HEAD").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        git_root.join("refs/heads/").display()
+    );
 
     let git = std::process::Command::new("git")
         .args(["rev-parse", "--short=12", "HEAD"])

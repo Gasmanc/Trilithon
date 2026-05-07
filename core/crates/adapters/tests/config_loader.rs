@@ -174,6 +174,16 @@ fn rebase_ttl_boundary_high() {
     );
 }
 
+#[test]
+fn bind_address_invalid() {
+    let env = MapEnvProvider::new([("TRILITHON_SERVER__BIND", "not-a-valid-addr")]);
+    let result = load_config(&fixture("minimal.toml"), &env);
+    assert!(
+        matches!(result, Err(ConfigError::BindAddressInvalid { .. })),
+        "expected BindAddressInvalid, got {result:?}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn data_dir_not_writable() {

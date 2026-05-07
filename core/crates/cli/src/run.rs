@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use tokio::task::JoinSet;
 use trilithon_adapters::sqlite_storage::SqliteStorage;
 use trilithon_core::config::DaemonConfig;
 use trilithon_core::exit::ExitCode;
@@ -93,8 +94,11 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
 
     let (controller, signal) = ShutdownController::new();
 
+    // Collect all background task handles so they can be drained on shutdown.
+    let mut tasks: JoinSet<()> = JoinSet::new();
+
     // Spawn the periodic integrity-check background task.
-    tokio::spawn(trilithon_adapters::integrity_check::run_integrity_loop(
+    tasks.spawn(trilithon_adapters::integrity_check::run_integrity_loop(
         pool.clone(),
         trilithon_adapters::integrity_check::DEFAULT_INTERVAL,
         Box::new(signal.clone()) as Box<dyn trilithon_core::lifecycle::ShutdownObserver>,
@@ -149,7 +153,7 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     }
 
     // Spawn the background reconnect loop.
-    tokio::spawn(trilithon_adapters::caddy::reconnect::reconnect_loop(
+    tasks.spawn(trilithon_adapters::caddy::reconnect::reconnect_loop(
         caddy_client.clone(),
         cap_cache.clone(),
         cap_store,
@@ -161,10 +165,18 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     // Emit daemon.started only after every startup gate has passed.
     tracing::info!("daemon.started");
 
-    let task = tokio::spawn(daemon_loop(signal));
+    tasks.spawn(daemon_loop(signal));
 
-    // Wait for a Unix signal.
-    let kind = wait_for_signal().await?;
+    // Wait for a Unix signal.  On error (OS refuses handler install), trigger
+    // shutdown explicitly so all background tasks exit cleanly before we return.
+    let kind = match wait_for_signal().await {
+        Ok(k) => k,
+        Err(e) => {
+            controller.trigger();
+            drain_tasks(&mut tasks).await;
+            return Err(e);
+        }
+    };
     match kind {
         SignalKind::Interrupt => {
             tracing::info!(reason = "sigint", "daemon.shutting-down");
@@ -175,21 +187,27 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     }
 
     controller.trigger();
+    drain_tasks(&mut tasks).await;
 
-    // Await all spawned tasks, up to the drain budget.
-    // A JoinError indicates the task panicked; treat that as an abnormal exit.
-    match tokio::time::timeout(DRAIN_BUDGET, task).await {
-        Ok(Ok(())) => {
-            tracing::info!(forced = false, "daemon.shutdown-complete");
+    Ok(ExitCode::CleanShutdown)
+}
+
+/// Drain all tasks in `set` within [`DRAIN_BUDGET`], then abort any survivors.
+async fn drain_tasks(set: &mut JoinSet<()>) {
+    let drained = tokio::time::timeout(DRAIN_BUDGET, async {
+        while let Some(result) = set.join_next().await {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "daemon.task-panicked");
+            }
         }
-        Ok(Err(join_err)) => {
-            tracing::error!(error = %join_err, "daemon.task-panicked");
-            return Ok(ExitCode::StartupPreconditionFailure);
-        }
+    })
+    .await;
+
+    match drained {
+        Ok(()) => tracing::info!(forced = false, "daemon.shutdown-complete"),
         Err(_elapsed) => {
+            set.abort_all();
             tracing::warn!(forced = true, "daemon.shutdown-complete");
         }
     }
-
-    Ok(ExitCode::CleanShutdown)
 }

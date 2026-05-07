@@ -24,3 +24,27 @@ fn malformed_config_exits_2() {
         .code(2)
         .stderr(contains("malformed TOML"));
 }
+
+#[test]
+fn config_show_missing_config_exits_2() {
+    let mut cmd = Command::cargo_bin("trilithon").unwrap();
+    cmd.args([
+        "--config",
+        "/nonexistent/path/config.toml",
+        "config",
+        "show",
+    ])
+    .assert()
+    .code(2)
+    .stderr(contains("configuration file not found"));
+}
+
+#[test]
+fn config_show_malformed_config_exits_2() {
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/malformed.toml");
+    let mut cmd = Command::cargo_bin("trilithon").unwrap();
+    cmd.args(["--config", fixture, "config", "show"])
+        .assert()
+        .code(2)
+        .stderr(contains("malformed TOML"));
+}

@@ -8,6 +8,7 @@
 //!    [`ConfigError::MalformedToml`].
 //! 3. Collect `TRILITHON_*` env vars, map keys (lowercase, `__` → `.`),
 //!    apply as dotted-path overrides into the table.
+//!    3b. Pre-validate `server.bind` → [`ConfigError::BindAddressInvalid`].
 //! 4. Deserialize the (possibly mutated) table into [`DaemonConfig`].
 //! 5. Validate `concurrency.rebase_token_ttl_minutes` ∈ \[5, 1440\].
 //! 6. Validate `caddy.admin_endpoint` is loopback-only (ADR-0011).
@@ -94,6 +95,15 @@ pub enum ConfigError {
         value: u32,
     },
 
+    /// The `server.bind` address is not a valid socket address.
+    #[error(
+        "invalid bind address {value:?}: expected a valid socket address (e.g. 127.0.0.1:7878)"
+    )]
+    BindAddressInvalid {
+        /// The invalid value that was provided.
+        value: String,
+    },
+
     /// The Caddy admin endpoint violates the loopback-only policy (ADR-0011).
     #[error("admin endpoint policy violation: {source}")]
     AdminEndpointPolicy {
@@ -155,11 +165,26 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
         }
     }
 
+    // 3b. Pre-validate server.bind so a bad address produces BindAddressInvalid
+    // rather than a generic MalformedToml with no location information.
+    if let Some(bind_val) = table
+        .get("server")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.get("bind"))
+    {
+        let bind_str = bind_val.as_str().unwrap_or("");
+        bind_str
+            .parse::<std::net::SocketAddr>()
+            .map_err(|_| ConfigError::BindAddressInvalid {
+                value: bind_str.to_owned(),
+            })?;
+    }
+
     // 4. Deserialize the (possibly mutated) table into DaemonConfig.
-    // Any type mismatch from env overrides (e.g. bad bind address, bad integer)
-    // surfaces here as MalformedToml. Span information is not available at this
-    // stage because toml::de::Error spans refer to the original text positions,
-    // not the in-memory table, so we default to (1, 1).
+    // Any remaining type mismatch from env overrides surfaces here as
+    // MalformedToml. Span information is not available at this stage because
+    // toml::de::Error spans refer to the original text positions, not the
+    // in-memory table, so we default to (1, 1).
     let config: DaemonConfig =
         toml::Value::Table(table)
             .try_into()

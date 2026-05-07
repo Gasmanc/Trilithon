@@ -174,7 +174,7 @@ issue, not a graph issue.
 *Project-specific terminology, invariants, and frozen zones go here. Keep
 this section. Update it as the project grows.*
 
-_(Project-specific terminology and invariants go here.)_
+**`web/` directory** — Bootstrap scaffolding (Vite + React + Vitest) created alongside Phase 1 but not part of Phase 1 scope. It is intentional project infrastructure, not scope creep. A formal web phase will own its evolution.
 
 ## Commits and branches
 
