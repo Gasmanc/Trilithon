@@ -2,6 +2,7 @@
 
 pub mod audit_vocab;
 pub mod error;
+pub mod helpers;
 pub mod trait_def;
 pub mod types;
 
