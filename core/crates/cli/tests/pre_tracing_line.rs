@@ -2,10 +2,13 @@
 
 #[test]
 fn pre_tracing_line_is_first_on_stderr() -> Result<(), Box<dyn std::error::Error>> {
-    // Use `version` — the pre-tracing line is emitted before argument parsing,
-    // so it appears for every subcommand including the fast-exiting `version`.
+    // Use `run` — the pre-tracing line is only emitted for daemon paths, not for
+    // fast-exit commands like `version` or `config show`. The command will fail
+    // quickly (bad data_dir) but the first stderr line must be the sentinel.
+    let tmp = tempfile::tempdir()?;
     let mut cmd = assert_cmd::Command::cargo_bin("trilithon")?;
-    cmd.arg("version");
+    cmd.args(["--config", "tests/fixtures/minimal.toml", "run"])
+        .env("TRILITHON_STORAGE__DATA_DIR", tmp.path());
     let output = cmd.output()?;
     let stderr = String::from_utf8(output.stderr)?;
     let first_line = stderr.lines().next().unwrap_or("");

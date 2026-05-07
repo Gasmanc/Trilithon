@@ -19,15 +19,6 @@ mod shutdown;
 use cli::{Cli, Command, ConfigAction};
 
 fn main() -> std::process::ExitCode {
-    // Pre-tracing line — must appear before subscriber installation.
-    {
-        let mut stderr = std::io::stderr().lock();
-        // Ignore write/flush errors: if stderr is broken there is nothing
-        // sensible to do before the subscriber is up.
-        let _ = stderr.write_all(b"trilithon: starting (pre-tracing)\n");
-        let _ = stderr.flush();
-    }
-
     // Use try_parse so usage errors return ExitCode::InvalidInvocation (64) rather
     // than clap's hardcoded exit 2, which would collide with ConfigError (2).
     let cli = match Cli::try_parse() {
@@ -76,7 +67,18 @@ fn dispatch(cli: Cli) -> trilithon_core::exit::ExitCode {
 
     match command {
         Command::Version => print_version(),
-        Command::Run { takeover } => run_daemon(&config, takeover),
+        Command::Run { takeover } => {
+            // Pre-tracing sentinel — emitted before the subscriber is installed so a
+            // crash between here and subscriber init is still visible on stderr.
+            // Scoped to `run` only; fast-exit commands (`version`, `config show`)
+            // do not need it.
+            {
+                let mut stderr = std::io::stderr().lock();
+                let _ = stderr.write_all(b"trilithon: starting (pre-tracing)\n");
+                let _ = stderr.flush();
+            }
+            run_daemon(&config, takeover)
+        }
         Command::Config {
             action: ConfigAction::Show,
         } => config_show::run(&config),
