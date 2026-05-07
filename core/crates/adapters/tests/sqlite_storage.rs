@@ -55,6 +55,7 @@ fn make_snapshot(version: i64, parent_body: Option<&str>, body: &str) -> Snapsho
 fn make_audit_event(kind: &str, correlation_id: &str) -> AuditEventRow {
     AuditEventRow {
         id: AuditRowId(ulid::Ulid::new().to_string()),
+        prev_hash: "0000000000000000000000000000000000000000000000000000000000000000".to_owned(),
         caddy_instance_id: "local".to_owned(),
         correlation_id: correlation_id.to_owned(),
         occurred_at: 1_700_000_000,
@@ -180,9 +181,9 @@ async fn insert_duplicate_different_body_returns_duplicate_error() {
         r"INSERT INTO snapshots
             (id, parent_id, caddy_instance_id, actor_kind, actor_id,
              intent, correlation_id, caddy_version, trilithon_version,
-             created_at, created_at_ms, config_version, desired_state_json)
+             created_at, created_at_ms, created_at_monotonic_ns, config_version, desired_state_json)
           VALUES (?, NULL, 'local', 'system', 'test', 'intent', 'corr-01',
-                  '2.8.0', '0.1.0', 1700000000, 1700000000000, 1, ?)",
+                  '2.8.0', '0.1.0', 1700000000, 1700000000000, 0, 1, ?)",
     )
     .bind(&id_a)
     .bind(different_body)

@@ -323,6 +323,8 @@ mod tests {
         fn make_audit_event(kind: &str) -> AuditEventRow {
             AuditEventRow {
                 id: AuditRowId(ulid::Ulid::new().to_string()),
+                prev_hash: "0000000000000000000000000000000000000000000000000000000000000000"
+                    .to_owned(),
                 caddy_instance_id: "local".to_owned(),
                 correlation_id: "corr-01".to_owned(),
                 occurred_at: 1_700_000_000,

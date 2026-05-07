@@ -140,9 +140,9 @@ async fn body_equality_check_hash_collision_detected() {
         r"INSERT INTO snapshots
             (id, parent_id, caddy_instance_id, actor_kind, actor_id,
              intent, correlation_id, caddy_version, trilithon_version,
-             created_at, created_at_ms, config_version, desired_state_json)
+             created_at, created_at_ms, created_at_monotonic_ns, config_version, desired_state_json)
           VALUES (?, NULL, 'local', 'system', 'test', 'intent', 'corr-01',
-                  '2.8.0', '0.1.0', 1700000000, 1700000000000, 1, ?)",
+                  '2.8.0', '0.1.0', 1700000000, 1700000000000, 0, 1, ?)",
     )
     .bind(&id_a)
     .bind(different_body)

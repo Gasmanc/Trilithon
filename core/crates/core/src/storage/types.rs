@@ -136,6 +136,8 @@ pub enum ActorKind {
 pub struct AuditEventRow {
     /// Row identifier (ULID).
     pub id: AuditRowId,
+    /// SHA-256 of previous row's canonical JSON (or all-zero for first row); ADR-0009.
+    pub prev_hash: String,
     /// Caddy instance this event originated from. V1: always `"local"`.
     pub caddy_instance_id: String,
     /// Correlation identifier tying this event to a request.

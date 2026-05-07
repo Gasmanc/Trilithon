@@ -359,14 +359,17 @@ impl SqliteStorage {
 
         // 4. INSERT in the same transaction.
         // V1: single local instance — caddy_instance_id is always 'local' (ADR-0009).
+        #[allow(clippy::cast_possible_wrap)]
+        let created_at_monotonic_ns = snapshot.created_at_monotonic_nanos as i64;
+
         sqlx::query(
             r"
             INSERT INTO snapshots
                 (id, parent_id, caddy_instance_id, actor_kind, actor_id,
                  intent, correlation_id, caddy_version, trilithon_version,
-                 created_at, created_at_ms, config_version, canonical_json_version,
-                 desired_state_json)
-            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 created_at, created_at_ms, created_at_monotonic_ns, config_version,
+                 canonical_json_version, desired_state_json)
+            VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(&id)
@@ -379,6 +382,7 @@ impl SqliteStorage {
         .bind(&snapshot.trilithon_version)
         .bind(snapshot.created_at_unix_seconds)
         .bind(created_at_ms)
+        .bind(created_at_monotonic_ns)
         .bind(snapshot.config_version)
         .bind(i64::from(snapshot.canonical_json_version))
         .bind(&snapshot.desired_state_json)
@@ -686,11 +690,18 @@ impl Storage for SqliteStorage {
         let mut until_param: Option<i64> = None;
 
         if selector.kind_glob.is_some() {
-            conditions.push("kind LIKE ?");
+            conditions.push("kind LIKE ? ESCAPE '\\'");
             // SQLite uses % as wildcard; replace trailing * with %.
+            // Escape LIKE metacharacters % and _ in the prefix to prevent unintended matches.
             kind_glob_param = selector.kind_glob.map(|g| {
                 let prefix = trilithon_core::storage::glob_prefix(&g).map(str::to_owned);
-                prefix.map_or(g, |p| format!("{p}%"))
+                prefix.map_or(g, |p| {
+                    let escaped = p
+                        .replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_");
+                    format!("{escaped}%")
+                })
             });
         }
         if selector.actor_id.is_some() {
@@ -718,7 +729,7 @@ impl Storage for SqliteStorage {
 
         let sql = format!(
             r"
-            SELECT id, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
+            SELECT id, prev_hash, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
                    actor_kind, actor_id, kind, target_kind, target_id,
                    snapshot_id, redacted_diff_json, redaction_sites,
                    outcome, error_kind, notes
@@ -760,6 +771,7 @@ impl Storage for SqliteStorage {
 
             result.push(AuditEventRow {
                 id: AuditRowId(row.try_get("id").map_err(sqlx_err)?),
+                prev_hash: row.try_get("prev_hash").map_err(sqlx_err)?,
                 caddy_instance_id: row.try_get("caddy_instance_id").map_err(sqlx_err)?,
                 correlation_id: row.try_get("correlation_id").map_err(sqlx_err)?,
                 occurred_at: row.try_get("occurred_at").map_err(sqlx_err)?,

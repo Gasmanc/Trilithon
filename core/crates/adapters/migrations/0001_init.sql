@@ -1,13 +1,6 @@
 -- core/crates/adapters/migrations/0001_init.sql
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE schema_migrations (
-    version       INTEGER PRIMARY KEY,
-    applied_at    INTEGER NOT NULL,
-    description   TEXT NOT NULL,
-    checksum      TEXT NOT NULL
-);
-
 CREATE TABLE caddy_instances (
     id              TEXT PRIMARY KEY,
     display_name    TEXT NOT NULL,
@@ -46,19 +39,22 @@ CREATE INDEX sessions_user_id ON sessions(user_id);
 CREATE INDEX sessions_expires_at ON sessions(expires_at);
 
 CREATE TABLE snapshots (
-    id                  TEXT PRIMARY KEY,
-    parent_id           TEXT REFERENCES snapshots(id),
-    caddy_instance_id   TEXT NOT NULL DEFAULT 'local',
-    actor_kind          TEXT NOT NULL CHECK (actor_kind IN ('user', 'token', 'system')),
-    actor_id            TEXT NOT NULL,
-    intent              TEXT NOT NULL,
-    correlation_id      TEXT NOT NULL,
-    caddy_version       TEXT NOT NULL,
-    trilithon_version   TEXT NOT NULL,
-    created_at          INTEGER NOT NULL,
-    created_at_ms       INTEGER NOT NULL,
-    config_version      INTEGER NOT NULL,
-    desired_state_json  TEXT NOT NULL
+    id                      TEXT PRIMARY KEY,
+    parent_id               TEXT REFERENCES snapshots(id),
+    caddy_instance_id       TEXT NOT NULL DEFAULT 'local',
+    actor_kind              TEXT NOT NULL CHECK (actor_kind IN ('user', 'token', 'system')),
+    actor_id                TEXT NOT NULL,
+    intent                  TEXT NOT NULL,
+    correlation_id          TEXT NOT NULL,
+    caddy_version           TEXT NOT NULL,
+    trilithon_version       TEXT NOT NULL,
+    created_at              INTEGER NOT NULL,
+    created_at_ms           INTEGER NOT NULL,
+    created_at_monotonic_ns INTEGER NOT NULL,
+    config_version          INTEGER NOT NULL,
+    canonical_json_version  INTEGER NOT NULL DEFAULT 1,
+    desired_state_json      TEXT NOT NULL,
+    CHECK (parent_id != id)
 );
 CREATE INDEX snapshots_parent_id ON snapshots(parent_id);
 CREATE INDEX snapshots_correlation_id ON snapshots(correlation_id);
@@ -67,6 +63,7 @@ CREATE UNIQUE INDEX snapshots_config_version ON snapshots(caddy_instance_id, con
 
 CREATE TABLE audit_log (
     id                 TEXT PRIMARY KEY,
+    prev_hash          TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
     caddy_instance_id  TEXT NOT NULL DEFAULT 'local',
     correlation_id     TEXT NOT NULL,
     occurred_at        INTEGER NOT NULL,
@@ -105,6 +102,29 @@ CREATE TABLE mutations (
 );
 CREATE INDEX mutations_state ON mutations(state);
 CREATE INDEX mutations_correlation_id ON mutations(correlation_id);
+
+CREATE TABLE proposals (
+    id                  TEXT PRIMARY KEY,
+    caddy_instance_id   TEXT NOT NULL DEFAULT 'local',
+    correlation_id      TEXT NOT NULL,
+    source              TEXT NOT NULL CHECK (source IN ('docker', 'llm', 'import')),
+    source_ref          TEXT,
+    payload_json        TEXT NOT NULL,
+    rationale           TEXT,
+    submitted_at        INTEGER NOT NULL,
+    expires_at          INTEGER NOT NULL,
+    state               TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'expired', 'superseded')),
+    decided_by_kind     TEXT,
+    decided_by_id       TEXT,
+    decided_at          INTEGER,
+    wildcard_callout    INTEGER NOT NULL DEFAULT 0,
+    wildcard_ack_by     TEXT,
+    wildcard_ack_at     INTEGER,
+    resulting_mutation  TEXT REFERENCES mutations(id)
+);
+CREATE INDEX proposals_state ON proposals(state);
+CREATE INDEX proposals_expires_at ON proposals(expires_at);
+CREATE INDEX proposals_source ON proposals(source);
 
 CREATE TABLE secrets_metadata (
     id                TEXT PRIMARY KEY,
