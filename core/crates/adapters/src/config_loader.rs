@@ -48,6 +48,10 @@ pub enum ConfigError {
     },
 
     /// The configuration file could not be read (e.g. permission denied).
+    ///
+    /// Intentionally distinct from [`ConfigError::Missing`]: the file exists
+    /// but could not be opened (EACCES, EIO, etc.).  Callers can use this
+    /// distinction to show a different recovery message.
     #[error("failed to read configuration file at {path}: {source}")]
     ReadFailed {
         /// The path that was attempted.
@@ -155,8 +159,15 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
     let overrides = env.vars_with_prefix("TRILITHON_");
     for (suffix, value) in overrides {
         let dotted_key = suffix.to_lowercase().replace("__", ".");
-        if let Err(reason) = set_by_path(&mut table, &dotted_key, &value) {
-            if reason != EnvOverrideReason::UnknownKey {
+        match set_by_path(&mut table, &dotted_key, &value) {
+            Ok(()) => {}
+            Err(EnvOverrideReason::UnknownKey) => {
+                tracing::warn!(
+                    var = %format!("TRILITHON_{suffix}"),
+                    "config.env-override.unknown-key"
+                );
+            }
+            Err(reason) => {
                 return Err(ConfigError::EnvOverride {
                     var: format!("TRILITHON_{suffix}"),
                     reason,
@@ -212,7 +223,7 @@ pub fn load_config(path: &Path, env: &dyn EnvProvider) -> Result<DaemonConfig, C
         path: data_dir.clone(),
         source: e,
     })?;
-    let probe_path = data_dir.join(".trilithon-write-probe");
+    let probe_path = data_dir.join(format!(".trilithon-write-probe.{}", std::process::id()));
     let _ = fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -237,9 +248,8 @@ fn byte_offset_to_line_col(text: &str, offset: usize) -> (usize, usize) {
     let safe_offset = offset.min(text.len());
     let prefix = &text[..safe_offset];
     let line = prefix.chars().filter(|&c| c == '\n').count() + 1;
-    let col = prefix
-        .rfind('\n')
-        .map_or(safe_offset + 1, |p| safe_offset - p);
+    let col_str = prefix.rfind('\n').map_or(prefix, |p| &prefix[p + 1..]);
+    let col = col_str.chars().count() + 1;
     (line, col)
 }
 

@@ -173,7 +173,7 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         Ok(k) => k,
         Err(e) => {
             controller.trigger();
-            drain_tasks(&mut tasks).await;
+            let _ = drain_tasks(&mut tasks).await;
             return Err(e);
         }
     };
@@ -187,27 +187,40 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     }
 
     controller.trigger();
-    drain_tasks(&mut tasks).await;
+    let panicked = drain_tasks(&mut tasks).await;
 
-    Ok(ExitCode::CleanShutdown)
+    if panicked {
+        Ok(ExitCode::RuntimePanic)
+    } else {
+        Ok(ExitCode::CleanShutdown)
+    }
 }
 
 /// Drain all tasks in `set` within [`DRAIN_BUDGET`], then abort any survivors.
-async fn drain_tasks(set: &mut JoinSet<()>) {
-    let drained = tokio::time::timeout(DRAIN_BUDGET, async {
-        while let Some(result) = set.join_next().await {
-            if let Err(e) = result {
+///
+/// Returns `true` if any task panicked.
+async fn drain_tasks(set: &mut JoinSet<()>) -> bool {
+    let result = tokio::time::timeout(DRAIN_BUDGET, async {
+        let mut panicked = false;
+        while let Some(res) = set.join_next().await {
+            if let Err(e) = res {
                 tracing::error!(error = %e, "daemon.task-panicked");
+                panicked = true;
             }
         }
+        panicked
     })
     .await;
 
-    match drained {
-        Ok(()) => tracing::info!(forced = false, "daemon.shutdown-complete"),
+    match result {
+        Ok(panicked) => {
+            tracing::info!(forced = false, "daemon.shutdown-complete");
+            panicked
+        }
         Err(_elapsed) => {
             set.abort_all();
             tracing::warn!(forced = true, "daemon.shutdown-complete");
+            false
         }
     }
 }

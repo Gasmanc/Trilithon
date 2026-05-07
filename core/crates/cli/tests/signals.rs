@@ -18,6 +18,7 @@ mod unix_tests {
         io::Write as _,
         path::{Path, PathBuf},
         process::{Child, Command, Stdio},
+        sync::mpsc,
         time::{Duration, Instant},
     };
 
@@ -155,7 +156,7 @@ backend = "keychain"
 
         let config_path = write_signal_test_config(tmp.path(), &socket_path, &data_dir);
 
-        let child = Command::new(trilithon_bin())
+        let mut child = Command::new(trilithon_bin())
             .args(["--config", config_path.to_str().expect("path"), "run"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -164,25 +165,42 @@ backend = "keychain"
 
         let child_pid = child.id();
 
-        // Give the process a moment to initialise its Tokio runtime and
-        // complete the Caddy startup gates.
-        std::thread::sleep(Duration::from_secs(2));
+        // Take the stderr pipe and drain it on a background thread.  We signal
+        // the main thread as soon as "daemon.started" is seen, then continue
+        // draining so the pipe never blocks.
+        let stderr_pipe = child.stderr.take().expect("stderr must be piped");
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(1);
+        let reader_thread = std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            let reader = std::io::BufReader::new(stderr_pipe);
+            let mut lines = Vec::new();
+            for line in reader.lines().map_while(Result::ok) {
+                if line.contains("daemon.started") {
+                    let _ = ready_tx.send(());
+                }
+                lines.push(line);
+            }
+            lines
+        });
+
+        // Wait for the daemon to emit daemon.started (15-second hard timeout).
+        ready_rx
+            .recv_timeout(Duration::from_secs(15))
+            .expect("daemon.started not seen within 15s");
 
         let kill_at = Instant::now();
         send_signal(child_pid, sig_name);
 
-        let output = child
-            .wait_with_output()
-            .expect("failed to wait for process");
+        let status = child.wait().expect("failed to wait for process");
         let elapsed = kill_at.elapsed();
 
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_lines = reader_thread.join().expect("stderr reader thread panicked");
+        let stderr = stderr_lines.join("\n");
 
         // Exit code 0.
         assert!(
-            output.status.success(),
-            "expected exit 0, got {:?}\nstderr: {stderr}",
-            output.status,
+            status.success(),
+            "expected exit 0, got {status:?}\nstderr: {stderr}",
         );
 
         // Stderr contains the shutdown event.

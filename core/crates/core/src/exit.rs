@@ -17,6 +17,8 @@ pub enum ExitCode {
     StartupPreconditionFailure = 3,
     /// The command was invoked incorrectly.
     InvalidInvocation = 64,
+    /// An unexpected panic occurred in a background runtime task.
+    RuntimePanic = 70,
 }
 
 impl ExitCode {
@@ -42,5 +44,6 @@ mod tests {
         assert_eq!(ExitCode::ConfigError as u8, 2);
         assert_eq!(ExitCode::StartupPreconditionFailure as u8, 3);
         assert_eq!(ExitCode::InvalidInvocation as u8, 64);
+        assert_eq!(ExitCode::RuntimePanic as u8, 70);
     }
 }

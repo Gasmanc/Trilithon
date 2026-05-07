@@ -77,9 +77,25 @@ pub fn init(config: &TracingConfig) -> Result<(), ObsError> {
 
 /// Build the [`EnvFilter`] from config, respecting `RUST_LOG` if set.
 fn build_filter(config: &TracingConfig) -> Result<EnvFilter, ObsError> {
-    // RUST_LOG takes precedence if it is set and valid.
-    if let Ok(filter) = EnvFilter::try_from_default_env() {
-        return Ok(filter);
+    build_filter_with_rust_log(config, std::env::var("RUST_LOG").ok().as_deref())
+}
+
+/// Inner build, accepting an optional `RUST_LOG` value for testability.
+fn build_filter_with_rust_log(
+    config: &TracingConfig,
+    rust_log: Option<&str>,
+) -> Result<EnvFilter, ObsError> {
+    if let Some(val) = rust_log {
+        match EnvFilter::try_new(val) {
+            Ok(f) => return Ok(f),
+            Err(e) => {
+                use std::io::Write as _;
+                let _ = writeln!(
+                    std::io::stderr(),
+                    "trilithon: RUST_LOG={val:?} is invalid ({e}); falling back to config filter"
+                );
+            }
+        }
     }
     EnvFilter::try_new(&config.log_filter).map_err(|e| ObsError::BadFilter {
         filter: config.log_filter.clone(),
@@ -90,7 +106,15 @@ fn build_filter(config: &TracingConfig) -> Result<EnvFilter, ObsError> {
 /// Resolve the effective [`LogFormat`], allowing `TRILITHON_LOG_FORMAT=json`
 /// to override the config value.
 fn resolve_format(configured: LogFormat) -> LogFormat {
-    if std::env::var("TRILITHON_LOG_FORMAT").is_ok_and(|v| v.eq_ignore_ascii_case("json")) {
+    resolve_format_from(
+        configured,
+        std::env::var("TRILITHON_LOG_FORMAT").ok().as_deref(),
+    )
+}
+
+/// Inner resolve, accepting an optional env value for testability.
+fn resolve_format_from(configured: LogFormat, env_val: Option<&str>) -> LogFormat {
+    if env_val.is_some_and(|v| v.eq_ignore_ascii_case("json")) {
         LogFormat::Json
     } else {
         configured
@@ -157,6 +181,7 @@ where
         TsWriterGuard {
             inner: self.inner.make_writer(),
             buf: Vec::new(),
+            ts: get_or_now_unix_ts(),
         }
     }
 }
@@ -173,17 +198,20 @@ fn get_or_now_unix_ts() -> i64 {
 struct TsWriterGuard<W: io::Write> {
     inner: W,
     buf: Vec<u8>,
+    /// Timestamp captured at [`MakeWriter::make_writer`] time.
+    ts: i64,
 }
 
 impl<W: io::Write> io::Write for TsWriterGuard<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.buf.extend_from_slice(buf);
+        const MAX_BUF: usize = 64 * 1024;
+        let remaining = MAX_BUF.saturating_sub(self.buf.len());
+        self.buf.extend_from_slice(&buf[..buf.len().min(remaining)]);
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let ts = get_or_now_unix_ts();
-        let line = inject_ts_unix_seconds(&self.buf, ts);
+        let line = inject_ts_unix_seconds(&self.buf, self.ts);
         self.inner.write_all(&line)?;
         self.inner.flush()?;
         self.buf.clear();
@@ -194,10 +222,11 @@ impl<W: io::Write> io::Write for TsWriterGuard<W> {
 impl<W: io::Write> Drop for TsWriterGuard<W> {
     fn drop(&mut self) {
         if !self.buf.is_empty() {
-            let ts = get_or_now_unix_ts();
-            let line = inject_ts_unix_seconds(&self.buf, ts);
-            let _ = self.inner.write_all(&line);
-            let _ = self.inner.flush();
+            let line = inject_ts_unix_seconds(&self.buf, self.ts);
+            if self.inner.write_all(&line).is_err() || self.inner.flush().is_err() {
+                use io::Write as _;
+                let _ = io::stderr().write_all(b"trilithon: failed to flush log line\n");
+            }
         }
     }
 }
@@ -236,7 +265,10 @@ mod tests {
         Layer, layer::SubscriberExt as _, registry::LookupSpan, util::SubscriberInitExt as _,
     };
 
-    use super::{LAST_TS, UtcSecondsLayer, inject_ts_unix_seconds};
+    use super::{
+        LAST_TS, UtcSecondsLayer, build_filter_with_rust_log, inject_ts_unix_seconds,
+        resolve_format_from,
+    };
 
     /// A minimal in-memory capture layer that records the `ts_unix_seconds`
     /// value left in the thread-local by [`UtcSecondsLayer`] after each event.
@@ -323,6 +355,45 @@ mod tests {
             s.starts_with(r#"{"ts_unix_seconds":1234567890,"#),
             "unexpected output: {s}"
         );
+    }
+
+    #[test]
+    fn bad_filter_returns_error() {
+        use trilithon_core::config::{LogFormat, TracingConfig};
+        let config = TracingConfig {
+            log_filter: "not[a]valid]filter{{".into(),
+            format: LogFormat::Pretty,
+        };
+        let result = build_filter_with_rust_log(&config, None);
+        assert!(
+            matches!(result, Err(super::ObsError::BadFilter { .. })),
+            "expected BadFilter, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_format_dispatch() {
+        use trilithon_core::config::LogFormat;
+        assert!(matches!(
+            resolve_format_from(LogFormat::Pretty, None),
+            LogFormat::Pretty
+        ));
+        assert!(matches!(
+            resolve_format_from(LogFormat::Json, None),
+            LogFormat::Json
+        ));
+        assert!(matches!(
+            resolve_format_from(LogFormat::Pretty, Some("json")),
+            LogFormat::Json
+        ));
+        assert!(matches!(
+            resolve_format_from(LogFormat::Pretty, Some("JSON")),
+            LogFormat::Json
+        ));
+        assert!(matches!(
+            resolve_format_from(LogFormat::Pretty, Some("pretty")),
+            LogFormat::Pretty
+        ));
     }
 
     #[test]

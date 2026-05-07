@@ -96,7 +96,9 @@ impl ShutdownController {
 
     /// Broadcast the shutdown notification to all holders of [`ShutdownSignal`].
     pub fn trigger(&self) {
-        let _ = self.tx.send(true);
+        if self.tx.send(true).is_err() {
+            tracing::warn!("shutdown.broadcast-failed: no receivers");
+        }
     }
 }
 

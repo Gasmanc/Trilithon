@@ -406,6 +406,100 @@ mod tests {
     }
 
     #[test]
+    fn redacted_loopback_tls_elides_cert_and_key_only() {
+        let cfg = DaemonConfig {
+            server: ServerConfig {
+                bind: "127.0.0.1:7878".parse().expect("valid addr"),
+                allow_remote: false,
+            },
+            caddy: CaddyConfig {
+                admin_endpoint: CaddyEndpoint::LoopbackTls {
+                    url: "https://127.0.0.1:2019".into(),
+                    mtls_cert_path: PathBuf::from("/etc/secret-cert.pem"),
+                    mtls_key_path: PathBuf::from("/etc/secret-key.pem"),
+                    mtls_ca_path: PathBuf::from("/etc/ca.pem"),
+                },
+                connect_timeout_seconds: 10,
+                apply_timeout_seconds: 60,
+            },
+            storage: StorageConfig {
+                data_dir: PathBuf::from("/var/lib/trilithon"),
+                wal_checkpoint_pages: 1000,
+            },
+            secrets: SecretsConfig {
+                master_key_backend: SecretsBackend::Keychain,
+            },
+            concurrency: ConcurrencyConfig {
+                rebase_token_ttl_minutes: 30,
+            },
+            tracing: TracingConfig {
+                log_filter: default_log_filter(),
+                format: LogFormat::Pretty,
+            },
+            bootstrap: BootstrapConfig {
+                enabled_on_first_run: true,
+                credentials_file: PathBuf::from("/etc/bootstrap.json"),
+            },
+        };
+
+        let json = serde_json::to_string(&cfg.redacted()).expect("redacted must serialise");
+        assert!(
+            !json.contains("/etc/secret-cert.pem"),
+            "cert path must be redacted"
+        );
+        assert!(
+            !json.contains("/etc/secret-key.pem"),
+            "key path must be redacted"
+        );
+        assert!(json.contains("/etc/ca.pem"), "CA path must NOT be redacted");
+        assert!(json.contains("***"), "redacted marker must be present");
+    }
+
+    #[test]
+    fn redacted_file_backend_elides_path() {
+        let cfg = DaemonConfig {
+            server: ServerConfig {
+                bind: "127.0.0.1:7878".parse().expect("valid addr"),
+                allow_remote: false,
+            },
+            caddy: CaddyConfig {
+                admin_endpoint: CaddyEndpoint::Unix {
+                    path: PathBuf::from("/run/caddy/admin.sock"),
+                },
+                connect_timeout_seconds: 10,
+                apply_timeout_seconds: 60,
+            },
+            storage: StorageConfig {
+                data_dir: PathBuf::from("/var/lib/trilithon"),
+                wal_checkpoint_pages: 1000,
+            },
+            secrets: SecretsConfig {
+                master_key_backend: SecretsBackend::File {
+                    path: PathBuf::from("/etc/master.key"),
+                },
+            },
+            concurrency: ConcurrencyConfig {
+                rebase_token_ttl_minutes: 30,
+            },
+            tracing: TracingConfig {
+                log_filter: default_log_filter(),
+                format: LogFormat::Pretty,
+            },
+            bootstrap: BootstrapConfig {
+                enabled_on_first_run: true,
+                credentials_file: PathBuf::from("/etc/bootstrap.json"),
+            },
+        };
+
+        let json = serde_json::to_string(&cfg.redacted()).expect("redacted must serialise");
+        assert!(
+            !json.contains("/etc/master.key"),
+            "file backend path must be redacted"
+        );
+        assert!(json.contains("***"), "redacted marker must be present");
+    }
+
+    #[test]
     fn redacted_elides_secret_paths() {
         let cfg = DaemonConfig {
             server: ServerConfig {

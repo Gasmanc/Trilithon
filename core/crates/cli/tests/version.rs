@@ -9,8 +9,9 @@ fn version_line_format() -> Result<(), Box<dyn std::error::Error>> {
     let output = cmd.assert().success();
     let stdout = String::from_utf8(output.get_output().stdout.clone())?;
     let line = stdout.trim();
-    // Expected: `trilithon <version> (<git-hash>) rustc <rest>`
-    let re = regex::Regex::new(r"^trilithon \S+ \(\S+\) rustc \S.*$")?;
+    // Expected: `trilithon <semver> (<12-hex-char hash>) rustc <version>...`
+    let re =
+        regex::Regex::new(r"^trilithon \d+\.\d+\.\d+ \([0-9a-f]{12}\) rustc \d+\.\d+\.\d+.*$")?;
     assert!(
         re.is_match(line),
         "version line did not match expected pattern.\nGot: {line:?}"
