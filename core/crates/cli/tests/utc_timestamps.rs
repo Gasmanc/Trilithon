@@ -7,6 +7,7 @@
 #[cfg(unix)]
 mod unix_tests {
     use std::path::Path;
+    use std::sync::mpsc;
     use std::time::SystemTime;
 
     /// Path to the minimal config fixture.
@@ -44,7 +45,7 @@ mod unix_tests {
         let data_dir = std::env::temp_dir().join("trilithon-utc-timestamps-test");
         std::fs::create_dir_all(&data_dir).expect("create test data dir");
 
-        let child = std::process::Command::new(trilithon_bin())
+        let mut child = std::process::Command::new(trilithon_bin())
             .args([
                 "--config",
                 fixture_config().to_str().expect("utf-8 path"),
@@ -63,9 +64,30 @@ mod unix_tests {
 
         let child_pid = child.id();
 
-        // Give the process a moment to initialise its Tokio runtime and emit
-        // at least one structured log event.
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        // Drain stderr on a background thread to prevent pipe-buffer deadlock
+        // if output exceeds the OS pipe buffer (typically 64 KB).
+        let stderr_pipe = child.stderr.take().expect("stderr must be piped");
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(1);
+        let reader_thread = std::thread::spawn(move || {
+            use std::io::BufRead as _;
+            let reader = std::io::BufReader::new(stderr_pipe);
+            let mut lines = Vec::new();
+            for line in reader.lines().map_while(Result::ok) {
+                // Signal readiness on first JSON line (daemon has started logging).
+                // try_send avoids blocking when the channel is already full
+                // (the daemon emits several JSON lines before we consume the first).
+                if line.trim_start().starts_with('{') {
+                    let _ = ready_tx.try_send(());
+                }
+                lines.push(line);
+            }
+            lines
+        });
+
+        // Wait for the first JSON log line (up to 10 s), then give it another
+        // moment to emit more lines before sending SIGTERM.
+        let _ = ready_rx.recv_timeout(std::time::Duration::from_secs(10));
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
         // Send SIGTERM to trigger graceful shutdown.
         std::process::Command::new("/bin/kill")
@@ -73,14 +95,19 @@ mod unix_tests {
             .status()
             .expect("failed to invoke /bin/kill");
 
-        let output = child
-            .wait_with_output()
-            .expect("failed to wait for trilithon");
-
+        let status = child.wait().expect("failed to wait for trilithon");
         let after = now_unix_secs();
 
+        let stderr_lines = reader_thread.join().expect("stderr reader thread panicked");
+        let stderr = stderr_lines.join("\n");
+
+        // Accept any exit status: exit 0 (clean shutdown) and exit 3
+        // (Caddy unavailable in test environment) are both valid — the test
+        // only asserts that whatever log lines were emitted carry correct
+        // ts_unix_seconds timestamps, not that the daemon ran a full lifecycle.
+        let _ = status;
+
         // Parse stderr as JSON lines and assert ts_unix_seconds fields.
-        let stderr = String::from_utf8_lossy(&output.stderr);
         let mut checked = 0usize;
 
         for line in stderr.lines() {

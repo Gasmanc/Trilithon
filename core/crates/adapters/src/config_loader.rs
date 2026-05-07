@@ -37,6 +37,16 @@ pub enum EnvOverrideReason {
     },
 }
 
+impl std::fmt::Display for EnvOverrideReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotUnicode => f.write_str("value is not valid Unicode"),
+            Self::UnknownKey => f.write_str("unknown configuration key"),
+            Self::ParseFailed { detail } => write!(f, "parse failed: {detail}"),
+        }
+    }
+}
+
 /// Errors returned by [`load_config`].
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -74,7 +84,7 @@ pub enum ConfigError {
     },
 
     /// An environment variable override could not be applied.
-    #[error("invalid environment override {var}: {reason:?}")]
+    #[error("invalid environment override {var}: {reason}")]
     EnvOverride {
         /// The `TRILITHON_*` variable name.
         var: String,
@@ -264,6 +274,12 @@ fn set_by_path(
     dotted_key: &str,
     value: &str,
 ) -> Result<(), EnvOverrideReason> {
+    // Guard against empty segments (e.g. `server..bind` from `TRILITHON_SERVER____BIND`).
+    if dotted_key.is_empty() || dotted_key.starts_with('.') || dotted_key.contains("..") {
+        return Err(EnvOverrideReason::ParseFailed {
+            detail: format!("key contains an empty segment: {dotted_key:?}"),
+        });
+    }
     match dotted_key.split_once('.') {
         None => {
             let parsed = coerce_value(table.get(dotted_key), value)?;
@@ -328,15 +344,18 @@ fn coerce_value(
                 }
             })
         }
-        // For other variants (Array, Table, Datetime) fall back to TOML parse.
-        Some(_) => toml::from_str::<toml::Table>(&format!("v = {raw}"))
-            .map_err(|e| EnvOverrideReason::ParseFailed {
-                detail: e.to_string(),
-            })
-            .and_then(|mut t| {
-                t.remove("v").ok_or_else(|| EnvOverrideReason::ParseFailed {
-                    detail: "empty parse result".into(),
+        // Array, Table, Datetime: parse the raw string as a TOML expression so
+        // callers can supply e.g. `["a","b"]` for array fields.
+        Some(toml::Value::Array(_) | toml::Value::Table(_) | toml::Value::Datetime(_)) => {
+            toml::from_str::<toml::Table>(&format!("v = {raw}"))
+                .map_err(|e| EnvOverrideReason::ParseFailed {
+                    detail: e.to_string(),
                 })
-            }),
+                .and_then(|mut t| {
+                    t.remove("v").ok_or_else(|| EnvOverrideReason::ParseFailed {
+                        detail: "empty parse result".into(),
+                    })
+                })
+        }
     }
 }

@@ -52,14 +52,6 @@ impl ShutdownSignal {
             }
         }
     }
-
-    /// Returns `true` if a shutdown has already been triggered.
-    ///
-    /// Used by long-running tasks to poll shutdown state between checkpoints.
-    #[expect(dead_code, reason = "spec-required API, callers added in later slices")]
-    pub fn is_shutting_down(&self) -> bool {
-        *self.rx.borrow()
-    }
 }
 
 impl ShutdownObserver for ShutdownSignal {
@@ -82,16 +74,6 @@ impl ShutdownController {
     pub fn new() -> (Self, ShutdownSignal) {
         let (tx, rx) = watch::channel(false);
         (Self { tx }, ShutdownSignal { rx })
-    }
-
-    /// Return a new [`ShutdownSignal`] cloned from the internal receiver.
-    ///
-    /// Use this to hand a signal to tasks spawned after the initial pair.
-    #[expect(dead_code, reason = "spec-required API, callers added in later slices")]
-    pub fn signal(&self) -> ShutdownSignal {
-        ShutdownSignal {
-            rx: self.tx.subscribe(),
-        }
     }
 
     /// Broadcast the shutdown notification to all holders of [`ShutdownSignal`].

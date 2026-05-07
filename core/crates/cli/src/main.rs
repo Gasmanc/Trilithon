@@ -25,21 +25,15 @@ fn main() -> std::process::ExitCode {
         Ok(c) => c,
         Err(e) => {
             use clap::error::ErrorKind;
-            match e.kind() {
-                // Help and version are informational; print to stdout and exit 0.
-                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-                    e.print().ok();
-                    return exit::to_process_exit(trilithon_core::exit::ExitCode::CleanShutdown);
-                }
-                // Usage errors — print to stderr and return 64 (EX_USAGE).
-                _ => {
-                    let mut stderr = std::io::stderr().lock();
-                    let _ = write!(stderr, "{e}");
-                    return exit::to_process_exit(
-                        trilithon_core::exit::ExitCode::InvalidInvocation,
-                    );
-                }
+            // Help is informational; print to stdout and exit 0.
+            if e.kind() == ErrorKind::DisplayHelp {
+                e.print().ok();
+                return exit::to_process_exit(trilithon_core::exit::ExitCode::CleanShutdown);
             }
+            // Usage errors — print to stderr and return 64 (EX_USAGE).
+            let mut stderr = std::io::stderr().lock();
+            let _ = write!(stderr, "{e}");
+            return exit::to_process_exit(trilithon_core::exit::ExitCode::InvalidInvocation);
         }
     };
     // Tracing subscriber is initialised later, inside run_daemon / config_show,

@@ -13,9 +13,12 @@ pub fn version() -> String {
     trilithon_core::version().to_string()
 }
 
-/// Boots adapters. Returns a human-readable error message on failure.
+/// Boots adapters.
+// uniffi UDL declares [Throws=FfiError] which requires Result<_, FfiError> on the Rust side.
+#[allow(clippy::unnecessary_wraps)]
 pub fn boot() -> Result<(), FfiError> {
-    trilithon_adapters::boot().map_err(|e| FfiError::Boot(e.to_string()))
+    trilithon_adapters::boot();
+    Ok(())
 }
 
 /// Errors that can occur in the FFI layer.

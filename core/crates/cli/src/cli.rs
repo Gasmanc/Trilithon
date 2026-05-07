@@ -5,7 +5,11 @@ use std::path::PathBuf;
 
 /// The top-level CLI arguments.
 #[derive(Debug, Parser)]
-#[command(name = "trilithon", version, about = "Trilithon daemon")]
+#[command(
+    name = "trilithon",
+    about = "Trilithon daemon",
+    disable_version_flag = true
+)]
 pub struct Cli {
     /// Path to the daemon configuration file.
     #[arg(long, default_value = "/etc/trilithon/config.toml", global = true)]

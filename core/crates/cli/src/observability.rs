@@ -13,6 +13,7 @@ use tracing_subscriber::{
 use trilithon_core::config::{LogFormat, TracingConfig};
 
 /// Error variants returned by [`init`].
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ObsError {
     /// A global subscriber was already installed.
@@ -65,10 +66,11 @@ pub fn init(config: &TracingConfig) -> Result<(), ObsError> {
             let fmt_layer = tracing_subscriber::fmt::layer()
                 .compact()
                 .with_writer(io::stderr);
+            // UtcSecondsLayer is intentionally absent here: the Pretty path has
+            // no TsWriter to inject ts_unix_seconds, so the layer would be a no-op.
             tracing_subscriber::registry()
                 .with(env_filter)
                 .with(fmt_layer)
-                .with(UtcSecondsLayer)
                 .try_init()
                 .map_err(|_| ObsError::AlreadyInstalled)
         }
@@ -114,10 +116,18 @@ fn resolve_format(configured: LogFormat) -> LogFormat {
 
 /// Inner resolve, accepting an optional env value for testability.
 fn resolve_format_from(configured: LogFormat, env_val: Option<&str>) -> LogFormat {
-    if env_val.is_some_and(|v| v.eq_ignore_ascii_case("json")) {
-        LogFormat::Json
-    } else {
-        configured
+    match env_val {
+        Some(v) if v.eq_ignore_ascii_case("json") => LogFormat::Json,
+        Some(v) if v.eq_ignore_ascii_case("pretty") => LogFormat::Pretty,
+        Some(v) => {
+            use std::io::Write as _;
+            let _ = writeln!(
+                std::io::stderr(),
+                "trilithon: TRILITHON_LOG_FORMAT={v:?} is not recognised (expected \"json\" or \"pretty\"); using configured format"
+            );
+            configured
+        }
+        None => configured,
     }
 }
 

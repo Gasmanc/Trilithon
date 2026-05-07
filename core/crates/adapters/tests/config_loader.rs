@@ -11,7 +11,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use trilithon_adapters::config_loader::{ConfigError, load_config};
+use trilithon_adapters::config_loader::{ConfigError, EnvOverrideReason, load_config};
 use trilithon_core::config::{EnvError, EnvProvider};
 
 // ---------------------------------------------------------------------------
@@ -181,6 +181,60 @@ fn bind_address_invalid() {
     assert!(
         matches!(result, Err(ConfigError::BindAddressInvalid { .. })),
         "expected BindAddressInvalid, got {result:?}"
+    );
+}
+
+#[test]
+fn env_override_parse_failed() {
+    // minimal.toml has `[concurrency]` with no explicit fields, so
+    // coerce_value gets None and falls back to String, producing MalformedToml
+    // at deserialization.  To test ParseFailed we need the field explicitly
+    // present in the TOML so coerce_value detects the Integer variant.
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let data_dir = tmp.path().to_str().expect("UTF-8 path").to_owned();
+    let config_path = tmp.path().join("config.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            r#"
+[server]
+bind = "127.0.0.1:7878"
+
+[caddy.admin_endpoint]
+transport = "unix"
+path = "/run/caddy/admin.sock"
+
+[storage]
+data_dir = "{data_dir}"
+
+[secrets.master_key_backend]
+backend = "keychain"
+
+[concurrency]
+rebase_token_ttl_minutes = 30
+
+[tracing]
+
+[bootstrap]
+"#
+        ),
+    )
+    .expect("write config");
+
+    let env = MapEnvProvider::new([(
+        "TRILITHON_CONCURRENCY__REBASE_TOKEN_TTL_MINUTES",
+        "not_a_number",
+    )]);
+    let result = load_config(&config_path, &env);
+    assert!(
+        matches!(
+            result,
+            Err(ConfigError::EnvOverride {
+                reason: EnvOverrideReason::ParseFailed { .. },
+                ..
+            })
+        ),
+        "expected EnvOverride(ParseFailed), got {result:?}"
     );
 }
 

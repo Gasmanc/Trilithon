@@ -16,6 +16,10 @@ impl EnvProvider for StdEnvProvider {
     }
 
     fn vars_with_prefix(&self, prefix: &str) -> Vec<(String, String)> {
+        // `std::env::vars()` silently skips non-Unicode env vars, so this method
+        // will not return non-Unicode `TRILITHON_*` variables even though `var()`
+        // returns `EnvError::NotUnicode` for them.  The discrepancy is intentional:
+        // non-Unicode config overrides cannot be applied and are silently ignored.
         std::env::vars()
             .filter_map(|(k, v)| k.strip_prefix(prefix).map(|s| (s.to_string(), v)))
             .collect()
