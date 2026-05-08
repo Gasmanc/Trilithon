@@ -90,6 +90,12 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
             anyhow::anyhow!("migration failed: {e}")
         })?;
 
+    // Verify application_id post-migration to reject wrong-database-file mistakes.
+    storage.verify_application_id().await.map_err(|e| {
+        tracing::error!(error = %e, "storage.application_id.mismatch");
+        anyhow::anyhow!("application_id check failed: {e}")
+    })?;
+
     let pool = storage.pool().clone();
 
     let (controller, signal) = ShutdownController::new();

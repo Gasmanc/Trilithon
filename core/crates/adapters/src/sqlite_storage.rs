@@ -102,6 +102,38 @@ impl SqliteStorage {
         &self.pool
     }
 
+    /// Read `PRAGMA application_id` and verify it matches [`trilithon_core::storage::APPLICATION_ID`].
+    ///
+    /// Must be called **after** migrations have been applied, because a brand-new
+    /// database starts with `application_id = 0` and migration 0005 sets the value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Sqlite`] with `kind: Other` when the id does not
+    /// match, indicating the pool is connected to the wrong database file.
+    pub async fn verify_application_id(&self) -> Result<(), StorageError> {
+        let raw: i64 = sqlx::query_scalar("PRAGMA application_id")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| StorageError::Sqlite {
+                kind: SqliteErrorKind::Other(e.to_string()),
+            })?;
+        // PRAGMA application_id returns a signed 32-bit integer stored in the
+        // file header.  Our constant is always non-negative; treat negative as
+        // a mismatch rather than a conversion error.
+        let actual = u32::try_from(raw).unwrap_or(u32::MAX);
+        let expected = trilithon_core::storage::APPLICATION_ID;
+        if actual != expected {
+            return Err(StorageError::Sqlite {
+                kind: SqliteErrorKind::Other(format!(
+                    "application_id mismatch — wrong database file? \
+                     expected {expected:#010x} ({expected}), got {actual:#010x} ({actual})"
+                )),
+            });
+        }
+        Ok(())
+    }
+
     /// Fetch all snapshots whose `config_version` equals the given value.
     ///
     /// Returns an empty `Vec` when no matching row exists.

@@ -362,3 +362,55 @@ async fn advisory_lock_rejects_second_open() {
         "expected AlreadyHeld, got {err:?}"
     );
 }
+
+/// A freshly-migrated database has the correct `application_id`.
+#[tokio::test]
+async fn application_id_set_after_migration() {
+    let dir = TempDir::new().unwrap();
+    let store = open(&dir).await;
+
+    store
+        .verify_application_id()
+        .await
+        .expect("application_id must match after migration");
+}
+
+/// A database with a wrong `application_id` is rejected.
+#[tokio::test]
+async fn application_id_mismatch_returns_error() {
+    use trilithon_adapters::migrate::apply_migrations;
+    use trilithon_adapters::sqlite_storage::SqliteStorage;
+
+    let dir = TempDir::new().unwrap();
+
+    // Open and migrate normally so the file is created.
+    {
+        let store = open(&dir).await;
+        // Manually overwrite the application_id to a wrong value.
+        sqlx::query("PRAGMA application_id = 999")
+            .execute(store.pool())
+            .await
+            .expect("PRAGMA write should succeed");
+    }
+
+    // Re-open (skipping migrations, the file already exists).
+    let store = SqliteStorage::open(dir.path())
+        .await
+        .expect("open should succeed");
+    apply_migrations(store.pool())
+        .await
+        .expect("migrations should succeed (file already has schema)");
+
+    let err = store
+        .verify_application_id()
+        .await
+        .expect_err("wrong application_id must be rejected");
+
+    assert!(
+        matches!(
+            err,
+            trilithon_core::storage::error::StorageError::Sqlite { .. }
+        ),
+        "expected StorageError::Sqlite for application_id mismatch, got {err:?}"
+    );
+}
