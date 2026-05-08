@@ -27,7 +27,7 @@
 
 ---
 
-## Slice 6.1 — `AuditEvent` enum and Display-to-wire mapping in `core`
+## Slice 6.1 [cross-cutting] — `AuditEvent` enum and Display-to-wire mapping in `core`
 
 ### Goal
 
@@ -185,7 +185,7 @@ None. This slice is pure types.
 
 ---
 
-## Slice 6.2 — `AuditEventRow`, `AuditSelector`, `AuditOutcome`, `ActorRef`
+## Slice 6.2 [standard] — `AuditEventRow`, `AuditSelector`, `AuditOutcome`, `ActorRef`
 
 ### Goal
 
@@ -294,7 +294,7 @@ None.
 
 ---
 
-## Slice 6.3 — `SecretsRedactor` over `serde_json::Value` plus diff redaction
+## Slice 6.3 [cross-cutting] — `SecretsRedactor` over `serde_json::Value` plus diff redaction
 
 ### Goal
 
@@ -408,7 +408,7 @@ None.
 
 ---
 
-## Slice 6.4 — Migration `0003_audit_immutable.sql` plus storage-side kind validation
+## Slice 6.4 [cross-cutting] — Migration `0003_audit_immutable.sql` plus storage-side kind validation
 
 ### Goal
 
@@ -531,7 +531,7 @@ None directly; this slice ships the storage substrate.
 
 ---
 
-## Slice 6.5 — `AuditWriter::record` adapter wired to `Storage::record_audit_event`
+## Slice 6.5 [cross-cutting] — `AuditWriter::record` adapter wired to `Storage::record_audit_event`
 
 ### Goal
 
@@ -639,7 +639,7 @@ None directly. Tracing instrumentation lands in slice 6.7.
 
 ---
 
-## Slice 6.6 — Audit query API with paginated filters
+## Slice 6.6 [standard] — Audit query API with paginated filters
 
 ### Goal
 
@@ -726,7 +726,7 @@ None.
 
 ---
 
-## Slice 6.7 — Tracing layer that injects and propagates `correlation_id`
+## Slice 6.7 [cross-cutting] — Tracing layer that injects and propagates `correlation_id`
 
 ### Goal
 
