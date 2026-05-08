@@ -24,6 +24,29 @@ async fn daemon_loop(mut signal: ShutdownSignal) {
     signal.wait().await;
 }
 
+/// Run `PRAGMA integrity_check` once at startup (ADR-0006).
+///
+/// Returns `Ok(())` when `SQLite` reports `ok`, or an error that maps to exit 3.
+async fn run_startup_integrity_check(
+    pool: &trilithon_adapters::sqlite_storage::SqliteStorage,
+) -> anyhow::Result<()> {
+    use trilithon_adapters::integrity_check::{IntegrityResult, integrity_check_once};
+    match integrity_check_once(pool.pool()).await {
+        Ok(IntegrityResult::Ok) => {
+            tracing::info!("storage.integrity_check.startup.ok");
+            Ok(())
+        }
+        Ok(IntegrityResult::Failed { detail }) => {
+            tracing::error!(detail = %detail, "storage.integrity_check.startup.failed");
+            Err(anyhow::anyhow!("startup integrity check failed: {detail}"))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "storage.integrity_check.startup.error");
+            Err(anyhow::anyhow!("startup integrity check error: {e}"))
+        }
+    }
+}
+
 /// Ensure the ownership sentinel, emitting a structured warning on takeover.
 ///
 /// Returns `Ok(())` on success (created, already ours, or took over) or
@@ -97,6 +120,10 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     })?;
 
     let pool = storage.pool().clone();
+
+    // Synchronous startup integrity check (ADR-0006).  Must run before
+    // `daemon.started` fires so any corruption is caught before accepting work.
+    run_startup_integrity_check(&storage).await?;
 
     let (controller, signal) = ShutdownController::new();
 
