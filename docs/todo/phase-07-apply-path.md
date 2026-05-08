@@ -28,7 +28,7 @@
 
 ---
 
-## Slice 7.1 — `CaddyJsonRenderer` deterministic serialisation in pure core
+## Slice 7.1 [standard] — `CaddyJsonRenderer` deterministic serialisation in pure core
 
 ### Goal
 
@@ -121,7 +121,7 @@ None.
 
 ---
 
-## Slice 7.2 — `ApplyOutcome`, `ApplyError`, and apply-state types
+## Slice 7.2 [standard] — `ApplyOutcome`, `ApplyError`, and apply-state types
 
 ### Goal
 
@@ -231,7 +231,7 @@ None.
 
 ---
 
-## Slice 7.3 — Capability re-check at apply time
+## Slice 7.3 [standard] — Capability re-check at apply time
 
 ### Goal
 
@@ -302,7 +302,7 @@ None directly.
 
 ---
 
-## Slice 7.4 — `Applier` adapter — happy path with audit `ApplyStarted` and `ApplySucceeded`
+## Slice 7.4 [cross-cutting] — `Applier` adapter — happy path with audit `ApplyStarted` and `ApplySucceeded`
 
 ### Goal
 
@@ -420,7 +420,7 @@ On Caddy 4xx:
 
 ---
 
-## Slice 7.5 — Optimistic concurrency on `config_version`
+## Slice 7.5 [cross-cutting] — Optimistic concurrency on `config_version`
 
 ### Goal
 
@@ -505,7 +505,7 @@ None new; the `apply.failed` event from slice 7.4 covers the conflict path with 
 
 ---
 
-## Slice 7.6 — In-process mutex plus SQLite advisory lock per `caddy_instance_id`
+## Slice 7.6 [cross-cutting] — In-process mutex plus SQLite advisory lock per `caddy_instance_id`
 
 ### Goal
 
@@ -597,7 +597,7 @@ None new.
 
 ---
 
-## Slice 7.7 — Failure handling and reload-semantics audit metadata
+## Slice 7.7 [cross-cutting] — Failure handling and reload-semantics audit metadata
 
 ### Goal
 
@@ -669,7 +669,7 @@ None new.
 
 ---
 
-## Slice 7.8 — TLS-issuance state separation in audit metadata
+## Slice 7.8 [standard] — TLS-issuance state separation in audit metadata
 
 ### Goal
 
