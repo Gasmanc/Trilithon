@@ -3,20 +3,20 @@ project_name: Trilithon
 archetype: full            # full | lightweight
 strictness: strict          # strict | paranoid
 created: 2026-04-30
-updated: 2026-05-05
+updated: 2026-05-08
 languages:
   rust:
     variant: workspace-three-layer
     path: core
-    added: 2026-05-05
+    added: 2026-05-08
   typescript:
     variant: react-frontend
     path: web
-    added: 2026-05-05
+    added: 2026-05-08
   swift:
     variant: xcode-app
     path: app
-    added: 2026-05-05
+    added: 2026-05-08
 combos:
   - rust+swift-xcode
 recommendations:
@@ -39,3 +39,24 @@ recommendations:
     - npm-zod@3
     - swift-swiftui@6
     - swift-stdlib@5.9
+
+# ─── Cross-phase coherence (added by cross-phase-scaffold) ───
+# See docs/cross-phase/PLAN.md and templates/foundations/zero-debt.yaml
+# for full schema. Override values here as needed.
+cross_phase:
+  contract_registry_required: true
+  seam_registry_required: true
+  finding_schema_required: true
+  merge_review_required: true
+  merge_review_baseline_sha: ""   # set by `cargo xtask set-merge-review-baseline`
+
+advisory_escalation_phases: 5
+
+coherence:
+  mean_age_threshold_days: 60
+  audit_cadence_phases: 5
+  audit_cadence_days: 30
+  pending_revalidation_max_age_days: 7
+  accepted_as_is_no_expiry_warn_pct: 20
+  accepted_as_is_no_expiry_fail_pct: 50
+  invariant_set_change_review_required: true

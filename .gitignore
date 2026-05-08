@@ -39,3 +39,6 @@ DerivedData/
 Packages/
 Package.resolved
 .claude/worktrees/
+
+# ─── Foundation 0: revalidation + audit caches (cross-phase scaffold) ───
+.claude/cache/

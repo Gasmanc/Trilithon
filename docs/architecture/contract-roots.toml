@@ -1,0 +1,41 @@
+# Foundation 1 — Contract Roots
+#
+# This file defines the set of "contract" symbols in the workspace.
+# Anything reachable from a root listed here is part of the public contract
+# surface that the registry tracks. Anything else is internal.
+#
+# A symbol can also become a contract via a `// contract:` marker on its
+# definition line. Markers are equivalent to listing here.
+#
+# This file is HUMAN-CURATED. Adding/removing entries is itself a contract
+# change reviewed by `/phase-merge-review`. The xtask `audit-contract-roots`
+# (run from `/coherence-audit`) flags entries that no longer point to a
+# valid Rust path.
+
+# Each root is a path into the workspace's public API. Format:
+#   "<crate-name>::<module-path>::<exported-name>"
+# Use "::*" to include all `pub` items re-exported from a module.
+
+[roots]
+# Example entries — replace with your project's actual contracts.
+#
+# my_app_core = [
+#   "my_app_core::lib::*",
+#   "my_app_core::api::handlers::*",
+#   "my_app_core::auth::Session",
+#   "my_app_core::auth::verify_token",
+# ]
+#
+# my_app_storage = [
+#   "my_app_storage::lib::SessionStore",
+#   "my_app_storage::lib::TransactionLog",
+# ]
+
+[meta]
+# When this file was last reviewed by a human. /coherence-audit warns if
+# stale relative to phase activity.
+last_reviewed = "1970-01-01"
+last_reviewed_by = "unset"
+
+# Schema version. Bump when the format changes.
+schema_version = 1

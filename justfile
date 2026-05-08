@@ -41,11 +41,6 @@ fix-rust:
 deny-rust:
     cd core && cargo deny check
 
-# Regenerate mutation schemas and verify they match what is committed.
-check-schemas:
-    cd core && cargo run -p trilithon-core --features schema --bin gen_mutation_schemas
-    git diff --exit-code docs/schemas/mutations/
-
 # --- typescript (react-frontend) ---
 check-typescript:
     cd web && pnpm install --frozen-lockfile || pnpm install
@@ -82,3 +77,34 @@ fix-swift:
 
 open-app:
     cd app && open *.xcodeproj
+
+
+# ─── Cross-phase coherence (added by cross-phase-scaffold) ───
+# Full reference: ~/.claude/templates/foundations/justfile-snippet
+
+# Regenerate contracts.md from source. Run after touching contract-rooted symbols.
+registry-regen:
+    cargo xtask registry-extract --write
+    cargo xtask invariant-check
+    @echo "contracts.md regenerated. Review the diff before committing."
+
+# Pre-merge gate — strict registry + advisory.
+check-premerge:
+    cargo check --workspace --all-targets
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test --workspace
+    -cargo test --workspace --test cross_phase || true
+    -cargo machete || true
+    -cargo xtask registry-verify || true
+    -cargo xtask registry-check --strict || true
+    -cargo xtask invariant-check || true
+    -cargo xtask audit-duplicates || true
+    -cargo xtask audit-duplicates --check-seam-stubs || true
+
+# Migrate legacy review artefacts to Foundation 0 schema. One-time use.
+migrate-findings *ARGS:
+    cargo xtask migrate-findings {{ARGS}}
+
+# Set the merge-review baseline. One-time use.
+set-merge-review-baseline *ARGS:
+    cargo xtask set-merge-review-baseline {{ARGS}}

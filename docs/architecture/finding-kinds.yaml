@@ -1,0 +1,144 @@
+# Foundation 0 — Fixed vocabulary for `finding_kind`.
+#
+# Audits proposing a new finding_kind must add it here in the same commit.
+# This file is the *only* canonical source — no skill is permitted to invent values
+# at runtime. The xtask `audit-finding-kinds` (run from /coherence-audit) verifies
+# every finding in the corpus uses a value listed here.
+#
+# Format: each entry has a category it belongs to, a one-line description,
+# and an indication of whether `do_not_autofix` should default to true.
+
+duplicate:
+  - slug: duplicate-retry-policy
+    description: "Two or more retry/backoff helpers exist with overlapping shape"
+    do_not_autofix_default: false
+  - slug: duplicate-error-type
+    description: "Two error enums covering the same domain"
+    do_not_autofix_default: false
+  - slug: duplicate-validation-helper
+    description: "Validation logic re-implemented in another module"
+    do_not_autofix_default: false
+  - slug: duplicate-trait-shape
+    description: "Two traits with structurally similar method sets"
+    do_not_autofix_default: true
+
+reuse-miss:
+  - slug: could-call-existing-helper
+    description: "New code re-implements logic already present in a registered contract"
+    do_not_autofix_default: true   # auto-fixing without verifying invariants is dangerous
+  - slug: could-extend-existing-trait
+    description: "New trait could be a method on an existing trait"
+    do_not_autofix_default: true
+
+abstraction:
+  - slug: premature-extraction
+    description: "Helper extracted at single call site (three-uses rule violation)"
+    do_not_autofix_default: false
+  - slug: over-generic-bound
+    description: "Generic bound wider than any caller exercises"
+    do_not_autofix_default: false
+  - slug: visibility-too-wide
+    description: "pub used where pub(crate) would suffice"
+    do_not_autofix_default: false
+
+layer-leak:
+  - slug: layer-leak-core-to-infra
+    description: "Core layer references infrastructure types directly"
+    do_not_autofix_default: false
+  - slug: layer-leak-domain-to-presentation
+    description: "Domain layer imports presentation types"
+    do_not_autofix_default: false
+  - slug: layer-leak-direct-db-call
+    description: "Service layer issues raw DB calls bypassing repository layer"
+    do_not_autofix_default: false
+
+dead-code:
+  - slug: dead-after-refactor
+    description: "Symbol unreferenced after a later phase refactor"
+    do_not_autofix_default: false
+  - slug: dead-feature-flag-branch
+    description: "Code reachable only via feature flag that is never set"
+    do_not_autofix_default: true   # flag combinations are tricky
+  - slug: dead-test-only-helper
+    description: "Helper used only in tests but lives in production module"
+    do_not_autofix_default: false
+
+terminology:
+  - slug: terminology-clash-user-principal
+    description: "Same concept appears under multiple names (User/Principal/Account)"
+    do_not_autofix_default: true   # may be intentional distinction
+  - slug: terminology-inconsistent-id-naming
+    description: "Mixed *_id, *Id, *ID conventions for same concept"
+    do_not_autofix_default: false
+
+cross-cutting:
+  - slug: auth-middleware-missing
+    description: "Cross-cutting auth applied in some handlers but not others"
+    do_not_autofix_default: false
+  - slug: rate-limit-missing
+    description: "Rate limiting applied inconsistently across endpoints"
+    do_not_autofix_default: false
+  - slug: audit-log-missing
+    description: "Audit logging applied inconsistently"
+    do_not_autofix_default: false
+  - slug: error-handling-pattern-drift
+    description: "Different error-handling pattern used vs. established convention"
+    do_not_autofix_default: false
+
+contract-drift:
+  - slug: signature-changed-without-registry-update
+    description: "Pub item signature changed but contracts.md not regenerated"
+    do_not_autofix_default: false
+  - slug: contract-marker-removed
+    description: "// contract: marker removed without merge-review"
+    do_not_autofix_default: false
+  - slug: contract-marker-added
+    description: "// contract: marker added without merge-review"
+    do_not_autofix_default: false
+  - slug: contract-root-removed
+    description: "Entry removed from contract-roots.toml"
+    do_not_autofix_default: false
+  - slug: invariant-orphaned
+    description: "Symbol cited in contracts-invariants.md no longer in contracts.md"
+    do_not_autofix_default: false
+
+seam-coverage:
+  - slug: seam-test-missing
+    description: "Cross-cutting phase touched a seam but added no seam test"
+    do_not_autofix_default: false
+  - slug: seam-stub-empty
+    description: "Seam test stub exists but body lacks assert macro"
+    do_not_autofix_default: false
+  - slug: seam-not-in-registry
+    description: "tests/cross_phase test file has no entry in seams.md"
+    do_not_autofix_default: false
+
+security:
+  - slug: legacy-uncategorized   # used by migration only
+    description: "Migrated security finding without category"
+    do_not_autofix_default: true
+  # NOTE: the security-reviewer / security-sentinel agents emit OWASP-style findings;
+  # those map to specific kinds here as the security pipeline migrates to F0.
+  # Add specific slugs as they appear: sql-injection-risk, xss-sink, etc.
+
+scope:
+  - slug: out-of-scope-change
+    description: "Diff includes changes unrelated to phase TODO"
+    do_not_autofix_default: false
+  - slug: under-scoped-change
+    description: "Phase TODO line not addressed by diff"
+    do_not_autofix_default: false
+  - slug: legacy-uncategorized
+    description: "Migration fallback when category cannot be inferred"
+    do_not_autofix_default: true
+
+logic:
+  - slug: assumption-violation
+    description: "Code assumption violated by composition with another module"
+    do_not_autofix_default: false
+  - slug: composition-failure
+    description: "Two correct components fail when composed"
+    do_not_autofix_default: false
+  - slug: cascade-construction
+    description: "One failure mode triggers a chain of further failures"
+    do_not_autofix_default: false

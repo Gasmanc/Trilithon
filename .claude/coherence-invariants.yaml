@@ -1,0 +1,147 @@
+# /coherence-audit — Invariant set.
+#
+# /coherence-audit reads this file. Each invariant has an id (#1..#19),
+# a check description, and threshold parameters. The audit reports pass/warn/fail
+# with a one-line evidence string per invariant.
+#
+# Invariant #19 explicitly checks that this file's set of invariants hasn't
+# changed in the last N audits without a recorded reason — the meta-meta check.
+#
+# Schema version controls migration when adding/removing invariants.
+
+schema_version: 1
+last_modified: 1970-01-01
+last_modified_by: unset
+last_modified_reason: "initial"
+
+# Threshold defaults (override in zero-debt.yaml under coherence:)
+defaults:
+  mean_age_threshold_days: 60
+  audit_cadence_phases: 5
+  audit_cadence_days: 30
+  pending_revalidation_max_age_days: 7
+  accepted_as_is_no_expiry_warn_pct: 20
+  accepted_as_is_no_expiry_fail_pct: 50
+  advisory_actioned_window_phases: 5
+  invariant_set_review_window_audits: 3
+
+invariants:
+  # ─── Registry health ─────────────────────────────────────────
+  - id: 1
+    category: registry-health
+    name: contracts-md-fresh
+    description: "contracts.md regenerated since latest commit on main touching a contract-rooted file"
+    severity_on_fail: critical
+
+  - id: 2
+    category: registry-health
+    name: registry-verify-clean
+    description: "xtask registry-verify clean — no drift between extract and committed"
+    severity_on_fail: critical
+
+  - id: 3
+    category: registry-health
+    name: cross-cutting-phases-have-registry-diff
+    description: "Every [cross-cutting] phase in last 10 produced a registry diff or explicit no-contract-change note"
+    severity_on_fail: high
+
+  # ─── Finding hygiene ────────────────────────────────────────
+  - id: 4
+    category: finding-hygiene
+    name: all-findings-have-valid-ids
+    description: "100% of findings carry valid Foundation-0 IDs"
+    severity_on_fail: critical
+
+  - id: 5
+    category: finding-hygiene
+    name: dedup-working
+    description: "No two open findings share the same ID"
+    severity_on_fail: high
+
+  - id: 6
+    category: finding-hygiene
+    name: mean-age-under-threshold
+    description: "Mean age of open findings under mean_age_threshold_days"
+    severity_on_fail: warn
+
+  - id: 7
+    category: finding-hygiene
+    name: accepted-as-is-discipline
+    description: "% of accepted-as-is lacking expires under thresholds; expired entries flipped to open"
+    severity_on_fail: high
+
+  - id: 8
+    category: finding-hygiene
+    name: pending-revalidation-not-stale
+    description: "No pending-revalidation items older than pending_revalidation_max_age_days"
+    severity_on_fail: high
+
+  # ─── Seam coverage ──────────────────────────────────────────
+  - id: 9
+    category: seam-coverage
+    name: every-seam-has-test-with-asserts
+    description: "Every seam in seams.md has test file with all stubs implemented and >=1 assert macro per stub"
+    severity_on_fail: high
+
+  - id: 10
+    category: seam-coverage
+    name: cross-cutting-phases-touched-seam-tests
+    description: "Every [cross-cutting] phase in last 10 added or modified a seam test"
+    severity_on_fail: high
+
+  - id: 11
+    category: seam-coverage
+    name: cross-phase-tests-pass-on-main
+    description: "cargo test --test cross_phase passes on current main"
+    severity_on_fail: critical
+
+  # ─── Gate effectiveness ─────────────────────────────────────
+  - id: 12
+    category: gate-effectiveness
+    name: zd-suppressions-not-expired
+    description: "No zd: suppressions older than their expires: date"
+    severity_on_fail: high
+
+  - id: 13
+    category: gate-effectiveness
+    name: suppressions-not-extended-without-reason
+    description: "No suppression has been extended (expires bumped) more than once without status_reason"
+    severity_on_fail: high
+
+  - id: 14
+    category: gate-effectiveness
+    name: advisory-checks-actioned
+    description: "At least one advisory finding actioned (resolved or accepted-as-is) in last advisory_actioned_window_phases"
+    severity_on_fail: warn
+
+  - id: 15
+    category: gate-effectiveness
+    name: just-check-runs-vs-merges
+    description: "just check runs >= merge commits in last 10 phases"
+    severity_on_fail: warn
+
+  # ─── Cost & cadence ─────────────────────────────────────────
+  - id: 16
+    category: cost-cadence
+    name: project-audit-within-cadence
+    description: "/project-audit run within audit_cadence_phases or audit_cadence_days; weighted by phase complexity tag"
+    severity_on_fail: warn
+
+  - id: 17
+    category: cost-cadence
+    name: audit-cost-not-runaway
+    description: "Average audit token cost trending flat or down (no >50% growth between consecutive audits)"
+    severity_on_fail: warn
+
+  - id: 18
+    category: cost-cadence
+    name: every-merge-has-merge-review
+    description: "Every merge to main after merge_review_baseline_sha has a merge-review artefact whose author matches /phase-merge-review invocation log"
+    severity_on_fail: high
+
+  # ─── Decay & meta ───────────────────────────────────────────
+  - id: 19
+    category: decay-meta
+    name: invariant-set-stable-or-explained
+    description: "coherence-invariants.yaml not modified in last invariant_set_review_window_audits without status_reason: invariant-set-change"
+    severity_on_fail: high

@@ -1,1 +1,8 @@
 web/pnpm-lock.yaml linguist-generated=true
+
+# ─── Foundation 4: generated artefact discipline ───
+docs/architecture/contracts.md merge=ours
+docs/architecture/contracts.md linguist-generated=true
+docs/architecture/contracts-coverage.json merge=ours
+docs/architecture/contracts-coverage.json linguist-generated=true
+.claude/cache/revalidation.json merge=ours

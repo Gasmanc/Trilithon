@@ -6,3 +6,12 @@ findings_dir: docs/End_of_Phase_Reviews/Findings
 fixed_dir: docs/End_of_Phase_Reviews/Fixed
 unfixed_dir: docs/End_of_Phase_Reviews/Unfixed
 aggregate_dir: docs/Codebase_MultiReview_Aggregate
+
+# ─── Cross-phase coherence (added by cross-phase-scaffold) ───
+cross_phase:
+  # Set by `cargo xtask set-merge-review-baseline` — adoption SHA.
+  # /where rule 12 only fires for commits AFTER this SHA.
+  merge_review_baseline_sha: ""
+  finding_schema_required: true
+  contract_registry_required: true
+  seam_registry_required: true
