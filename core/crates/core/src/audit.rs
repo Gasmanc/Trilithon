@@ -36,6 +36,10 @@ pub enum AuditEvent {
     DriftDetected,
     /// `config.drift-resolved`
     DriftResolved,
+    /// `config.drift-deferred` — explicit operator deferral
+    DriftDeferred,
+    /// `config.drift-auto-deferred` — auto-deferred after 3 consecutive conflict retries
+    DriftAutoDeferred,
     /// `config.rolled-back`
     ConfigRolledBack,
     /// `config.rebased`
@@ -80,6 +84,8 @@ pub enum AuditEvent {
     /// `tool-gateway.tool-invoked`
     ToolGatewayInvoked,
 
+    /// `auth.bootstrap-credentials-created`
+    AuthBootstrapCredentialsCreated,
     /// `auth.login-succeeded`
     AuthLoginSucceeded,
     /// `auth.login-failed`
@@ -120,6 +126,8 @@ impl fmt::Display for AuditEvent {
             Self::ApplyFailed => "config.apply-failed",
             Self::DriftDetected => "config.drift-detected",
             Self::DriftResolved => "config.drift-resolved",
+            Self::DriftDeferred => "config.drift-deferred",
+            Self::DriftAutoDeferred => "config.drift-auto-deferred",
             Self::ConfigRolledBack => "config.rolled-back",
             Self::ConfigRebased => "config.rebased",
             Self::OwnershipSentinelConflict => "caddy.ownership-sentinel-conflict",
@@ -139,6 +147,7 @@ impl fmt::Display for AuditEvent {
             Self::ToolGatewaySessionOpened => "tool-gateway.session-opened",
             Self::ToolGatewaySessionClosed => "tool-gateway.session-closed",
             Self::ToolGatewayInvoked => "tool-gateway.tool-invoked",
+            Self::AuthBootstrapCredentialsCreated => "auth.bootstrap-credentials-created",
             Self::AuthLoginSucceeded => "auth.login-succeeded",
             Self::AuthLoginFailed => "auth.login-failed",
             Self::AuthLogout => "auth.logout",
@@ -159,6 +168,7 @@ impl fmt::Display for AuditEvent {
 /// Phase 6's audit-row writer imports this constant to populate the `kind`
 /// column without re-declaring the vocabulary.
 pub const AUDIT_KIND_VOCAB: &[&str] = &[
+    "auth.bootstrap-credentials-created",
     "auth.bootstrap-credentials-rotated",
     "auth.login-failed",
     "auth.login-succeeded",
@@ -170,6 +180,8 @@ pub const AUDIT_KIND_VOCAB: &[&str] = &[
     "caddy.unreachable",
     "config.applied",
     "config.apply-failed",
+    "config.drift-auto-deferred",
+    "config.drift-deferred",
     "config.drift-detected",
     "config.drift-resolved",
     "config.rebased",
@@ -205,7 +217,7 @@ pub const AUDIT_KIND_VOCAB: &[&str] = &[
 /// Expected count of [`AuditEvent`] variants. Changing this constant requires
 /// updating `AUDIT_KIND_VOCAB` and the test helper `all_variants()`.
 #[cfg(test)]
-const AUDIT_EVENT_VARIANT_COUNT: usize = 41;
+const AUDIT_EVENT_VARIANT_COUNT: usize = 44;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -230,6 +242,8 @@ mod tests {
             ApplyFailed,
             DriftDetected,
             DriftResolved,
+            DriftDeferred,
+            DriftAutoDeferred,
             ConfigRolledBack,
             ConfigRebased,
             OwnershipSentinelConflict,
@@ -249,6 +263,7 @@ mod tests {
             ToolGatewaySessionOpened,
             ToolGatewaySessionClosed,
             ToolGatewayInvoked,
+            AuthBootstrapCredentialsCreated,
             AuthLoginSucceeded,
             AuthLoginFailed,
             AuthLogout,

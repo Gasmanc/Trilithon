@@ -22,6 +22,8 @@ pub const AUDIT_KINDS: &[&str] = &[
     "caddy.unreachable",
     "config.applied",
     "config.apply-failed",
+    "config.drift-auto-deferred",
+    "config.drift-deferred",
     "config.drift-detected",
     "config.drift-resolved",
     "config.exported",
