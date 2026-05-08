@@ -8,6 +8,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+
 /// Closed Tier 1 audit-event vocabulary. Variants map one-to-one to wire
 /// `kind` strings recorded in `audit_log.kind` (architecture §6.6).
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -243,6 +245,19 @@ impl FromStr for AuditEvent {
             "proposal.expired" => Ok(Self::ProposalExpired),
             other => Err(AuditEventParseError::Unknown(other.to_owned())),
         }
+    }
+}
+
+impl Serialize for AuditEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.kind_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AuditEvent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Self::from_str(&s).map_err(de::Error::custom)
     }
 }
 
