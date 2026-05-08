@@ -86,3 +86,14 @@ none
 ### Items Left Unfixed
 - `open()` helper duplicated in 6 test files — Rust integration test binary isolation prevents shared module
 - Inline `AUDIT_KINDS.contains` check — full-row error context required; dedicated helper would lose it
+
+---
+
+## End-of-phase simplify pass
+**Date:** 2026-05-09
+**Files reviewed:** 9
+**Files changed:** 1
+
+### Items
+- `storage_sqlite/audit.rs`: renamed local variable `matches` → `is_valid` in `validate_kind_pattern` to avoid shadowing the `matches!` built-in macro (readability)
+- All other files (`audit_writer.rs`, `sha256_hasher.rs`, `tracing_correlation.rs`, `audit/event.rs`, `audit/redactor.rs`, `audit/row.rs`, `schema/mod.rs`, `schema/secret_fields.rs`): no simplifications found — code is already clean, clippy passes with `-D warnings`, and all allocations/clones are necessary
