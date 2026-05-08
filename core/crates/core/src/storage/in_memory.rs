@@ -110,6 +110,15 @@ impl Storage for InMemoryStorage {
         leaf: &SnapshotId,
         max_depth: usize,
     ) -> Result<ParentChain, StorageError> {
+        if max_depth > crate::storage::MAX_PARENT_CHAIN_DEPTH {
+            return Err(StorageError::Integrity {
+                detail: format!(
+                    "max_depth {max_depth} exceeds ceiling {}",
+                    crate::storage::MAX_PARENT_CHAIN_DEPTH
+                ),
+            });
+        }
+
         let snapshots = self.snapshots.lock().await;
 
         let mut chain: Vec<Snapshot> = Vec::new();
@@ -672,6 +681,45 @@ mod tests {
                 .insert_snapshot(snap)
                 .await
                 .expect("subsequent call must succeed after a panic in another task");
+        }
+
+        #[tokio::test]
+        async fn parent_chain_exceeding_max_depth_returns_integrity_error() {
+            use crate::storage::{MAX_PARENT_CHAIN_DEPTH, error::StorageError};
+
+            let store = InMemoryStorage::new();
+            let snap = make_snapshot("aabbcc", 1, None);
+            store
+                .insert_snapshot(snap)
+                .await
+                .expect("insert should succeed");
+
+            let err = store
+                .parent_chain(&SnapshotId("aabbcc".to_owned()), MAX_PARENT_CHAIN_DEPTH + 1)
+                .await
+                .expect_err("should reject max_depth exceeding ceiling");
+
+            assert!(
+                matches!(err, StorageError::Integrity { .. }),
+                "expected StorageError::Integrity, got {err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn parent_chain_at_max_depth_succeeds() {
+            use crate::storage::MAX_PARENT_CHAIN_DEPTH;
+
+            let store = InMemoryStorage::new();
+            let snap = make_snapshot("aabbcc", 1, None);
+            store
+                .insert_snapshot(snap)
+                .await
+                .expect("insert should succeed");
+
+            store
+                .parent_chain(&SnapshotId("aabbcc".to_owned()), MAX_PARENT_CHAIN_DEPTH)
+                .await
+                .expect("max_depth == ceiling should be accepted");
         }
     }
 }

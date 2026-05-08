@@ -631,6 +631,16 @@ impl Storage for SqliteStorage {
         leaf: &SnapshotId,
         max_depth: usize,
     ) -> Result<ParentChain, StorageError> {
+        // Guard against unbounded recursion that could saturate the pool.
+        if max_depth > trilithon_core::storage::MAX_PARENT_CHAIN_DEPTH {
+            return Err(StorageError::Integrity {
+                detail: format!(
+                    "max_depth {max_depth} exceeds ceiling {}",
+                    trilithon_core::storage::MAX_PARENT_CHAIN_DEPTH
+                ),
+            });
+        }
+
         // SQLite's WITH RECURSIVE walks up to `max_depth + 1` rows so we can
         // detect truncation.
         let depth_limit = i64::try_from(max_depth + 1).unwrap_or(i64::MAX);
