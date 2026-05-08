@@ -31,24 +31,24 @@ Source of truth: [`../phases/phased-plan.md#phase-2--sqlite-persistence-and-migr
   - Done when: `cargo test -p trilithon-adapters sqlite_storage::tests` passes against a temporary database.
   - Feature: foundational.
 - [ ] **Configure WAL and pragmas at pool initialisation.**
-  - Acceptance: Pool initialisation MUST execute `PRAGMA journal_mode = WAL`, `PRAGMA synchronous = NORMAL`, `PRAGMA foreign_keys = ON`, and `PRAGMA busy_timeout = 5000`.
-  - Done when: an integration test queries `PRAGMA journal_mode` and the other pragmas after pool start and asserts the values.
+  - Acceptance: Pool initialisation MUST execute `PRAGMA journal_mode = WAL`, `PRAGMA synchronous = NORMAL`, `PRAGMA foreign_keys = ON`, `PRAGMA busy_timeout = <configured value>` (default 5000 ms, configurable via `RuntimeConfig`), and `PRAGMA application_id = 0x54525754`. The daemon MUST validate the `application_id` after opening and refuse to proceed if it does not match.
+  - Done when: an integration test queries these pragmas after pool start and asserts the values; an additional test validates that a database with mismatched `application_id` is rejected.
   - Feature: foundational (mitigates H14).
 - [ ] **Embed migrations and run them at startup.**
   - Acceptance: Migrations MUST be embedded under `crates/adapters/migrations/` and applied via `sqlx::migrate!` at daemon startup.
   - Done when: the daemon emits `storage.migrations.applied` with the resulting schema version on first run.
   - Feature: foundational.
 - [ ] **Author migration `0001_init.sql`.**
-  - Acceptance: Migration `0001_init.sql` MUST create `snapshots`, `audit_log`, `sessions`, `users`, `mutations`, `secrets_metadata`, and `caddy_instances`, every table carrying a `caddy_instance_id` column hard-coded to `local`. The table is named `mutations` (singular `mutations`, not `mutations_queue`); architecture §6.7 is the canonical name.
-  - Done when: the seven tables exist after first run and `cargo test -p trilithon-adapters migrations::initial_schema` passes.
+  - Acceptance: Migration `0001_init.sql` MUST create eight tables: `caddy_instances`, `users`, `sessions`, `snapshots`, `audit_log`, `mutations`, `proposals`, `secrets_metadata`. Every data table MUST carry a `caddy_instance_id` column set to `'local'`. The `snapshots` table MUST carry `created_at_monotonic_nanos` and `canonical_json_version` columns per architecture §6.5. The `audit_log` table MUST carry a `prev_hash` column per ADR-0009. The `proposals` table MUST include all columns from architecture §6.8 (including approval-side fields: decided_by_kind, decided_by_id, decided_at, wildcard_ack_by, wildcard_ack_at, resulting_mutation).
+  - Done when: all eight tables exist after first run with all required columns and `cargo test -p trilithon-adapters migrations::initial_schema` passes.
   - Feature: T1.2, T1.7, T1.15 (substrate).
 - [ ] **Refuse downgrade migrations.**
   - Acceptance: A migration runner MUST refuse to start the daemon if the database schema version is newer than the embedded migration set.
   - Done when: a fixture database tagged with a future version triggers exit code `3` and a typed error.
   - Feature: foundational.
-- [ ] **Periodic `PRAGMA integrity_check` task.**
-  - Acceptance: A task scheduled every six hours MUST run `PRAGMA integrity_check` and emit a tracing event `storage.integrity_check.failed` on any non-`ok` result, satisfying H14.
-  - Done when: a unit test simulating a non-`ok` result asserts the tracing event and an integration test exercises the schedule.
+- [ ] **Startup and periodic `PRAGMA integrity_check`.**
+  - Acceptance: The daemon MUST run `PRAGMA integrity_check` on startup (after migrations, before emitting `daemon.started`) and exit `3` on any non-`ok` result per ADR-0006. A periodic task MUST run the same check every six hours and emit `storage.integrity-check.failed` on non-`ok` results, satisfying H14.
+  - Done when: startup integration tests verify the check runs and blocks daemon.started on failure; periodic task tests exercise the schedule.
   - Feature: foundational.
 - [ ] **Advisory single-instance lock on the database file.**
   - Acceptance: Pool initialisation MUST acquire an advisory lock; a second daemon process pointed at the same database MUST be rejected before any write occurs.
@@ -98,7 +98,10 @@ Source of truth: [`../phases/phased-plan.md#phase-2--sqlite-persistence-and-migr
 ## Sign-off checklist
 
 - [ ] `just check` passes locally and in continuous integration.
+- [ ] The daemon runs an integrity check on startup and exits `3` on corruption; `daemon.started` is only emitted after this check passes.
 - [ ] The daemon runs migrations on startup and emits `storage.migrations.applied` with the resulting schema version.
-- [ ] The daemon exits `3` if SQLite cannot acquire the database file or if migrations fail.
-- [ ] All seven Tier 1 tables exist after first run, store time as UTC Unix seconds where time is stored, and satisfy H6.
+- [ ] The daemon exits `3` if SQLite cannot acquire the database file, if migrations fail, or if the database `PRAGMA application_id` does not match (fresh databases with `application_id = 0` are allowed; the check passes if application_id is 0 or matches 0x54525754).
+- [ ] All eight Tier 1 + meta tables exist after first run (caddy_instances, users, sessions, snapshots, audit_log, mutations, proposals, secrets_metadata; _sqlx_migrations is created by sqlx at runtime), store time as UTC Unix seconds where applicable, and satisfy H6.
+- [ ] Audit log rows carry a `prev_hash` column (all-zero for the first row) per ADR-0009.
+- [ ] Snapshots carry `created_at_monotonic_nanos` and `canonical_json_version` per architecture §6.5.
 - [ ] A second daemon process pointed at the same database file is rejected by an advisory lock check before any write occurs.
