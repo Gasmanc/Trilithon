@@ -59,6 +59,6 @@ do_not_autofix: false
 | Slice 6.5 | Imported audit_prev_hash_seed at top level — core/crates/adapters/src/audit_writer.rs | reuse | 2026-05-08 | 4d9dd93 |
 | Slice 6.5 | Removed no-op intermediate bindings — core/crates/adapters/src/audit_writer.rs | quality | 2026-05-08 | 4d9dd93 |
 | Slice 6.5 | Removed step-narrating comments — core/crates/adapters/src/audit_writer.rs | quality | 2026-05-08 | 4d9dd93 |
-| Slice 6.6 | Consolidated audit_row_from_sqlite + row_to_audit_event_row_no_prev_hash — core/crates/adapters/src/sqlite_storage.rs | reuse | 2026-05-09 | pending |
-| Slice 6.6 | Removed WHAT comment on limit normalization — core/crates/adapters/src/sqlite_storage.rs | quality | 2026-05-09 | pending |
-| Slice 6.6 | Iterator collect replacing manual push loop — core/crates/adapters/src/sqlite_storage.rs | quality | 2026-05-09 | pending |
+| Slice 6.6 | Consolidated audit_row_from_sqlite + row_to_audit_event_row_no_prev_hash — core/crates/adapters/src/sqlite_storage.rs | reuse | 2026-05-09 | 5f7d625 |
+| Slice 6.6 | Removed WHAT comment on limit normalization — core/crates/adapters/src/sqlite_storage.rs | quality | 2026-05-09 | 5f7d625 |
+| Slice 6.6 | Iterator collect replacing manual push loop — core/crates/adapters/src/sqlite_storage.rs | quality | 2026-05-09 | 5f7d625 |
