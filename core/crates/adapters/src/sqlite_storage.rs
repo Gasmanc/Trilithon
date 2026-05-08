@@ -949,37 +949,32 @@ impl Storage for SqliteStorage {
     }
 
     async fn record_drift_event(&self, _event: DriftEventRow) -> Result<DriftRowId, StorageError> {
-        Err(StorageError::Migration {
-            version: 0,
-            detail: "drift_events table arrives in Phase 8".to_string(),
+        Err(StorageError::NotYetAvailable {
+            reason: "drift_events table arrives in Phase 8".to_string(),
         })
     }
 
     async fn latest_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError> {
-        Err(StorageError::Migration {
-            version: 0,
-            detail: "drift_events table arrives in Phase 8".to_string(),
+        Err(StorageError::NotYetAvailable {
+            reason: "drift_events table arrives in Phase 8".to_string(),
         })
     }
 
     async fn enqueue_proposal(&self, _proposal: ProposalRow) -> Result<ProposalId, StorageError> {
-        Err(StorageError::Migration {
-            version: 0,
-            detail: "proposals table arrives in Phase 4".to_string(),
+        Err(StorageError::NotYetAvailable {
+            reason: "proposals table arrives in Phase 4".to_string(),
         })
     }
 
     async fn dequeue_proposal(&self) -> Result<Option<ProposalRow>, StorageError> {
-        Err(StorageError::Migration {
-            version: 0,
-            detail: "proposals table arrives in Phase 4".to_string(),
+        Err(StorageError::NotYetAvailable {
+            reason: "proposals table arrives in Phase 4".to_string(),
         })
     }
 
     async fn expire_proposals(&self, _now: UnixSeconds) -> Result<u32, StorageError> {
-        Err(StorageError::Migration {
-            version: 0,
-            detail: "proposals table arrives in Phase 4".to_string(),
+        Err(StorageError::NotYetAvailable {
+            reason: "proposals table arrives in Phase 4".to_string(),
         })
     }
 }

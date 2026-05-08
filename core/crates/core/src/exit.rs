@@ -29,8 +29,14 @@ impl ExitCode {
 }
 
 impl From<crate::storage::StorageError> for ExitCode {
-    fn from(_: crate::storage::StorageError) -> Self {
-        Self::StartupPreconditionFailure
+    fn from(e: crate::storage::StorageError) -> Self {
+        match e {
+            // NotYetAvailable indicates a developer-wiring bug: a method is
+            // called before its backing schema exists.  Map to InvalidInvocation
+            // (64) so it is distinguishable from a genuine storage failure (3).
+            crate::storage::StorageError::NotYetAvailable { .. } => Self::InvalidInvocation,
+            _ => Self::StartupPreconditionFailure,
+        }
     }
 }
 

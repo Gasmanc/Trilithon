@@ -87,6 +87,16 @@ pub enum StorageError {
         detail: String,
     },
 
+    /// A method is structurally present on the trait but its backing schema or
+    /// implementation has not yet been added in this phase.
+    ///
+    /// Callers should treat this as a developer-wiring error, not a schema failure.
+    #[error("storage feature not yet available: {reason}")]
+    NotYetAvailable {
+        /// Human-readable description of which feature is missing and when it lands.
+        reason: String,
+    },
+
     /// An underlying I/O error occurred.
     #[error("io error: {source}")]
     Io {
@@ -154,6 +164,9 @@ mod tests {
             StorageError::Migration {
                 version: 3,
                 detail: "column missing".into(),
+            },
+            StorageError::NotYetAvailable {
+                reason: "feature lands in phase 4".into(),
             },
             StorageError::Io {
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"),
