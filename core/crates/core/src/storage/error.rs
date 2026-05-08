@@ -64,12 +64,11 @@ pub enum StorageError {
         source_ref: String,
     },
 
-    /// The `SQLite` connection was busy and all retry attempts were exhausted.
-    #[error("sqlite busy after {retries} retries")]
-    SqliteBusy {
-        /// Number of retries attempted before giving up.
-        retries: u32,
-    },
+    /// The `SQLite` connection was busy and could not be acquired.
+    ///
+    /// Phase 4 will re-add retry tracking when the mutation queue retry loop lands.
+    #[error("sqlite busy")]
+    SqliteBusy,
 
     /// A low-level `SQLite` error occurred.
     #[error("sqlite error: {kind:?}")]
@@ -157,7 +156,7 @@ mod tests {
                 proposal_source: "docker".into(),
                 source_ref: "abc123".into(),
             },
-            StorageError::SqliteBusy { retries: 5 },
+            StorageError::SqliteBusy,
             StorageError::Sqlite {
                 kind: SqliteErrorKind::Constraint,
             },

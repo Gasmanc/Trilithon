@@ -17,7 +17,7 @@ pub(crate) fn sqlx_err(e: sqlx::Error) -> StorageError {
             // codes such as SQLITE_BUSY_RECOVERY (261) and
             // SQLITE_BUSY_SNAPSHOT (517) are caught alongside the base codes.
             match code & 0xFF {
-                5 | 6 => StorageError::SqliteBusy { retries: 0 },
+                5 | 6 => StorageError::SqliteBusy,
                 11 => StorageError::Sqlite {
                     kind: SqliteErrorKind::Corrupt,
                 },
