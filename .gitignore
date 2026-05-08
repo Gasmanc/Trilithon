@@ -38,3 +38,4 @@ DerivedData/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 Packages/
 Package.resolved
+.claude/worktrees/
