@@ -76,10 +76,12 @@ fn no_direct_record_audit_event_outside_audit_writer() {
     let crate_root = Path::new(&manifest_dir);
     let src_root = crate_root.join("src");
     let tests_root = crate_root.join("tests");
+    // The cli crate is one level up from the adapters crate root.
+    let cli_src_root = crate_root.join("../../crates/cli/src");
 
     let mut violations: Vec<String> = Vec::new();
 
-    for dir in [&src_root, &tests_root] {
+    for dir in [&src_root, &tests_root, &cli_src_root] {
         for path in collect_rs_files(dir) {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 

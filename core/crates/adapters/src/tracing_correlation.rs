@@ -91,6 +91,20 @@ pub fn with_correlation_span<F: Future>(
     }
 }
 
+// ── CorrelationGuard ──────────────────────────────────────────────────────────
+
+/// RAII guard that restores the previous thread-local correlation id on drop.
+///
+/// Used by [`CorrelationSpan::poll`] to guarantee the TLS value is restored
+/// even when the inner future panics.
+struct CorrelationGuard(Option<Ulid>);
+
+impl Drop for CorrelationGuard {
+    fn drop(&mut self) {
+        CURRENT_CORRELATION_ID.with(|cell| *cell.borrow_mut() = self.0);
+    }
+}
+
 // ── CorrelationSpan ───────────────────────────────────────────────────────────
 
 pin_project_lite::pin_project! {
@@ -113,15 +127,18 @@ impl<F: Future> Future for CorrelationSpan<F> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let id = *this.correlation_id;
-        // Single TLS lookup: read prev, install id, poll, restore prev.
-        let prev = CURRENT_CORRELATION_ID.with(|cell| {
+
+        // Install `id` and capture the previous value in a RAII guard.
+        // `CorrelationGuard` restores the previous value in `Drop`, so this
+        // is panic-safe: even if the inner future panics, the TLS value is
+        // correctly restored before the stack unwinds past this frame.
+        let _guard = CorrelationGuard(CURRENT_CORRELATION_ID.with(|cell| {
             let prev = *cell.borrow();
             *cell.borrow_mut() = Some(id);
             prev
-        });
-        let result = this.inner.poll(cx);
-        CURRENT_CORRELATION_ID.with(|cell| *cell.borrow_mut() = prev);
-        result
+        }));
+
+        this.inner.poll(cx)
     }
 }
 

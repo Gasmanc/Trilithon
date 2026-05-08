@@ -9,6 +9,8 @@ pub mod test_support;
 
 pub mod audit_writer;
 pub use audit_writer::AuditWriter;
+pub mod sha256_hasher;
+pub use sha256_hasher::Sha256AuditHasher;
 pub mod tracing_correlation;
 pub use tracing_correlation::{
     CORRELATION_ID_FIELD, CorrelationSpan, correlation_id_from_header, correlation_layer,

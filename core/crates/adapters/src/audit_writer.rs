@@ -42,6 +42,12 @@ pub enum AuditWriteError {
     /// The underlying storage layer returned an error.
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+    /// The redacted diff could not be serialized to JSON.
+    ///
+    /// Audit rows are immutable once written; a serialization failure is
+    /// propagated as an error rather than silently stored as `"null"`.
+    #[error("serialization failed: {0}")]
+    Serialization(String),
 }
 
 // ── ActorRef ──────────────────────────────────────────────────────────────────
@@ -143,9 +149,17 @@ impl AuditWriter {
         redactor: SecretsRedactor<'static>,
     ) -> Self {
         // Wrap the redactor in a closure so `AuditWriter` is `'static`.
+        //
+        // `redact_diff` is used instead of `redact` because diff payloads
+        // follow the Phase 8 `{ added, removed, modified }` envelope shape:
+        // secret paths are nested one level deeper, and `redact` would not
+        // match them.  `redact_diff` descends into each top-level key before
+        // running the path-matching walk.
         let redactor_fn = Arc::new(
             move |value: &Value| -> Result<(Value, u32), AuditWriteError> {
-                let result = redactor.redact(value).map_err(AuditWriteError::Redaction)?;
+                let result = redactor
+                    .redact_diff(value)
+                    .map_err(AuditWriteError::Redaction)?;
                 Ok((result.value, result.sites))
             },
         );
@@ -172,7 +186,8 @@ impl AuditWriter {
 
         let (redacted_diff_json, redaction_sites) = if let Some(ref diff) = append.diff {
             let (redacted, sites) = (self.redactor)(diff)?;
-            let json = serde_json::to_string(&redacted).unwrap_or_else(|_| "null".to_owned());
+            let json = serde_json::to_string(&redacted)
+                .map_err(|e| AuditWriteError::Serialization(e.to_string()))?;
             (Some(json), sites)
         } else {
             (None, 0u32)

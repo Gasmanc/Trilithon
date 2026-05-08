@@ -81,10 +81,16 @@ async fn happy_path_diff_with_secret_is_redacted() {
     let writer = AuditWriter::new(store.clone(), clock, redactor);
 
     let plaintext = "hunter2";
+    // Use the Phase 8 diff envelope shape `{ added, removed, modified }`.
+    // `AuditWriter` now calls `redact_diff`, which descends into each top-level
+    // key before running the path-matching walk.  The secret path
+    // `/auth/basic/users/0/password` is therefore matched correctly.
     let diff = json!({
-        "auth": {
-            "basic": {
-                "users": [{"username": "alice", "password": plaintext}]
+        "modified": {
+            "auth": {
+                "basic": {
+                    "users": [{"username": "alice", "password": plaintext}]
+                }
             }
         }
     });
