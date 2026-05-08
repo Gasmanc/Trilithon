@@ -5,6 +5,7 @@ members = [
     "crates/adapters",
     "crates/cli",
     "crates/ffi",
+    "xtask",
 ]
 
 [workspace.package]

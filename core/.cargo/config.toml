@@ -1,0 +1,3 @@
+# xtask alias — enables `cargo xtask <subcommand>` from the core/ workspace root.
+[alias]
+xtask = "run --package xtask --"

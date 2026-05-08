@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# xtask is dev tooling — it intentionally does not inherit the workspace's
+# strict production lints (unwrap_used, expect_used, etc.).  Tooling stubs
+# use unwrap freely and have dead code until filled in.
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"

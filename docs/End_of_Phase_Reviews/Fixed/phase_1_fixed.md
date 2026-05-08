@@ -1,3 +1,20 @@
+---
+id: duplicate:area::phase-1-fixed-findings:legacy-uncategorized
+category: duplicate
+kind: process
+location:
+  area: phase-1-fixed-findings
+  multi: false
+finding_kind: legacy-uncategorized
+phase_introduced: unknown
+status: open
+created_at: migration
+created_by: legacy-migration
+last_verified_at: 0a795583ea9c4266e7d9b0ae0f56fd47d2ecf574
+severity: medium
+do_not_autofix: false
+---
+
 # Phase 1 — Fixed Findings
 
 **Run date:** 2026-05-07T00:00:00Z

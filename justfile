@@ -84,27 +84,27 @@ open-app:
 
 # Regenerate contracts.md from source. Run after touching contract-rooted symbols.
 registry-regen:
-    cargo xtask registry-extract --write
-    cargo xtask invariant-check
+    cd core && cargo xtask registry-extract --write
+    cd core && cargo xtask invariant-check
     @echo "contracts.md regenerated. Review the diff before committing."
 
 # Pre-merge gate — strict registry + advisory.
 check-premerge:
-    cargo check --workspace --all-targets
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo test --workspace
-    -cargo test --workspace --test cross_phase || true
+    cd core && cargo check --workspace --all-targets
+    cd core && cargo clippy --workspace --all-targets -- -D warnings
+    cd core && cargo test --workspace
+    -cd core && cargo test --workspace --test cross_phase || true
     -cargo machete || true
-    -cargo xtask registry-verify || true
-    -cargo xtask registry-check --strict || true
-    -cargo xtask invariant-check || true
-    -cargo xtask audit-duplicates || true
-    -cargo xtask audit-duplicates --check-seam-stubs || true
+    -cd core && cargo xtask registry-verify || true
+    -cd core && cargo xtask registry-check --strict || true
+    -cd core && cargo xtask invariant-check || true
+    -cd core && cargo xtask audit-duplicates || true
+    -cd core && cargo xtask audit-duplicates --check-seam-stubs || true
 
 # Migrate legacy review artefacts to Foundation 0 schema. One-time use.
 migrate-findings *ARGS:
-    cargo xtask migrate-findings {{ARGS}}
+    cd core && cargo xtask migrate-findings {{ARGS}}
 
 # Set the merge-review baseline. One-time use.
 set-merge-review-baseline *ARGS:
-    cargo xtask set-merge-review-baseline {{ARGS}}
+    cd core && cargo xtask set-merge-review-baseline {{ARGS}}

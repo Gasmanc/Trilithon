@@ -11,7 +11,7 @@ aggregate_dir: docs/Codebase_MultiReview_Aggregate
 cross_phase:
   # Set by `cargo xtask set-merge-review-baseline` — adoption SHA.
   # /where rule 12 only fires for commits AFTER this SHA.
-  merge_review_baseline_sha: ""
+  merge_review_baseline_sha: 0a795583ea9c4266e7d9b0ae0f56fd47d2ecf574
   finding_schema_required: true
   contract_registry_required: true
   seam_registry_required: true
