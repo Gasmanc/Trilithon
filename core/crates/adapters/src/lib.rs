@@ -9,6 +9,11 @@ pub mod test_support;
 
 pub mod audit_writer;
 pub use audit_writer::AuditWriter;
+pub mod tracing_correlation;
+pub use tracing_correlation::{
+    CORRELATION_ID_FIELD, CorrelationSpan, correlation_id_from_header, correlation_layer,
+    current_correlation_id, with_correlation_span,
+};
 pub mod caddy;
 pub mod config_loader;
 pub(crate) mod db_errors;

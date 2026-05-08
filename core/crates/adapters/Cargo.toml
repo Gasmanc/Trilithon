@@ -22,6 +22,9 @@ hyperlocal = "0.9"
 hyper-rustls = { version = "0.27", features = ["rustls-native-certs"] }
 rustls-pemfile = "2"
 http-body-util = "0.1"
+http = "1"
+tower = { version = "0.5", features = ["util"] }
+pin-project-lite = "0.2"
 bytes = "1"
 rand = "0.8"
 rustls = "0.23"
@@ -37,6 +40,7 @@ tokio = { version = "1", features = ["full", "test-util"] }
 url = { workspace = true }
 httptest = "0.16"
 tracing-subscriber = { workspace = true }
+ulid = { workspace = true }
 
 [[test]]
 name = "audit_writer_happy_path"
@@ -121,6 +125,22 @@ path = "tests/caddy/sentinel_e2e.rs"
 [[test]]
 name = "caddy_end_to_end"
 path = "tests/caddy/end_to_end.rs"
+
+[[test]]
+name = "tracing_propagates_header_correlation_id"
+path = "tests/tracing_propagates_header_correlation_id.rs"
+
+[[test]]
+name = "tracing_generates_correlation_id_on_absence"
+path = "tests/tracing_generates_correlation_id_on_absence.rs"
+
+[[test]]
+name = "audit_row_has_non_null_correlation_id"
+path = "tests/audit_row_has_non_null_correlation_id.rs"
+
+[[test]]
+name = "background_task_seeds_per_iteration"
+path = "tests/background_task_seeds_per_iteration.rs"
 
 [lints]
 workspace = true
