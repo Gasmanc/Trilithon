@@ -18,6 +18,7 @@ use sqlx::sqlite::{
 use trilithon_core::storage::{
     audit_vocab::AUDIT_KINDS,
     error::{SqliteErrorKind, StorageError},
+    helpers::{audit_prev_hash_seed, canonical_json_for_audit_hash, compute_audit_chain_hash},
     trait_def::Storage,
     types::{
         ActorKind, AuditEventRow, AuditOutcome, AuditRowId, AuditSelector, DriftEventRow,
@@ -488,6 +489,48 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
 }
 
 // ---------------------------------------------------------------------------
+// Audit row conversion (without prev_hash column)
+// ---------------------------------------------------------------------------
+
+/// Map a [`SqliteRow`] that does **not** include the `prev_hash` column to an
+/// [`AuditEventRow`].  Used inside the hash-chain transaction where we SELECT
+/// all columns except `prev_hash` from the previous row.
+fn row_to_audit_event_row_no_prev_hash(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<AuditEventRow, StorageError> {
+    use trilithon_core::storage::types::AuditRowId;
+    let actor_kind_s: String = row.try_get("actor_kind").map_err(sqlx_err)?;
+    let actor_kind = parse_actor_kind(&actor_kind_s)?;
+    let outcome_s: String = row.try_get("outcome").map_err(sqlx_err)?;
+    let outcome = parse_outcome(&outcome_s)?;
+    let snapshot_id_s: Option<String> = row.try_get("snapshot_id").map_err(sqlx_err)?;
+    let redaction_sites_raw: i64 = row.try_get("redaction_sites").map_err(sqlx_err)?;
+
+    Ok(AuditEventRow {
+        id: AuditRowId(row.try_get("id").map_err(sqlx_err)?),
+        // prev_hash is intentionally left as the seed value here because this
+        // function is only called to build the canonical JSON for hashing the
+        // PREVIOUS row, where prev_hash is not part of the hash input.
+        prev_hash: trilithon_core::storage::helpers::audit_prev_hash_seed().to_string(),
+        caddy_instance_id: row.try_get("caddy_instance_id").map_err(sqlx_err)?,
+        correlation_id: row.try_get("correlation_id").map_err(sqlx_err)?,
+        occurred_at: row.try_get("occurred_at").map_err(sqlx_err)?,
+        occurred_at_ms: row.try_get("occurred_at_ms").map_err(sqlx_err)?,
+        actor_kind,
+        actor_id: row.try_get("actor_id").map_err(sqlx_err)?,
+        kind: row.try_get("kind").map_err(sqlx_err)?,
+        target_kind: row.try_get("target_kind").map_err(sqlx_err)?,
+        target_id: row.try_get("target_id").map_err(sqlx_err)?,
+        snapshot_id: snapshot_id_s.map(SnapshotId),
+        redacted_diff_json: row.try_get("redacted_diff_json").map_err(sqlx_err)?,
+        redaction_sites: u32::try_from(redaction_sites_raw).unwrap_or(0),
+        outcome,
+        error_kind: row.try_get("error_kind").map_err(sqlx_err)?,
+        notes: row.try_get("notes").map_err(sqlx_err)?,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Storage trait implementation helpers
 // ---------------------------------------------------------------------------
 
@@ -641,17 +684,74 @@ impl Storage for SqliteStorage {
         let outcome = outcome_str(event.outcome);
         let snapshot_id = event.snapshot_id.as_ref().map(|s| s.0.clone());
 
-        sqlx::query(
+        // Acquire a single connection and use BEGIN IMMEDIATE so the SELECT +
+        // INSERT is atomic under a write lock.  prev_hash is always derived
+        // from the true last row (tiebreak by id to handle same-ms rows).
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| StorageError::Sqlite {
+                kind: SqliteErrorKind::Other(e.to_string()),
+            })?;
+
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Sqlite {
+                kind: SqliteErrorKind::Other(e.to_string()),
+            })?;
+
+        // Fetch the last row to chain the hash.
+        let prev_hash_result: Result<String, StorageError> = async {
+            let last_row = sqlx::query(
+                r"
+                SELECT id, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
+                       actor_kind, actor_id, kind, target_kind, target_id,
+                       snapshot_id, redacted_diff_json, redaction_sites,
+                       outcome, error_kind, notes
+                FROM audit_log
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT 1
+                ",
+            )
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Sqlite {
+                kind: SqliteErrorKind::Other(e.to_string()),
+            })?;
+
+            if let Some(row) = last_row {
+                let prev_row = row_to_audit_event_row_no_prev_hash(&row)?;
+                let canon = canonical_json_for_audit_hash(&prev_row);
+                Ok(compute_audit_chain_hash(&canon))
+            } else {
+                Ok(audit_prev_hash_seed().to_string())
+            }
+        }
+        .await;
+
+        let prev_hash = match prev_hash_result {
+            Ok(h) => h,
+            Err(e) => {
+                // Roll back before propagating the error.
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(e);
+            }
+        };
+
+        let insert_result = sqlx::query(
             r"
             INSERT INTO audit_log
-                (id, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
+                (id, prev_hash, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
                  actor_kind, actor_id, kind, target_kind, target_id,
                  snapshot_id, redacted_diff_json, redaction_sites,
                  outcome, error_kind, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ",
         )
         .bind(&id)
+        .bind(&prev_hash)
         .bind(&event.caddy_instance_id)
         .bind(&event.correlation_id)
         .bind(event.occurred_at)
@@ -667,9 +767,24 @@ impl Storage for SqliteStorage {
         .bind(outcome)
         .bind(&event.error_kind)
         .bind(&event.notes)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
-        .map_err(sqlx_err)?;
+        .map_err(sqlx_err);
+
+        match insert_result {
+            Ok(_) => {}
+            Err(e) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(e);
+            }
+        }
+
+        sqlx::query("COMMIT")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Sqlite {
+                kind: SqliteErrorKind::Other(e.to_string()),
+            })?;
 
         Ok(AuditRowId(id))
     }

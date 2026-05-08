@@ -278,6 +278,70 @@ async fn tail_audit_log_filters_by_correlation_id() {
     );
 }
 
+/// Audit chain: first row's `prev_hash` equals the all-zero seed.
+#[tokio::test]
+async fn audit_chain_first_row_uses_seed() {
+    let dir = TempDir::new().unwrap();
+    let store = open(&dir).await;
+
+    let event = make_audit_event("config.applied", "corr-01");
+    let id = store
+        .record_audit_event(event)
+        .await
+        .expect("insert should succeed");
+
+    let rows = store
+        .tail_audit_log(AuditSelector::default(), 10)
+        .await
+        .expect("tail should succeed");
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, id);
+    assert_eq!(
+        rows[0].prev_hash,
+        trilithon_core::storage::helpers::audit_prev_hash_seed(),
+        "first row must use the all-zero seed"
+    );
+}
+
+/// Audit chain: second row's `prev_hash` equals `sha256(canonical_json(first_row))`.
+#[tokio::test]
+async fn audit_chain_prev_hash_links_rows() {
+    use trilithon_core::storage::helpers::{
+        canonical_json_for_audit_hash, compute_audit_chain_hash,
+    };
+
+    let dir = TempDir::new().unwrap();
+    let store = open(&dir).await;
+
+    let e1 = make_audit_event("config.applied", "corr-01");
+    store
+        .record_audit_event(e1)
+        .await
+        .expect("e1 insert should succeed");
+
+    let e2 = make_audit_event("mutation.submitted", "corr-02");
+    store
+        .record_audit_event(e2)
+        .await
+        .expect("e2 insert should succeed");
+
+    // tail_audit_log returns newest-first; reverse to get oldest-first.
+    let mut rows = store
+        .tail_audit_log(AuditSelector::default(), 10)
+        .await
+        .expect("tail should succeed");
+    rows.reverse();
+
+    assert_eq!(rows.len(), 2);
+
+    let expected_prev_hash = compute_audit_chain_hash(&canonical_json_for_audit_hash(&rows[0]));
+    assert_eq!(
+        rows[1].prev_hash, expected_prev_hash,
+        "second row's prev_hash must equal sha256(canonical_json(first row))"
+    );
+}
+
 /// The advisory lock rejects a second acquire within the same process.
 ///
 /// Note: on some operating systems advisory locks are per-process rather than

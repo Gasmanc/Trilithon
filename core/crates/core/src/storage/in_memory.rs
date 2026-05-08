@@ -23,6 +23,7 @@ use async_trait::async_trait;
 use crate::storage::{
     audit_vocab::AUDIT_KINDS,
     error::StorageError,
+    helpers::{audit_prev_hash_seed, canonical_json_for_audit_hash, compute_audit_chain_hash},
     trait_def::Storage,
     types::{
         AuditEventRow, AuditRowId, AuditSelector, DriftEventRow, DriftRowId, ParentChain,
@@ -154,13 +155,23 @@ impl Storage for InMemoryStorage {
         Ok(result)
     }
 
-    async fn record_audit_event(&self, event: AuditEventRow) -> Result<AuditRowId, StorageError> {
+    async fn record_audit_event(
+        &self,
+        mut event: AuditEventRow,
+    ) -> Result<AuditRowId, StorageError> {
         if !AUDIT_KINDS.contains(&event.kind.as_str()) {
             return Err(StorageError::AuditKindUnknown { kind: event.kind });
         }
 
         let id = event.id.clone();
         let mut audit = self.audit.lock().expect("audit lock poisoned");
+
+        // Compute prev_hash from the last row, or use the seed if empty.
+        event.prev_hash = audit.last().map_or_else(
+            || audit_prev_hash_seed().to_string(),
+            |last| compute_audit_chain_hash(&canonical_json_for_audit_hash(last)),
+        );
+
         audit.push(event);
         Ok(id)
     }
@@ -567,6 +578,64 @@ mod tests {
                 .expect("expire_proposals should succeed");
 
             assert_eq!(count, 1, "exactly one proposal should have been expired");
+        }
+
+        #[tokio::test]
+        async fn audit_chain_first_row_uses_seed() {
+            use crate::storage::helpers::audit_prev_hash_seed;
+
+            let store = InMemoryStorage::new();
+            let event = make_audit_event("config.applied");
+            store
+                .record_audit_event(event)
+                .await
+                .expect("insert should succeed");
+
+            let rows = store
+                .tail_audit_log(AuditSelector::default(), 10)
+                .await
+                .expect("tail should succeed");
+
+            assert_eq!(rows.len(), 1);
+            assert_eq!(
+                rows[0].prev_hash,
+                audit_prev_hash_seed(),
+                "first row must use the all-zero seed"
+            );
+        }
+
+        #[tokio::test]
+        async fn audit_chain_prev_hash_links_rows() {
+            use crate::storage::helpers::{
+                canonical_json_for_audit_hash, compute_audit_chain_hash,
+            };
+
+            let store = InMemoryStorage::new();
+            let e1 = make_audit_event("config.applied");
+            store
+                .record_audit_event(e1)
+                .await
+                .expect("e1 insert should succeed");
+
+            let e2 = make_audit_event("mutation.submitted");
+            store
+                .record_audit_event(e2)
+                .await
+                .expect("e2 insert should succeed");
+
+            // tail_audit_log returns newest-first; reverse to get oldest-first.
+            let mut rows = store
+                .tail_audit_log(AuditSelector::default(), 10)
+                .await
+                .expect("tail should succeed");
+            rows.reverse();
+
+            assert_eq!(rows.len(), 2);
+            let expected = compute_audit_chain_hash(&canonical_json_for_audit_hash(&rows[0]));
+            assert_eq!(
+                rows[1].prev_hash, expected,
+                "second row's prev_hash must equal sha256(canonical_json(first row))"
+            );
         }
     }
 }
