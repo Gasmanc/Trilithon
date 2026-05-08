@@ -6,7 +6,6 @@
 //! database.
 
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -70,11 +69,10 @@ impl SqliteStorage {
         })?;
 
         // 2. Build connection options with required pragmas baked in.
-        let db_url = format!("sqlite://{}/trilithon.db", data_dir.display());
-        let opts = SqliteConnectOptions::from_str(&db_url)
-            .map_err(|e| StorageError::Sqlite {
-                kind: SqliteErrorKind::Other(e.to_string()),
-            })?
+        // Use filename() instead of a formatted URL so paths containing spaces
+        // or special characters (e.g. `#`, `?`) are handled correctly.
+        let opts = SqliteConnectOptions::new()
+            .filename(data_dir.join("trilithon.db"))
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)

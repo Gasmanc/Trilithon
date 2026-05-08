@@ -414,3 +414,37 @@ async fn application_id_mismatch_returns_error() {
         "expected StorageError::Sqlite for application_id mismatch, got {err:?}"
     );
 }
+
+/// Opening a database under a path containing a space succeeds (H-4).
+#[tokio::test]
+async fn open_with_space_in_path() {
+    use trilithon_adapters::{migrate::apply_migrations, sqlite_storage::SqliteStorage};
+
+    let base = TempDir::new().unwrap();
+    let spaced = base.path().join("My Files").join("trilithon");
+    std::fs::create_dir_all(&spaced).unwrap();
+
+    let store = SqliteStorage::open(&spaced)
+        .await
+        .expect("open with space in path should succeed");
+    apply_migrations(store.pool())
+        .await
+        .expect("migration on spaced path should succeed");
+}
+
+/// Opening a database under a path containing `#` succeeds (H-4).
+#[tokio::test]
+async fn open_with_hash_in_path() {
+    use trilithon_adapters::{migrate::apply_migrations, sqlite_storage::SqliteStorage};
+
+    let base = TempDir::new().unwrap();
+    let hashed = base.path().join("data#1").join("trilithon");
+    std::fs::create_dir_all(&hashed).unwrap();
+
+    let store = SqliteStorage::open(&hashed)
+        .await
+        .expect("open with # in path should succeed");
+    apply_migrations(store.pool())
+        .await
+        .expect("migration on hashed path should succeed");
+}
