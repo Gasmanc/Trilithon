@@ -75,6 +75,30 @@ name = "audit_migration_idempotent"
 path = "tests/audit_migration_idempotent.rs"
 
 [[test]]
+name = "audit_query_pagination"
+path = "tests/audit_query_pagination.rs"
+
+[[test]]
+name = "audit_query_correlation_filter"
+path = "tests/audit_query_correlation_filter.rs"
+
+[[test]]
+name = "audit_query_time_range"
+path = "tests/audit_query_time_range.rs"
+
+[[test]]
+name = "audit_query_event_filter"
+path = "tests/audit_query_event_filter.rs"
+
+[[test]]
+name = "audit_query_actor_filter"
+path = "tests/audit_query_actor_filter.rs"
+
+[[test]]
+name = "audit_query_cursor_descending"
+path = "tests/audit_query_cursor_descending.rs"
+
+[[test]]
 name = "caddy_hyper_real_caddy"
 path = "tests/caddy/hyper_real_caddy.rs"
 

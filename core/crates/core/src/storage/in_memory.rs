@@ -227,7 +227,13 @@ impl Storage for InMemoryStorage {
                     }
                 }
                 if let Some(until) = selector.until {
-                    if row.occurred_at > until {
+                    // `until` is exclusive per §6.6.
+                    if row.occurred_at >= until {
+                        return false;
+                    }
+                }
+                if let Some(ref cursor) = selector.cursor_before {
+                    if row.id.0 >= cursor.0 {
                         return false;
                     }
                 }

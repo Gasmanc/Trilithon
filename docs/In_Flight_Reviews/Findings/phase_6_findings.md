@@ -44,3 +44,45 @@ none
 
 ### Items Left Unfixed
 none
+
+## Slice 6.5
+**Status:** complete
+**Date:** 2026-05-08
+**Summary:** Implemented `AuditWriter::record` as the sole entry point to `audit_log`. Added the `Clock` trait and `SystemClock` to `core`, published `pub mod redactor` and `pub mod schema` from core's lib.rs, and wired `AuditWriter::new` to accept a `SecretsRedactor<'static>`. All four acceptance tests pass; `just check` gate passes cleanly.
+
+### Simplify Findings
+- **Reuse:** Imported `audit_prev_hash_seed` at the top of `audit_writer.rs` rather than using the full `trilithon_core::storage::helpers::audit_prev_hash_seed()` path inline. Fixed inline.
+- **Quality:** `let occurred_at_ms = now_ms` and `let kind = append.event.to_string()` were no-op intermediate bindings. Inlined into struct initializer. Fixed inline.
+- **Quality:** Step-narrating comments ("Step 1 — fresh row id", etc.) removed as they explained WHAT, not WHY. The ADR-0009 `prev_hash` comment was retained. Fixed inline.
+- **Reuse:** `FixedClock` and `ZeroHasher` duplicated across 3 integration test binaries. Cannot be unified into a shared module due to Rust integration test binary isolation — left as-is.
+
+### Items Fixed Inline
+- Imported `audit_prev_hash_seed` at top level — `audit_writer.rs` (reuse)
+- Removed no-op intermediate bindings `occurred_at_ms` and `kind` — `audit_writer.rs` (quality)
+- Removed step-narrating comments — `audit_writer.rs` (quality)
+
+### Items Left Unfixed
+- `FixedClock`/`ZeroHasher` duplicated in 3 test files — Rust integration test isolation prevents a shared module (not a production concern)
+
+## Slice 6.6
+**Status:** complete
+**Date:** 2026-05-09
+**Summary:** Implemented `Storage::tail_audit_log` on `SqliteStorage` with static SQL using `? IS NULL OR col OP ?` double-binding, `ORDER BY id DESC` cursor pagination via `AuditRowId`, `until` exclusive bound, limit normalization (0→100, max 1000). Added `cursor_before: Option<AuditRowId>` to `AuditSelector`, fixed `until` exclusivity in `in_memory.rs`, and added 6 integration test files. Simplify pass consolidated row converters. All 11 new audit_query tests pass; `just check` gate passes.
+
+### Simplify Findings
+- **Reuse (R1):** `row_to_audit_event_row_no_prev_hash` duplicated ~32-line mapping body present in new `audit_row_from_sqlite`. Consolidated: no-prev-hash variant now delegates to `audit_row_from_sqlite` and overwrites `prev_hash` with seed. Required adding `prev_hash` to the SELECT in `record_audit_event` (safe because `canonical_json_for_audit_hash` excludes that field). Fixed inline.
+- **Reuse (R2):** `open()` helper duplicated across 6 integration test files. Cannot be unified — Rust integration test binary isolation. Left unfixed.
+- **Reuse (R3):** Dedicated `validate_kind()` path suggested instead of inline `AUDIT_KINDS.contains`. Rejected — full-row error context needed. Left unfixed.
+- **Quality (Q4):** `"Normalise limit: 0 → default 100; cap at 1000; minimum 1."` WHAT comment removed. Fixed inline.
+- **Quality (Q5/E4):** `for row in &rows { result.push(...) }` replaced with `rows.iter().map(audit_row_from_sqlite).collect()`. Fixed inline.
+- **Quality (Q2):** `cursor_before` materialized as `let` before bind chain — needed for lifetime extension. Not a smell; left as-is.
+- **Quality (Q3):** `DEFAULT_LIMIT`/`MAX_LIMIT` as function-local consts — acceptable; no action needed.
+
+### Items Fixed Inline
+- Consolidated `audit_row_from_sqlite` + `row_to_audit_event_row_no_prev_hash` — `sqlite_storage.rs` (reuse)
+- Removed WHAT comment on limit normalization — `sqlite_storage.rs` (quality)
+- Iterator collect replacing manual push loop — `sqlite_storage.rs` (quality/efficiency)
+
+### Items Left Unfixed
+- `open()` helper duplicated in 6 test files — Rust integration test binary isolation prevents shared module
+- Inline `AUDIT_KINDS.contains` check — full-row error context required; dedicated helper would lose it

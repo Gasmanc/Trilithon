@@ -193,8 +193,11 @@ pub struct AuditSelector {
     pub correlation_id: Option<String>,
     /// Lower bound on `AuditEventRow::occurred_at` (inclusive).
     pub since: Option<UnixSeconds>,
-    /// Upper bound on `AuditEventRow::occurred_at` (inclusive).
+    /// Upper bound on `AuditEventRow::occurred_at` (exclusive).
     pub until: Option<UnixSeconds>,
+    /// Cursor for descending pagination; only rows with `id < cursor_before`
+    /// are returned.  A `None` value starts from the most recent row.
+    pub cursor_before: Option<AuditRowId>,
 }
 
 /// The result of walking the parent chain of a snapshot.

@@ -518,36 +518,36 @@ fn row_to_snapshot(row: &sqlx::sqlite::SqliteRow) -> Result<Snapshot, StorageErr
 }
 
 // ---------------------------------------------------------------------------
-// Audit row conversion (without prev_hash column)
+// Audit row conversion (full row — includes prev_hash column)
 // ---------------------------------------------------------------------------
 
-/// Map a [`SqliteRow`] that does **not** include the `prev_hash` column to an
-/// [`AuditEventRow`].  Used inside the hash-chain transaction where we SELECT
-/// all columns except `prev_hash` from the previous row.
-fn row_to_audit_event_row_no_prev_hash(
-    row: &sqlx::sqlite::SqliteRow,
-) -> Result<AuditEventRow, StorageError> {
-    use trilithon_core::storage::types::AuditRowId;
+/// Map a [`SqliteRow`] from `audit_log` (all columns) to an [`AuditEventRow`].
+fn audit_row_from_sqlite(row: &sqlx::sqlite::SqliteRow) -> Result<AuditEventRow, StorageError> {
     let actor_kind_s: String = row.try_get("actor_kind").map_err(sqlx_err)?;
     let actor_kind = parse_actor_kind(&actor_kind_s)?;
     let outcome_s: String = row.try_get("outcome").map_err(sqlx_err)?;
     let outcome = parse_outcome(&outcome_s)?;
     let snapshot_id_s: Option<String> = row.try_get("snapshot_id").map_err(sqlx_err)?;
     let redaction_sites_raw: i64 = row.try_get("redaction_sites").map_err(sqlx_err)?;
+    let kind: String = row.try_get("kind").map_err(sqlx_err)?;
+
+    // §6.6 vocabulary is closed; an unknown kind in the table is corruption.
+    if !trilithon_core::storage::audit_vocab::AUDIT_KINDS.contains(&kind.as_str()) {
+        return Err(StorageError::Integrity {
+            detail: format!("unknown audit kind in row {kind:?}"),
+        });
+    }
 
     Ok(AuditEventRow {
         id: AuditRowId(row.try_get("id").map_err(sqlx_err)?),
-        // prev_hash is intentionally left as the seed value here because this
-        // function is only called to build the canonical JSON for hashing the
-        // PREVIOUS row, where prev_hash is not part of the hash input.
-        prev_hash: trilithon_core::storage::helpers::audit_prev_hash_seed().to_string(),
+        prev_hash: row.try_get("prev_hash").map_err(sqlx_err)?,
         caddy_instance_id: row.try_get("caddy_instance_id").map_err(sqlx_err)?,
         correlation_id: row.try_get("correlation_id").map_err(sqlx_err)?,
         occurred_at: row.try_get("occurred_at").map_err(sqlx_err)?,
         occurred_at_ms: row.try_get("occurred_at_ms").map_err(sqlx_err)?,
         actor_kind,
         actor_id: row.try_get("actor_id").map_err(sqlx_err)?,
-        kind: row.try_get("kind").map_err(sqlx_err)?,
+        kind,
         target_kind: row.try_get("target_kind").map_err(sqlx_err)?,
         target_id: row.try_get("target_id").map_err(sqlx_err)?,
         snapshot_id: snapshot_id_s.map(SnapshotId),
@@ -557,6 +557,23 @@ fn row_to_audit_event_row_no_prev_hash(
         error_kind: row.try_get("error_kind").map_err(sqlx_err)?,
         notes: row.try_get("notes").map_err(sqlx_err)?,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Audit row conversion (without prev_hash column)
+// ---------------------------------------------------------------------------
+
+/// Map a [`SqliteRow`] that does **not** include the `prev_hash` column to an
+/// [`AuditEventRow`].  Used inside the hash-chain transaction where we SELECT
+/// all columns except `prev_hash` from the previous row.
+fn row_to_audit_event_row_no_prev_hash(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<AuditEventRow, StorageError> {
+    let mut event = audit_row_from_sqlite(row)?;
+    // prev_hash is not included in the SELECT for the previous row; inject the
+    // seed so the caller can build canonical JSON for hashing without a DB round-trip.
+    event.prev_hash = audit_prev_hash_seed().to_string();
+    Ok(event)
 }
 
 // ---------------------------------------------------------------------------
@@ -595,6 +612,27 @@ fn validate_snapshot_invariants(snapshot: &Snapshot) -> Result<(), StorageError>
 // ---------------------------------------------------------------------------
 // Storage trait implementation
 // ---------------------------------------------------------------------------
+
+/// Static SQL for `tail_audit_log`.  All optional filters use the
+/// `? IS NULL OR col OP ?` idiom to avoid dynamic SQL construction.
+/// Each optional parameter is bound **twice**: once as the NULL sentinel
+/// and once as the value.  `until` is exclusive per §6.6.
+const TAIL_AUDIT_LOG_SQL: &str = r"
+    SELECT id, prev_hash, caddy_instance_id, correlation_id,
+           occurred_at, occurred_at_ms,
+           actor_kind, actor_id, kind, target_kind, target_id,
+           snapshot_id, redacted_diff_json, redaction_sites,
+           outcome, error_kind, notes
+    FROM audit_log
+    WHERE (? IS NULL OR occurred_at >= ?)
+      AND (? IS NULL OR occurred_at <  ?)
+      AND (? IS NULL OR correlation_id = ?)
+      AND (? IS NULL OR actor_id = ?)
+      AND (? IS NULL OR kind LIKE ? ESCAPE '\')
+      AND (? IS NULL OR id < ?)
+    ORDER BY id DESC
+    LIMIT ?
+";
 
 #[async_trait]
 impl Storage for SqliteStorage {
@@ -743,7 +781,7 @@ impl Storage for SqliteStorage {
         let prev_hash_result: Result<String, StorageError> = async {
             let last_row = sqlx::query(
                 r"
-                SELECT id, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
+                SELECT id, prev_hash, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
                        actor_kind, actor_id, kind, target_kind, target_id,
                        snapshot_id, redacted_diff_json, redaction_sites,
                        outcome, error_kind, notes
@@ -831,118 +869,66 @@ impl Storage for SqliteStorage {
         selector: AuditSelector,
         limit: u32,
     ) -> Result<Vec<AuditEventRow>, StorageError> {
-        // Build a WHERE clause dynamically.  Using a format-string here is
-        // safe because all user-supplied values go through bind parameters;
-        // only the predicate structure is injected as SQL text.
-        let mut conditions: Vec<&'static str> = Vec::new();
-        let mut kind_glob_param: Option<String> = None;
-        let mut actor_id_param: Option<String> = None;
-        let mut correlation_id_param: Option<String> = None;
-        let mut since_param: Option<i64> = None;
-        let mut until_param: Option<i64> = None;
+        const DEFAULT_LIMIT: u32 = 100;
+        const MAX_LIMIT: u32 = 1_000;
+        let effective_limit = if limit == 0 {
+            DEFAULT_LIMIT
+        } else {
+            limit.min(MAX_LIMIT)
+        }
+        .max(1);
 
-        if selector.kind_glob.is_some() {
-            conditions.push("kind LIKE ? ESCAPE '\\'");
-            // SQLite uses % as wildcard; replace trailing * with %.
-            // Escape LIKE metacharacters % and _ in the prefix to prevent unintended matches.
-            kind_glob_param = selector.kind_glob.map(|g| {
-                let prefix = trilithon_core::storage::glob_prefix(&g).map(str::to_owned);
-                prefix.map_or(g, |p| {
-                    let escaped = p
+        // Convert the glob pattern to a SQL LIKE pattern:
+        // - Escape existing LIKE metacharacters in the literal prefix.
+        // - Replace trailing `*` with `%`.
+        // - If no trailing `*`, use exact match (the `? IS NULL OR kind LIKE ?`
+        //   with no wildcard degrades to equality).
+        let kind_like: Option<String> = selector.kind_glob.map(|g| {
+            trilithon_core::storage::glob_prefix(&g).map_or_else(
+                || {
+                    // No trailing `*` — escape and use as exact pattern.
+                    g.replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_")
+                },
+                |prefix| {
+                    let escaped = prefix
                         .replace('\\', "\\\\")
                         .replace('%', "\\%")
                         .replace('_', "\\_");
                     format!("{escaped}%")
-                })
-            });
-        }
-        if selector.actor_id.is_some() {
-            conditions.push("actor_id = ?");
-            actor_id_param = selector.actor_id;
-        }
-        if selector.correlation_id.is_some() {
-            conditions.push("correlation_id = ?");
-            correlation_id_param = selector.correlation_id;
-        }
-        if selector.since.is_some() {
-            conditions.push("occurred_at >= ?");
-            since_param = selector.since;
-        }
-        if selector.until.is_some() {
-            conditions.push("occurred_at <= ?");
-            until_param = selector.until;
-        }
+                },
+            )
+        });
 
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
+        let cursor_before: Option<&str> = selector.cursor_before.as_ref().map(|c| c.0.as_str());
 
-        let sql = format!(
-            r"
-            SELECT id, prev_hash, caddy_instance_id, correlation_id, occurred_at, occurred_at_ms,
-                   actor_kind, actor_id, kind, target_kind, target_id,
-                   snapshot_id, redacted_diff_json, redaction_sites,
-                   outcome, error_kind, notes
-            FROM audit_log
-            {where_clause}
-            ORDER BY occurred_at DESC
-            LIMIT ?
-            ",
-        );
+        let rows = sqlx::query(TAIL_AUDIT_LOG_SQL)
+            // occurred_at >= :since  (bind sentinel + value twice each)
+            .bind(selector.since)
+            .bind(selector.since)
+            // occurred_at < :until
+            .bind(selector.until)
+            .bind(selector.until)
+            // correlation_id = :correlation_id
+            .bind(selector.correlation_id.as_deref())
+            .bind(selector.correlation_id.as_deref())
+            // actor_id = :actor_id
+            .bind(selector.actor_id.as_deref())
+            .bind(selector.actor_id.as_deref())
+            // kind LIKE :kind_like
+            .bind(kind_like.as_deref())
+            .bind(kind_like.as_deref())
+            // id < :cursor_before
+            .bind(cursor_before)
+            .bind(cursor_before)
+            // LIMIT
+            .bind(i64::from(effective_limit))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlx_err)?;
 
-        let mut query = sqlx::query(&sql);
-        if let Some(ref v) = kind_glob_param {
-            query = query.bind(v.as_str());
-        }
-        if let Some(ref v) = actor_id_param {
-            query = query.bind(v.as_str());
-        }
-        if let Some(ref v) = correlation_id_param {
-            query = query.bind(v.as_str());
-        }
-        if let Some(v) = since_param {
-            query = query.bind(v);
-        }
-        if let Some(v) = until_param {
-            query = query.bind(v);
-        }
-        query = query.bind(i64::from(limit));
-
-        let rows = query.fetch_all(&self.pool).await.map_err(sqlx_err)?;
-
-        let mut result: Vec<AuditEventRow> = Vec::with_capacity(rows.len());
-        for row in &rows {
-            let actor_kind_s: String = row.try_get("actor_kind").map_err(sqlx_err)?;
-            let actor_kind = parse_actor_kind(&actor_kind_s)?;
-            let outcome_s: String = row.try_get("outcome").map_err(sqlx_err)?;
-            let outcome = parse_outcome(&outcome_s)?;
-            let snapshot_id_s: Option<String> = row.try_get("snapshot_id").map_err(sqlx_err)?;
-            let redaction_sites_raw: i64 = row.try_get("redaction_sites").map_err(sqlx_err)?;
-
-            result.push(AuditEventRow {
-                id: AuditRowId(row.try_get("id").map_err(sqlx_err)?),
-                prev_hash: row.try_get("prev_hash").map_err(sqlx_err)?,
-                caddy_instance_id: row.try_get("caddy_instance_id").map_err(sqlx_err)?,
-                correlation_id: row.try_get("correlation_id").map_err(sqlx_err)?,
-                occurred_at: row.try_get("occurred_at").map_err(sqlx_err)?,
-                occurred_at_ms: row.try_get("occurred_at_ms").map_err(sqlx_err)?,
-                actor_kind,
-                actor_id: row.try_get("actor_id").map_err(sqlx_err)?,
-                kind: row.try_get("kind").map_err(sqlx_err)?,
-                target_kind: row.try_get("target_kind").map_err(sqlx_err)?,
-                target_id: row.try_get("target_id").map_err(sqlx_err)?,
-                snapshot_id: snapshot_id_s.map(SnapshotId),
-                redacted_diff_json: row.try_get("redacted_diff_json").map_err(sqlx_err)?,
-                redaction_sites: u32::try_from(redaction_sites_raw).unwrap_or(0),
-                outcome,
-                error_kind: row.try_get("error_kind").map_err(sqlx_err)?,
-                notes: row.try_get("notes").map_err(sqlx_err)?,
-            });
-        }
-
-        Ok(result)
+        rows.iter().map(audit_row_from_sqlite).collect()
     }
 
     async fn record_drift_event(&self, _event: DriftEventRow) -> Result<DriftRowId, StorageError> {

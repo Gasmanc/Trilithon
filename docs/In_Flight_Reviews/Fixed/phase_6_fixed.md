@@ -56,3 +56,9 @@ do_not_autofix: false
 | Slice 6.1 | Avoid heap allocation in no_two_variants_share_a_kind — core/crates/core/src/audit/event.rs | efficiency | 2026-05-08 | 624b77a |
 | Slice 6.2 | Redundant test imports removed — core/crates/core/src/audit/row.rs | quality | 2026-05-08 | 0a79558 |
 | Slice 6.2 | Corrected misleading "externally tagged" comment — core/crates/core/src/audit/row.rs | quality | 2026-05-08 | 0a79558 |
+| Slice 6.5 | Imported audit_prev_hash_seed at top level — core/crates/adapters/src/audit_writer.rs | reuse | 2026-05-08 | 4d9dd93 |
+| Slice 6.5 | Removed no-op intermediate bindings — core/crates/adapters/src/audit_writer.rs | quality | 2026-05-08 | 4d9dd93 |
+| Slice 6.5 | Removed step-narrating comments — core/crates/adapters/src/audit_writer.rs | quality | 2026-05-08 | 4d9dd93 |
+| Slice 6.6 | Consolidated audit_row_from_sqlite + row_to_audit_event_row_no_prev_hash — core/crates/adapters/src/sqlite_storage.rs | reuse | 2026-05-09 | pending |
+| Slice 6.6 | Removed WHAT comment on limit normalization — core/crates/adapters/src/sqlite_storage.rs | quality | 2026-05-09 | pending |
+| Slice 6.6 | Iterator collect replacing manual push loop — core/crates/adapters/src/sqlite_storage.rs | quality | 2026-05-09 | pending |

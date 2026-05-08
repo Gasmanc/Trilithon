@@ -36,11 +36,20 @@ const CALL_PATTERN: &str = ".record_audit_event(";
 ///   that the storage layer enforces its own invariants (kind validation,
 ///   immutability triggers, etc.).  These do not violate the guard's intent
 ///   because they are testing storage internals, not production write paths.
+/// - `audit_query_*` — Slice 6.6 query tests that seed rows directly to
+///   exercise the `tail_audit_log` storage method; inserting via the writer
+///   would couple these tests to `AuditWriter` internals unnecessarily.
 const ALLOWED_CALL_STEMS: &[&str] = &[
     "audit_writer",
     "audit_writer_no_bypass",
     "audit_kind_validation",
     "sqlite_storage",
+    "audit_query_pagination",
+    "audit_query_correlation_filter",
+    "audit_query_time_range",
+    "audit_query_event_filter",
+    "audit_query_actor_filter",
+    "audit_query_cursor_descending",
 ];
 
 fn collect_rs_files(root: &Path) -> Vec<std::path::PathBuf> {
