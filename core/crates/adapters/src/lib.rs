@@ -7,6 +7,8 @@
 #[cfg(test)]
 pub mod test_support;
 
+pub mod audit_writer;
+pub use audit_writer::AuditWriter;
 pub mod caddy;
 pub mod config_loader;
 pub(crate) mod db_errors;

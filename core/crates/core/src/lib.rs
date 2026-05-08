@@ -10,11 +10,13 @@ use thiserror::Error;
 pub mod audit;
 pub mod caddy;
 pub mod canonical_json;
+pub mod clock;
 pub mod config;
 pub mod exit;
 pub mod lifecycle;
 pub mod model;
 pub mod mutation;
+pub mod schema;
 pub mod storage;
 
 /// Errors from the core domain logic.

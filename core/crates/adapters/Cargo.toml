@@ -39,6 +39,22 @@ httptest = "0.16"
 tracing-subscriber = { workspace = true }
 
 [[test]]
+name = "audit_writer_happy_path"
+path = "tests/audit_writer_happy_path.rs"
+
+[[test]]
+name = "audit_writer_no_diff"
+path = "tests/audit_writer_no_diff.rs"
+
+[[test]]
+name = "audit_writer_storage_failure_propagates"
+path = "tests/audit_writer_storage_failure_propagates.rs"
+
+[[test]]
+name = "audit_writer_no_bypass"
+path = "tests/audit_writer_no_bypass.rs"
+
+[[test]]
 name = "snapshot"
 path = "tests/snapshot.rs"
 

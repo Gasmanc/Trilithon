@@ -10,6 +10,7 @@
 #![allow(clippy::mod_module_files)]
 
 pub mod event;
+pub mod redactor;
 pub mod row;
 
 pub use event::{AUDIT_KIND_REGEX, AUDIT_KIND_VOCAB, AuditEvent, AuditEventParseError};
