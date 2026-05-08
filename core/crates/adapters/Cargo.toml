@@ -43,6 +43,22 @@ name = "snapshot"
 path = "tests/snapshot.rs"
 
 [[test]]
+name = "audit_immutable_update_aborts"
+path = "tests/audit_immutable_update_aborts.rs"
+
+[[test]]
+name = "audit_immutable_delete_aborts"
+path = "tests/audit_immutable_delete_aborts.rs"
+
+[[test]]
+name = "audit_kind_validation"
+path = "tests/audit_kind_validation.rs"
+
+[[test]]
+name = "audit_migration_idempotent"
+path = "tests/audit_migration_idempotent.rs"
+
+[[test]]
 name = "caddy_hyper_real_caddy"
 path = "tests/caddy/hyper_real_caddy.rs"
 

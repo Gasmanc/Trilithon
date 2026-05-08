@@ -15,7 +15,6 @@ use sqlx::sqlite::{
 };
 
 use trilithon_core::storage::{
-    audit_vocab::AUDIT_KINDS,
     error::{SqliteErrorKind, StorageError},
     helpers::{audit_prev_hash_seed, canonical_json_for_audit_hash, compute_audit_chain_hash},
     trait_def::Storage,
@@ -715,9 +714,7 @@ impl Storage for SqliteStorage {
     }
 
     async fn record_audit_event(&self, event: AuditEventRow) -> Result<AuditRowId, StorageError> {
-        if !AUDIT_KINDS.contains(&event.kind.as_str()) {
-            return Err(StorageError::AuditKindUnknown { kind: event.kind });
-        }
+        crate::storage_sqlite::audit::validate_kind(&event)?;
 
         let id = event.id.0.clone();
         let actor_kind = actor_kind_str(event.actor_kind);

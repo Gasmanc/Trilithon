@@ -15,6 +15,7 @@ pub mod integrity_check;
 pub mod lock;
 pub mod migrate;
 pub mod sqlite_storage;
+pub mod storage_sqlite;
 
 /// Initialize all adapters.
 pub fn boot() {
