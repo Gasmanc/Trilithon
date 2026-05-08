@@ -405,7 +405,7 @@ Run the drift loop as a long-lived `tokio` task: tick once at startup, then ever
 
 - `core/crates/adapters/src/drift.rs` — the scheduler.
 - `core/crates/adapters/src/lib.rs` — re-export.
-- `core/crates/cli/src/main.rs` — spawn the task during daemon bootstrap.
+- `core/crates/cli/src/run.rs` — wire `DriftDetector` into `run_with_shutdown` (see CLI wiring spec below).
 
 ### Signatures and shapes
 
@@ -475,6 +475,37 @@ pub enum TickError {
    7. Return `Ok(Drifted { event })`. Slice 8.6 handles the audit append.
 4. On shutdown signal, the loop terminates cleanly within one tick.
 
+### CLI wiring spec
+
+`run_with_shutdown` in `core/crates/cli/src/run.rs` MUST be modified as follows:
+
+1. Construct `Arc<DriftDetector>` after the ownership sentinel check resolves successfully and after the capability probe task has been registered (startup ordering: sentinel → capability probe → drift detector).
+2. Clone the `watch::Receiver<bool>` from the existing `ShutdownController` shutdown channel (the same sender that drives every other task shutdown).
+3. Register the drift task in the `JoinSet` before emitting the `daemon.started` tracing event:
+
+```rust
+let detector = Arc::new(DriftDetector {
+    config:      DriftDetectorConfig::from_settings(&settings),
+    client:      Arc::clone(&caddy_client),
+    diff_engine: Arc::new(DefaultDiffEngine { redactor: Arc::clone(&redactor) }),
+    storage:     Arc::clone(&storage),
+    audit:       Arc::clone(&audit_writer),
+    apply_mutex: Arc::clone(&apply_mutex),
+    last_running_hash: tokio::sync::Mutex::new(None),
+    schema:      Arc::clone(&schema_registry),
+});
+// Clone for Phase 9 AppState (holds shared reference without consuming).
+let detector_handle = Arc::clone(&detector);
+task_set.spawn(async move {
+    Arc::unwrap_or_clone(detector)
+        .run(shutdown_rx.clone())
+        .await;
+});
+// detector_handle is stored in AppState for Phase 9 resolution endpoints.
+```
+
+4. The `apply_mutex: Arc<tokio::sync::Mutex<()>>` MUST be the same `Arc` shared with the config-apply function. The apply function acquires `apply_mutex.lock().await` before any call to `CaddyClient::load_config` or `CaddyClient::patch_config`, and releases it after the call completes or errors. This is the only guarantee that `tick_once`'s `try_lock` skip fires correctly.
+
 ### Tests
 
 - `core/crates/adapters/tests/drift_clean_state_silent.rs` — start the detector against an unchanged Caddy fake; run for five ticks; assert zero `config.drift-detected` audit rows.
@@ -482,16 +513,19 @@ pub enum TickError {
 - `core/crates/adapters/tests/drift_skip_when_apply_in_flight.rs` — hold the apply mutex; assert `SkippedApplyInFlight` and zero audit rows.
 - `core/crates/adapters/tests/drift_default_interval_is_60s.rs` — assert `DriftDetectorConfig::default().interval == Duration::from_secs(60)`.
 - `core/crates/adapters/tests/drift_interval_overridable.rs` — set the interval to 1 second; assert two ticks within 2.5 seconds.
+- `core/crates/cli/tests/drift_task_registered_at_startup.rs` — construct a minimal `RunConfig` with a `DriftDetectorConfig`; call `run_with_shutdown` against a fake Caddy and storage; assert the `drift.skipped` or `drift.detected` tracing span fires at least once before shutdown is signalled. This is the only test that verifies the task is actually spawned.
 
 ### Acceptance command
 
 `cargo test -p trilithon-adapters drift_`
+`cargo test -p trilithon-cli drift_task_registered_at_startup`
 
 ### Exit conditions
 
 - Default interval MUST be 60 seconds and MUST be configurable.
 - An apply-in-flight tick MUST be skipped without audit.
 - A clean state MUST not write any audit row.
+- The drift-detector task MUST be registered in `run_with_shutdown`'s `JoinSet` before the `daemon.started` tracing event fires. The `drift_task_registered_at_startup` integration test enforces this. Satisfying the three criteria above without this test is **not** sufficient to declare slice 8.5 complete.
 
 ### Audit kinds emitted
 
