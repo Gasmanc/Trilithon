@@ -18,7 +18,7 @@ use trilithon_core::storage::{
 /// `Err(StorageError::AuditKindUnknown)` otherwise.
 fn validate_kind_pattern(kind: &str) -> Result<(), StorageError> {
     // Manual match — avoids a `regex` dependency in adapters.
-    let matches = kind.contains('.')
+    let is_valid = kind.contains('.')
         && kind.split('.').all(|seg| {
             let mut chars = seg.chars();
             let Some(first) = chars.next() else {
@@ -28,7 +28,7 @@ fn validate_kind_pattern(kind: &str) -> Result<(), StorageError> {
                 && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         });
 
-    if matches {
+    if is_valid {
         Ok(())
     } else {
         Err(StorageError::AuditKindUnknown {
