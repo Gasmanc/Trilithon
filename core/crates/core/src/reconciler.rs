@@ -6,7 +6,9 @@
 //! use in content-addressed snapshots.
 
 pub mod applier;
+pub mod capability_check;
 pub mod render;
 
 pub use applier::{AppliedState, ApplyError, ApplyFailureKind, ApplyOutcome, ReloadKind};
+pub use capability_check::{CapabilityCheckError, check_against_capability_set};
 pub use render::{CaddyJsonRenderer, DefaultCaddyJsonRenderer, RenderError, canonical_json_bytes};
