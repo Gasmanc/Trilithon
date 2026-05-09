@@ -164,7 +164,7 @@ async fn caddy_unreachable_returns_err() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     let err = applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect_err("must return Err when caddy unreachable");
 
@@ -183,7 +183,7 @@ async fn caddy_unreachable_writes_caddy_unreachable_audit_row() {
     let applier = build_applier(storage.clone(), pool);
     let snapshot = stored_snapshot(&storage, 1).await;
 
-    let _ = applier.apply(&snapshot, 1).await;
+    let _ = applier.apply(&snapshot, 0).await;
 
     let rows = storage
         .tail_audit_log(

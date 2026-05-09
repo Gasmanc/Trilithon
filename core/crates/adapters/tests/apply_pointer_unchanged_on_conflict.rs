@@ -161,7 +161,7 @@ async fn pointer_unchanged_after_conflict() {
     let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
 
-    // Prime the DB: versions 1 through 5.
+    // Prime the DB: versions 1 through 5, mark v5 as applied.
     for v in 1..=5_i64 {
         storage
             .insert_snapshot(make_snapshot(v))
@@ -169,18 +169,28 @@ async fn pointer_unchanged_after_conflict() {
             .expect("insert snapshot");
     }
 
-    // Confirm current version is 5.
+    // Mark version 5 as currently applied.
+    sqlx::query("UPDATE caddy_instances SET applied_config_version = 5 WHERE id = 'local'")
+        .execute(&pool)
+        .await
+        .expect("set applied_config_version");
+
+    // Confirm current applied version is 5.
     let before = storage
         .current_config_version("local")
         .await
         .expect("current_config_version before conflict");
     assert_eq!(before, 5, "pre-conflict version must be 5");
 
-    // Attempt apply with stale expected_version = 4.
-    let snapshot_v5 = make_snapshot(5);
+    // Insert v6 as the snapshot to apply; attempt apply with stale expected=4.
+    let snapshot_v6 = make_snapshot(6);
+    storage
+        .insert_snapshot(snapshot_v6.clone())
+        .await
+        .expect("insert v6");
     let applier = build_applier(storage.clone(), pool);
     let outcome = applier
-        .apply(&snapshot_v5, 4)
+        .apply(&snapshot_v6, 4)
         .await
         .expect("apply must return Ok");
 
@@ -189,7 +199,7 @@ async fn pointer_unchanged_after_conflict() {
         "expected Conflicted, got {outcome:?}"
     );
 
-    // The config_version must still be 5 — no advance occurred.
+    // The applied_config_version must still be 5 — no advance occurred.
     let after = storage
         .current_config_version("local")
         .await

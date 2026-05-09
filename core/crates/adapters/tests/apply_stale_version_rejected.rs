@@ -172,6 +172,12 @@ async fn stale_expected_version_returns_conflicted() {
             .expect("insert snapshot");
     }
 
+    // Mark version 10 as currently applied so CAS reads observed=10.
+    sqlx::query("UPDATE caddy_instances SET applied_config_version = 10 WHERE id = 'local'")
+        .execute(&pool)
+        .await
+        .expect("set applied_config_version");
+
     // The snapshot we "want to apply" has version 10 but we claim expected=9.
     let snapshot_v10 = make_snapshot(10);
     let applier = build_applier(storage.clone(), pool);
@@ -207,6 +213,12 @@ async fn stale_expected_version_writes_conflict_audit_row() {
             .await
             .expect("insert snapshot");
     }
+
+    // Mark version 10 as currently applied so CAS reads observed=10.
+    sqlx::query("UPDATE caddy_instances SET applied_config_version = 10 WHERE id = 'local'")
+        .execute(&pool)
+        .await
+        .expect("set applied_config_version");
 
     let snapshot_v10 = make_snapshot(10);
     let applier = build_applier(storage.clone(), pool);

@@ -170,10 +170,11 @@ async fn apply_happy_path_returns_succeeded() {
     let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
     let applier = build_applier(storage.clone(), pool);
+    // First-ever apply: snapshot at v1, applied_config_version starts at 0.
     let snapshot = stored_snapshot(&storage, 1).await;
 
     let outcome = applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect("apply must succeed");
 
@@ -193,7 +194,7 @@ async fn apply_happy_path_writes_exactly_one_config_applied_row() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect("apply must succeed");
 
@@ -230,7 +231,7 @@ async fn apply_happy_path_no_apply_failed_row() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect("apply must succeed");
 

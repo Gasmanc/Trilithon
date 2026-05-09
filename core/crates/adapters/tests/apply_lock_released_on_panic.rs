@@ -35,9 +35,10 @@ use trilithon_core::{
         CaddyClient, CaddyConfig, CaddyError, CaddyJsonPointer, HealthState, JsonPatch,
         LoadedModules, TlsCertificate, UpstreamHealth,
     },
-    canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes},
+    canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes},
     clock::Clock,
     diff::NoOpDiffEngine,
+    model::desired_state::DesiredState,
     reconciler::{Applier, ApplyOutcome, DefaultCaddyJsonRenderer},
     schema::SchemaRegistry,
     storage::{
@@ -155,7 +156,11 @@ async fn open_store(dir: &TempDir) -> SqliteStorage {
 }
 
 fn make_snapshot(config_version: i64) -> Snapshot {
-    let body = format!("{{\"_v\":{config_version}}}");
+    let mut state = DesiredState::empty();
+    state.version = config_version;
+    let body = to_canonical_bytes(&state)
+        .map(|b| String::from_utf8(b).expect("canonical JSON is UTF-8"))
+        .expect("serialise DesiredState");
     let id = SnapshotId(content_address_bytes(body.as_bytes()));
     Snapshot {
         snapshot_id: id,

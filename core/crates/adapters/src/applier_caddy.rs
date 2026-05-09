@@ -352,107 +352,122 @@ impl Applier for CaddyApplier {
         let _process_guard = self.instance_mutex.lock().await;
 
         let holder_pid = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
-        let _advisory_lock = acquire_apply_lock(&self.lock_pool, &self.instance_id, holder_pid)
+        let advisory_lock = acquire_apply_lock(&self.lock_pool, &self.instance_id, holder_pid)
             .await
             .map_err(|e| match e {
                 LockError::AlreadyHeld { pid } => ApplyError::LockContested { holder_pid: pid },
                 LockError::Storage(s) => ApplyError::Storage(format!("advisory lock: {s}")),
             })?;
 
-        // Step 0 (Slice 7.5): CAS version check — BEGIN IMMEDIATE in storage.
-        // Prevents TOCTOU races between two concurrent apply() calls.
-        match self
-            .storage
-            .cas_advance_config_version(&self.instance_id, expected_version, &snapshot_id)
-            .await
-        {
-            Ok(_new_version) => {
-                // CAS succeeded; proceed with apply.
+        // All steps below are wrapped in an async block so that
+        // `advisory_lock.release().await` can be called unconditionally after
+        // the block, before the mutex guard (`_process_guard`) drops.
+        // This guarantees the advisory lock row is deleted before the next
+        // caller can acquire the mutex and attempt its own INSERT.
+        let result = async {
+            // Step 0 (Slice 7.5): CAS version check — BEGIN IMMEDIATE in storage.
+            // Prevents TOCTOU races between two concurrent apply() calls.
+            match self
+                .storage
+                .cas_advance_config_version(&self.instance_id, expected_version, &snapshot_id)
+                .await
+            {
+                Ok(_new_version) => {
+                    // CAS succeeded; proceed with apply.
+                }
+                Err(StorageError::OptimisticConflict { observed, expected }) => {
+                    return self
+                        .handle_conflict(correlation_id, &snapshot_id, expected, observed)
+                        .await;
+                }
+                Err(e) => {
+                    return Err(ApplyError::Storage(format!(
+                        "cas_advance_config_version: {e}"
+                    )));
+                }
             }
-            Err(StorageError::OptimisticConflict { observed, expected }) => {
-                return self
-                    .handle_conflict(correlation_id, &snapshot_id, expected, observed)
-                    .await;
-            }
-            Err(e) => {
-                return Err(ApplyError::Storage(format!(
-                    "cas_advance_config_version: {e}"
-                )));
-            }
-        }
 
-        // Step 1: emit apply.started tracing event (in_scope avoids !Send guard
-        // crossing an await point).
-        let start_ms = {
-            let span = tracing::info_span!(
-                "apply.started",
+            // Step 1: emit apply.started tracing event (in_scope avoids !Send guard
+            // crossing an await point).
+            let start_ms = {
+                let span = tracing::info_span!(
+                    "apply.started",
+                    correlation_id = %correlation_id,
+                    snapshot.id = %snapshot_id.0,
+                    snapshot.config_version = config_version,
+                );
+                span.in_scope(|| {
+                    tracing::info!(event = "apply.started", correlation_id = %correlation_id,
+                        snapshot.id = %snapshot_id.0);
+                    self.clock.now_unix_ms()
+                })
+            };
+
+            // Step 2: parse desired state.
+            let desired_state = Self::parse_desired_state(snapshot)?;
+
+            // Step 3: render to Caddy JSON.
+            let caddy_config = CaddyConfig(self.renderer.render(&desired_state)?);
+
+            // Step 4: capability re-check (skip if no cached snapshot yet).
+            if let Some(caps) = self.capabilities.snapshot() {
+                check_against_capability_set(&desired_state, &caps).map_err(|e| {
+                    let module = match e {
+                        CapabilityCheckError::Missing { module, .. } => module,
+                    };
+                    ApplyError::CapabilityMismatch { module }
+                })?;
+            }
+
+            // Step 5: POST /load — errors write audit rows and return early.
+            if let Some(failed_outcome) = self
+                .load_or_fail(caddy_config, correlation_id, &snapshot_id)
+                .await?
+            {
+                return Ok(failed_outcome);
+            }
+
+            // Step 6: verify post-load structural equivalence.
+            self.verify_equivalence(&desired_state).await?;
+
+            // Step 7: write config.applied audit row.
+            self.write_apply_succeeded_audit(correlation_id, &snapshot_id)
+                .await;
+
+            // Step 8: emit apply.succeeded tracing event.
+            let latency_ms = {
+                let elapsed = self.clock.now_unix_ms() - start_ms;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                // reason: elapsed is always non-negative; 49-day overflow cannot occur
+                {
+                    elapsed.unsigned_abs().min(u64::from(u32::MAX)) as u32
+                }
+            };
+            tracing::info!(
+                event = "apply.succeeded",
                 correlation_id = %correlation_id,
                 snapshot.id = %snapshot_id.0,
-                snapshot.config_version = config_version,
+                latency_ms = latency_ms,
             );
-            span.in_scope(|| {
-                tracing::info!(event = "apply.started", correlation_id = %correlation_id,
-                    snapshot.id = %snapshot_id.0);
-                self.clock.now_unix_ms()
+
+            Ok(ApplyOutcome::Succeeded {
+                snapshot_id,
+                config_version,
+                applied_state: AppliedState::Applied,
+                reload_kind: ReloadKind::Graceful {
+                    drain_window_ms: None,
+                },
+                latency_ms,
             })
-        };
-
-        // Step 2: parse desired state.
-        let desired_state = Self::parse_desired_state(snapshot)?;
-
-        // Step 3: render to Caddy JSON.
-        let caddy_config = CaddyConfig(self.renderer.render(&desired_state)?);
-
-        // Step 4: capability re-check (skip if no cached snapshot yet).
-        if let Some(caps) = self.capabilities.snapshot() {
-            check_against_capability_set(&desired_state, &caps).map_err(|e| {
-                let module = match e {
-                    CapabilityCheckError::Missing { module, .. } => module,
-                };
-                ApplyError::CapabilityMismatch { module }
-            })?;
         }
+        .await;
 
-        // Step 5: POST /load — errors write audit rows and return early.
-        if let Some(failed_outcome) = self
-            .load_or_fail(caddy_config, correlation_id, &snapshot_id)
-            .await?
-        {
-            return Ok(failed_outcome);
-        }
+        // Explicitly release the advisory lock (awaited DELETE) BEFORE the
+        // mutex guard (`_process_guard`) drops.  This prevents a subsequent
+        // caller that acquires the mutex from racing with the lock-row deletion.
+        advisory_lock.release().await;
 
-        // Step 6: verify post-load structural equivalence.
-        self.verify_equivalence(&desired_state).await?;
-
-        // Step 7: write config.applied audit row.
-        self.write_apply_succeeded_audit(correlation_id, &snapshot_id)
-            .await;
-
-        // Step 8: emit apply.succeeded tracing event.
-        let latency_ms = {
-            let elapsed = self.clock.now_unix_ms() - start_ms;
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            // reason: elapsed is always non-negative; 49-day overflow cannot occur
-            {
-                elapsed.unsigned_abs().min(u64::from(u32::MAX)) as u32
-            }
-        };
-        tracing::info!(
-            event = "apply.succeeded",
-            correlation_id = %correlation_id,
-            snapshot.id = %snapshot_id.0,
-            latency_ms = latency_ms,
-        );
-
-        Ok(ApplyOutcome::Succeeded {
-            snapshot_id,
-            config_version,
-            applied_state: AppliedState::Applied,
-            reload_kind: ReloadKind::Graceful {
-                drain_window_ms: None,
-            },
-            latency_ms,
-        })
+        result
     }
 
     async fn validate(&self, _snapshot: &Snapshot) -> Result<ValidationReport, ApplyError> {

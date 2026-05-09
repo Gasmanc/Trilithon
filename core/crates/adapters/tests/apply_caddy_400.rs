@@ -166,7 +166,7 @@ async fn caddy_400_returns_failed_caddy_validation() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     let outcome = applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect("apply must return Ok (not Err) even on 400");
 
@@ -189,7 +189,7 @@ async fn caddy_400_writes_exactly_one_apply_failed_row() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect("apply must not error");
 
@@ -219,7 +219,7 @@ async fn caddy_400_no_config_applied_row() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect("apply must not error");
 

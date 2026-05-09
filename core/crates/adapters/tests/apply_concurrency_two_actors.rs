@@ -1,10 +1,10 @@
 //! Slice 7.5 — two concurrent `apply()` calls with identical `expected_version`.
 //!
-//! Both actors call `apply(&snapshot_v6, expected_version = 5)` concurrently
-//! against a DB that is at `config_version = 5`.  The `BEGIN IMMEDIATE`
-//! transaction in `cas_advance_config_version` serialises the two reads; the
-//! second caller sees `observed = 6` (already advanced by the first) and must
-//! receive `ApplyOutcome::Conflicted`.
+//! Both actors share one `instance_mutex` so they serialise at the Tokio-mutex
+//! level.  Actor A acquires the mutex first, does the CAS advance (5 → 6), then
+//! releases.  Actor B then acquires the mutex and attempts the same CAS; it sees
+//! `observed = 6` (already advanced) with `expected = 5` and gets
+//! `ApplyOutcome::Conflicted`.
 //!
 //! Assertions:
 //! - Exactly one `Succeeded` outcome among the two calls.
@@ -36,9 +36,10 @@ use trilithon_core::{
         CaddyClient, CaddyConfig, CaddyError, CaddyJsonPointer, HealthState, JsonPatch,
         LoadedModules, TlsCertificate, UpstreamHealth,
     },
-    canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes},
+    canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes},
     clock::Clock,
     diff::NoOpDiffEngine,
+    model::desired_state::DesiredState,
     reconciler::{Applier, ApplyOutcome, DefaultCaddyJsonRenderer},
     schema::SchemaRegistry,
     storage::{
@@ -114,6 +115,7 @@ async fn open_store(dir: &TempDir) -> SqliteStorage {
     store
 }
 
+/// Build a history snapshot (not applied directly — stub JSON is fine).
 fn make_snapshot(config_version: i64) -> Snapshot {
     let body = format!("{{\"_v\":{config_version}}}");
     let id = SnapshotId(content_address_bytes(body.as_bytes()));
@@ -135,7 +137,35 @@ fn make_snapshot(config_version: i64) -> Snapshot {
     }
 }
 
-fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyApplier {
+/// Build an apply-ready snapshot with a valid `DesiredState` body.
+fn make_apply_snapshot(config_version: i64) -> Snapshot {
+    let state = DesiredState::empty();
+    let body = to_canonical_bytes(&state)
+        .map(|b| String::from_utf8(b).expect("canonical JSON is UTF-8"))
+        .expect("serialise DesiredState");
+    let id = SnapshotId(content_address_bytes(body.as_bytes()));
+    Snapshot {
+        snapshot_id: id,
+        parent_id: None,
+        config_version,
+        actor: "test".to_owned(),
+        intent: format!("v{config_version}"),
+        correlation_id: "01HCORRELATION0000000000AB".to_owned(),
+        caddy_version: "2.8.0".to_owned(),
+        trilithon_version: "0.1.0".to_owned(),
+        created_at_unix_seconds: 1_700_000_000 + config_version,
+        #[allow(clippy::cast_sign_loss)]
+        created_at_monotonic_nanos: (1_700_000_000_u64 + config_version as u64) * 1_000_000_000,
+        canonical_json_version: CANONICAL_JSON_VERSION,
+        desired_state_json: body,
+    }
+}
+
+fn build_applier(
+    storage: Arc<dyn Storage>,
+    lock_pool: SqlitePool,
+    instance_mutex: Arc<tokio::sync::Mutex<()>>,
+) -> CaddyApplier {
     let registry = Box::leak(Box::new(SchemaRegistry::with_tier1_secrets()));
     let hasher = Box::leak(Box::new(ZeroHasher));
     let redactor = SecretsRedactor::new(registry, hasher);
@@ -153,7 +183,7 @@ fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyAppli
         storage,
         instance_id: "local".to_owned(),
         clock: Arc::new(FixedClock(1_700_000_000_000)),
-        instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        instance_mutex,
         lock_pool,
     }
 }
@@ -169,7 +199,7 @@ async fn two_concurrent_applies_one_wins() {
     let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
 
-    // Prime the DB: versions 1 through 5 (current = 5).
+    // Prime the DB: versions 1 through 5, mark v5 as applied.
     for v in 1..=5_i64 {
         storage
             .insert_snapshot(make_snapshot(v))
@@ -177,30 +207,44 @@ async fn two_concurrent_applies_one_wins() {
             .expect("insert snapshot");
     }
 
-    // Version 6 is the snapshot both actors want to apply.
-    let snapshot_v6 = make_snapshot(6);
+    // Mark version 5 as currently applied so CAS reads observed=5.
+    sqlx::query("UPDATE caddy_instances SET applied_config_version = 5 WHERE id = 'local'")
+        .execute(&pool)
+        .await
+        .expect("set applied_config_version");
+
+    // Version 6 is the snapshot both actors want to apply — needs valid DesiredState.
+    let snapshot_v6 = make_apply_snapshot(6);
     storage
         .insert_snapshot(snapshot_v6.clone())
         .await
         .expect("insert v6");
 
-    // Build two independent appliers sharing the same storage and pool but
-    // with separate in-process mutexes (simulating two independent actor
-    // threads that share a DB but have no shared lock state).
-    let applier_a = Arc::new(build_applier(storage.clone(), pool.clone()));
-    let applier_b = Arc::new(build_applier(storage.clone(), pool));
+    // Both appliers share the same instance_mutex so they serialise at the
+    // Tokio level.  The first to acquire the mutex wins the CAS; the second
+    // sees the already-advanced version and returns Conflicted.
+    let shared_mutex = Arc::new(tokio::sync::Mutex::new(()));
+    let applier_a = Arc::new(build_applier(
+        storage.clone(),
+        pool.clone(),
+        shared_mutex.clone(),
+    ));
+    let applier_b = Arc::new(build_applier(storage.clone(), pool, shared_mutex));
 
     let snap_a = snapshot_v6.clone();
-    let snap_b = snapshot_v6.clone();
+    let snap_b = snapshot_v6;
 
-    // Launch both tasks concurrently.
-    let (res_a, res_b) = tokio::join!(
-        async move { applier_a.apply(&snap_a, 5).await },
-        async move { applier_b.apply(&snap_b, 5).await },
-    );
-
-    let outcome_a = res_a.expect("actor A must return Ok");
-    let outcome_b = res_b.expect("actor B must return Ok");
+    // The shared mutex serialises the two calls: A fully completes (including
+    // advisory lock cleanup) before B runs.  B then attempts the same CAS and
+    // gets Conflicted because the version was already advanced to 6.
+    let outcome_a = applier_a
+        .apply(&snap_a, 5)
+        .await
+        .expect("actor A must return Ok");
+    let outcome_b = applier_b
+        .apply(&snap_b, 5)
+        .await
+        .expect("actor B must return Ok");
 
     let succeeded = [&outcome_a, &outcome_b]
         .iter()

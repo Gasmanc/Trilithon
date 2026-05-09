@@ -181,7 +181,7 @@ async fn post_load_equivalence_failure_returns_caddy_rejected() {
     let snapshot = stored_snapshot(&storage, 1).await;
 
     let err = applier
-        .apply(&snapshot, 1)
+        .apply(&snapshot, 0)
         .await
         .expect_err("must return Err when post-load diff is non-empty");
 

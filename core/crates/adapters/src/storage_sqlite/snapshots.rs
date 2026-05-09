@@ -5,17 +5,15 @@
 //!
 //! # Design
 //!
-//! `config_version` is a monotonically increasing integer stored in the
-//! `snapshots` table.  The current version for an instance is defined as the
-//! maximum `config_version` among all rows for that `caddy_instance_id`
-//! (ADR-0009, ADR-0012).  There is no separate pointer row; the snapshot with
-//! the highest version IS the current desired state.
+//! The *applied* `config_version` is tracked in `caddy_instances.applied_config_version`
+//! (migration 0008).  Snapshots are inserted by the mutation pipeline before
+//! `apply()` is called, so `MAX(snapshots.config_version)` is always >= the
+//! applied version and cannot serve as the CAS read.
 //!
-//! `advance_config_version_if_eq` is a CAS gate: it reads the current max,
-//! compares it to `expected_version`, and either confirms the advance or
-//! returns `StorageError::OptimisticConflict`.  The caller is responsible for
-//! opening the `BEGIN IMMEDIATE` transaction before calling this function
-//! (`SQLite` read-check-write pattern).
+//! `advance_config_version_if_eq` is a CAS gate: it reads `applied_config_version`,
+//! compares it to `expected_version`, and on match updates it to `expected_version + 1`.
+//! The caller is responsible for opening the `BEGIN IMMEDIATE` transaction before
+//! calling this function (`SQLite` read-check-write pattern, ADR-0012).
 
 use sqlx::SqliteConnection;
 
@@ -23,9 +21,10 @@ use trilithon_core::storage::{error::StorageError, types::SnapshotId};
 
 use crate::db_errors::sqlx_err;
 
-/// Read the current `config_version` for `instance_id`.
+/// Read the current *applied* `config_version` for `instance_id`.
 ///
-/// Returns `0` when no snapshot exists yet (virgin database).
+/// Reads `caddy_instances.applied_config_version` (migration 0008).
+/// Returns `0` when the instance row has never had a successful apply.
 ///
 /// # Errors
 ///
@@ -34,25 +33,25 @@ pub async fn current_config_version(
     conn: &mut SqliteConnection,
     instance_id: &str,
 ) -> Result<i64, StorageError> {
-    let max: Option<i64> =
-        sqlx::query_scalar("SELECT MAX(config_version) FROM snapshots WHERE caddy_instance_id = ?")
+    let ver: Option<i64> =
+        sqlx::query_scalar("SELECT applied_config_version FROM caddy_instances WHERE id = ?")
             .bind(instance_id)
-            .fetch_one(conn)
+            .fetch_optional(conn)
             .await
             .map_err(sqlx_err)?;
 
-    Ok(max.unwrap_or(0))
+    Ok(ver.unwrap_or(0))
 }
 
 /// CAS-style advance gate.
 ///
-/// Verifies that `MAX(config_version)` for `instance_id` equals
-/// `expected_version`, then confirms that `new_snapshot_id` exists with
-/// `config_version = expected_version + 1`.
+/// Reads `caddy_instances.applied_config_version`, checks it equals
+/// `expected_version`, verifies `new_snapshot_id` exists in the DB, then
+/// updates `applied_config_version` to `expected_version + 1`.
 ///
 /// Returns `Ok(expected_version + 1)` when the CAS succeeds.
 /// Returns `Err(StorageError::OptimisticConflict { observed, expected })` when
-/// the current max does not match `expected_version`.
+/// the applied version does not match `expected_version`.
 ///
 /// The caller **must** hold a `BEGIN IMMEDIATE` transaction before calling
 /// this function to prevent TOCTOU races (`SQLite` read-check-write rule).
@@ -60,8 +59,7 @@ pub async fn current_config_version(
 /// # Errors
 ///
 /// Returns [`StorageError::OptimisticConflict`] on version mismatch.
-/// Returns [`StorageError::Integrity`] when `new_snapshot_id` is not found or
-/// its `config_version` does not equal `expected_version + 1`.
+/// Returns [`StorageError::Integrity`] when `new_snapshot_id` is not found.
 /// Returns other [`StorageError`] variants on database failure.
 pub async fn advance_config_version_if_eq(
     conn: &mut SqliteConnection,
@@ -80,32 +78,34 @@ pub async fn advance_config_version_if_eq(
 
     let new_version = expected_version + 1;
 
-    // Verify the target snapshot exists with the expected new version.
-    let stored_version: Option<i64> = sqlx::query_scalar(
-        "SELECT config_version FROM snapshots WHERE id = ? AND caddy_instance_id = ?",
-    )
-    .bind(&new_snapshot_id.0)
-    .bind(instance_id)
-    .fetch_optional(conn)
-    .await
-    .map_err(sqlx_err)?;
+    // Verify the target snapshot exists in the DB.
+    let exists: bool =
+        sqlx::query_scalar("SELECT COUNT(*) FROM snapshots WHERE id = ? AND caddy_instance_id = ?")
+            .bind(&new_snapshot_id.0)
+            .bind(instance_id)
+            .fetch_one(&mut *conn)
+            .await
+            .map(|c: i64| c > 0)
+            .map_err(sqlx_err)?;
 
-    match stored_version {
-        None => Err(StorageError::Integrity {
+    if !exists {
+        return Err(StorageError::Integrity {
             detail: format!(
                 "advance_config_version_if_eq: snapshot {} not found for instance {}",
                 new_snapshot_id.0, instance_id
             ),
-        }),
-        Some(v) if v != new_version => Err(StorageError::Integrity {
-            detail: format!(
-                "advance_config_version_if_eq: snapshot {} has config_version {v}, \
-                 expected {new_version}",
-                new_snapshot_id.0
-            ),
-        }),
-        Some(_) => Ok(new_version),
+        });
     }
+
+    // Advance the applied pointer.
+    sqlx::query("UPDATE caddy_instances SET applied_config_version = ? WHERE id = ?")
+        .bind(new_version)
+        .bind(instance_id)
+        .execute(conn)
+        .await
+        .map_err(sqlx_err)?;
+
+    Ok(new_version)
 }
 
 // ── Unit tests ───────────────────────────────────────────────────────────────
@@ -175,17 +175,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn current_version_reflects_max_snapshot() {
+    async fn current_version_reflects_applied_pointer() {
         let dir = TempDir::new().unwrap();
         let store = open_store(&dir).await;
 
-        // Insert two snapshots with versions 1 and 2.
+        // Inserting snapshots does NOT advance the applied pointer.
+        // The pointer only advances via advance_config_version_if_eq.
         let s1 = make_snapshot(1);
         let s2 = make_snapshot(2);
         store.insert_snapshot(s1).await.expect("insert v1");
         store.insert_snapshot(s2).await.expect("insert v2");
 
         let mut conn = store.pool().acquire().await.unwrap();
+        // Pointer is still 0 — nothing applied yet.
+        let v = current_config_version(&mut conn, "local")
+            .await
+            .expect("should succeed");
+        assert_eq!(v, 0);
+
+        // Directly update the applied pointer (as advance_config_version_if_eq does).
+        sqlx::query("UPDATE caddy_instances SET applied_config_version = 2 WHERE id = 'local'")
+            .execute(&mut *conn)
+            .await
+            .expect("set pointer");
+
         let v = current_config_version(&mut conn, "local")
             .await
             .expect("should succeed");
@@ -197,22 +210,27 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = open_store(&dir).await;
 
-        // Current state: version 1 in DB; snapshot at version 2 ready to apply.
+        // Simulate: applied_config_version = 1 (s1 was previously applied).
+        // s2 is the pending snapshot to be applied next.
         let s1 = make_snapshot(1);
         store.insert_snapshot(s1).await.expect("insert v1");
         let s2 = make_snapshot(2);
         let s2_id = s2.snapshot_id.clone();
         store.insert_snapshot(s2).await.expect("insert v2");
 
-        let mut conn = store.pool().acquire().await.unwrap();
-        sqlx::query("BEGIN IMMEDIATE")
-            .execute(&mut *conn)
+        // Mark v1 as the current applied version.
+        let mut setup_conn = store.pool().acquire().await.unwrap();
+        sqlx::query("UPDATE caddy_instances SET applied_config_version = 1 WHERE id = 'local'")
+            .execute(&mut *setup_conn)
             .await
-            .expect("BEGIN IMMEDIATE");
+            .expect("set applied_config_version = 1");
+        drop(setup_conn);
+
+        let mut conn = store.pool().acquire().await.unwrap();
 
         let new_ver = advance_config_version_if_eq(&mut conn, "local", 1, &s2_id)
             .await
-            .expect("CAS should succeed when expected == current");
+            .expect("CAS should succeed when expected == current applied version");
         assert_eq!(new_ver, 2);
     }
 
@@ -221,7 +239,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = open_store(&dir).await;
 
-        // DB at version 2; caller expects version 1.
+        // Simulate: applied_config_version = 2 (s2 was most recently applied).
+        // Caller mistakenly passes expected=1 (stale).
         let s1 = make_snapshot(1);
         store.insert_snapshot(s1).await.expect("insert v1");
         let s2 = make_snapshot(2);
@@ -230,11 +249,15 @@ mod tests {
         let s3_id = s3.snapshot_id.clone();
         store.insert_snapshot(s3).await.expect("insert v3");
 
-        let mut conn = store.pool().acquire().await.unwrap();
-        sqlx::query("BEGIN IMMEDIATE")
-            .execute(&mut *conn)
+        // Mark v2 as the current applied version.
+        let mut setup_conn = store.pool().acquire().await.unwrap();
+        sqlx::query("UPDATE caddy_instances SET applied_config_version = 2 WHERE id = 'local'")
+            .execute(&mut *setup_conn)
             .await
-            .expect("BEGIN IMMEDIATE");
+            .expect("set applied_config_version = 2");
+        drop(setup_conn);
+
+        let mut conn = store.pool().acquire().await.unwrap();
 
         let err = advance_config_version_if_eq(&mut conn, "local", 1, &s3_id)
             .await

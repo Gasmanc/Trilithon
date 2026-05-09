@@ -36,8 +36,8 @@ async fn fresh_db_applies_all() {
         outcome.applied_count
     );
     assert_eq!(
-        outcome.current_version, 6,
-        "expected current_version == 6 after initial migrations (including 0006_audit_immutable)"
+        outcome.current_version, 8,
+        "expected current_version == 8 after initial migrations (including 0008_applied_config_version)"
     );
 }
 
@@ -94,7 +94,7 @@ async fn refuses_downgrade() {
             embedded_max,
         } => {
             assert_eq!(db_version, 999, "reported db_version should be 999");
-            assert_eq!(embedded_max, 6, "reported embedded_max should be 6");
+            assert_eq!(embedded_max, 8, "reported embedded_max should be 8");
         }
         MigrationError::Sqlx { source } => {
             panic!("expected Downgrade error, got Sqlx: {source}");

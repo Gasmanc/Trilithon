@@ -69,21 +69,41 @@ pub struct AcquiredLock {
     holder_pid: i32,
 }
 
-impl Drop for AcquiredLock {
-    fn drop(&mut self) {
+impl AcquiredLock {
+    /// Release the advisory lock, awaiting the DELETE.
+    ///
+    /// This is the **preferred** release path. Calling `release` awaits the
+    /// `DELETE` so the lock row is guaranteed to be gone before this method
+    /// returns.  `mem::forget` is called on `self` so `Drop` does not attempt
+    /// a second `DELETE`.
+    ///
+    /// The `Drop` impl is kept as a fallback for panic paths; in normal
+    /// operation always call `release` explicitly.
+    pub async fn release(self) {
         let pool = self.pool.clone();
         let instance_id = self.instance_id.clone();
         let holder_pid = self.holder_pid;
-        // Spawn a blocking task so we can issue the DELETE without an async
-        // runtime handle from within Drop.  The task is fire-and-forget;
-        // failures are logged but do not panic.
-        //
-        // `spawn_blocking` returns a `JoinHandle` (a Future); discarding it
-        // with `drop()` is intentional — we do not need to await it.
+        // Prevent Drop from issuing a second DELETE.
+        std::mem::forget(self);
+        let _ = sqlx::query("DELETE FROM apply_locks WHERE instance_id = ? AND holder_pid = ?")
+            .bind(&instance_id)
+            .bind(holder_pid)
+            .execute(&pool)
+            .await;
+    }
+}
+
+impl Drop for AcquiredLock {
+    fn drop(&mut self) {
+        // This Drop is a **panic fallback only**. In normal operation `apply()`
+        // calls `AcquiredLock::release().await` which uses `mem::forget` to
+        // skip this path.  If we reach Drop it means the apply body panicked;
+        // we do a best-effort fire-and-forget DELETE so the lock row does not
+        // become permanently stale.
+        let pool = self.pool.clone();
+        let instance_id = self.instance_id.clone();
+        let holder_pid = self.holder_pid;
         drop(task::spawn_blocking(move || {
-            // Use the tokio single-threaded runtime to drive the async delete
-            // without creating a new multi-threaded runtime, which would be
-            // expensive and could conflict with the existing one.
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build();
