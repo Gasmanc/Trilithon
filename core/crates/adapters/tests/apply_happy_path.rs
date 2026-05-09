@@ -18,6 +18,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sqlx::SqlitePool;
 use tempfile::TempDir;
 use trilithon_adapters::caddy::cache::CapabilityCache;
 use trilithon_adapters::{
@@ -137,7 +138,7 @@ async fn stored_snapshot(storage: &Arc<dyn Storage>, config_version: i64) -> Sna
     snapshot
 }
 
-fn build_applier(storage: Arc<dyn Storage>) -> CaddyApplier {
+fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyApplier {
     let registry = Box::leak(Box::new(SchemaRegistry::with_tier1_secrets()));
     let hasher = Box::leak(Box::new(ZeroHasher));
     let redactor = SecretsRedactor::new(registry, hasher);
@@ -155,6 +156,8 @@ fn build_applier(storage: Arc<dyn Storage>) -> CaddyApplier {
         storage,
         instance_id: "local".to_owned(),
         clock: Arc::new(FixedClock(1_700_000_000_000)),
+        instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        lock_pool,
     }
 }
 
@@ -164,8 +167,9 @@ fn build_applier(storage: Arc<dyn Storage>) -> CaddyApplier {
 async fn apply_happy_path_returns_succeeded() {
     let dir = TempDir::new().unwrap();
     let store = open_store(&dir).await;
+    let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
-    let applier = build_applier(storage.clone());
+    let applier = build_applier(storage.clone(), pool);
     let snapshot = stored_snapshot(&storage, 1).await;
 
     let outcome = applier
@@ -183,8 +187,9 @@ async fn apply_happy_path_returns_succeeded() {
 async fn apply_happy_path_writes_exactly_one_config_applied_row() {
     let dir = TempDir::new().unwrap();
     let store = open_store(&dir).await;
+    let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
-    let applier = build_applier(storage.clone());
+    let applier = build_applier(storage.clone(), pool);
     let snapshot = stored_snapshot(&storage, 1).await;
 
     applier
@@ -219,8 +224,9 @@ async fn apply_happy_path_writes_exactly_one_config_applied_row() {
 async fn apply_happy_path_no_apply_failed_row() {
     let dir = TempDir::new().unwrap();
     let store = open_store(&dir).await;
+    let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
-    let applier = build_applier(storage.clone());
+    let applier = build_applier(storage.clone(), pool);
     let snapshot = stored_snapshot(&storage, 1).await;
 
     applier

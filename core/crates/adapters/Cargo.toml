@@ -159,5 +159,29 @@ path = "tests/apply_caddy_unreachable.rs"
 name = "apply_post_load_equivalence_check"
 path = "tests/apply_post_load_equivalence_check.rs"
 
+[[test]]
+name = "apply_concurrency_two_actors"
+path = "tests/apply_concurrency_two_actors.rs"
+
+[[test]]
+name = "apply_stale_version_rejected"
+path = "tests/apply_stale_version_rejected.rs"
+
+[[test]]
+name = "apply_pointer_unchanged_on_conflict"
+path = "tests/apply_pointer_unchanged_on_conflict.rs"
+
+[[test]]
+name = "apply_serial_under_32_concurrent_callers"
+path = "tests/apply_serial_under_32_concurrent_callers.rs"
+
+[[test]]
+name = "apply_lock_released_on_panic"
+path = "tests/apply_lock_released_on_panic.rs"
+
+[[test]]
+name = "apply_advisory_lock_blocks_second_process"
+path = "tests/apply_advisory_lock_blocks_second_process.rs"
+
 [lints]
 workspace = true

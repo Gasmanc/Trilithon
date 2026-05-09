@@ -33,6 +33,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sqlx::SqlitePool;
 use ulid::Ulid;
 
 use trilithon_core::caddy::{CaddyConfig, CaddyError};
@@ -54,6 +55,7 @@ use trilithon_core::{
 use crate::{
     audit_writer::{ActorRef, AuditAppend, AuditWriter},
     caddy::cache::CapabilityCache,
+    storage_sqlite::locks::{LockError, acquire_apply_lock},
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +108,18 @@ pub struct CaddyApplier {
     pub instance_id: String,
     /// Wall-clock source; swap for a deterministic double in tests.
     pub clock: Arc<dyn Clock>,
+    /// In-process serialisation guard: at most one apply per instance at a time.
+    ///
+    /// Wraps `()` because the value is irrelevant; only the exclusive access
+    /// matters.  Combined with the `SQLite` advisory lock below this prevents
+    /// concurrent applies both within a single process and across multiple
+    /// daemon processes sharing the same database.
+    pub instance_mutex: Arc<tokio::sync::Mutex<()>>,
+    /// Connection pool used exclusively for advisory lock operations.
+    ///
+    /// Kept separate from the `storage` field so that advisory lock
+    /// acquisition does not go through the `Storage` trait abstraction.
+    pub lock_pool: SqlitePool,
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +345,19 @@ impl Applier for CaddyApplier {
             .correlation_id
             .parse()
             .unwrap_or_else(|_| Ulid::new());
+
+        // Step -1 (Slice 7.6): acquire in-process mutex first, then the
+        // SQLite advisory lock.  Together these guarantee at most one apply
+        // is in flight per caddy_instance_id, even across separate processes.
+        let _process_guard = self.instance_mutex.lock().await;
+
+        let holder_pid = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
+        let _advisory_lock = acquire_apply_lock(&self.lock_pool, &self.instance_id, holder_pid)
+            .await
+            .map_err(|e| match e {
+                LockError::AlreadyHeld { pid } => ApplyError::LockContested { holder_pid: pid },
+                LockError::Storage(s) => ApplyError::Storage(format!("advisory lock: {s}")),
+            })?;
 
         // Step 0 (Slice 7.5): CAS version check — BEGIN IMMEDIATE in storage.
         // Prevents TOCTOU races between two concurrent apply() calls.

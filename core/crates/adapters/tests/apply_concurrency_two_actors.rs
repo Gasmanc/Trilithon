@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sqlx::SqlitePool;
 use tempfile::TempDir;
 use trilithon_adapters::caddy::cache::CapabilityCache;
 use trilithon_adapters::{
@@ -134,7 +135,7 @@ fn make_snapshot(config_version: i64) -> Snapshot {
     }
 }
 
-fn build_applier(storage: Arc<dyn Storage>) -> CaddyApplier {
+fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyApplier {
     let registry = Box::leak(Box::new(SchemaRegistry::with_tier1_secrets()));
     let hasher = Box::leak(Box::new(ZeroHasher));
     let redactor = SecretsRedactor::new(registry, hasher);
@@ -152,6 +153,8 @@ fn build_applier(storage: Arc<dyn Storage>) -> CaddyApplier {
         storage,
         instance_id: "local".to_owned(),
         clock: Arc::new(FixedClock(1_700_000_000_000)),
+        instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        lock_pool,
     }
 }
 
@@ -163,6 +166,7 @@ fn build_applier(storage: Arc<dyn Storage>) -> CaddyApplier {
 async fn two_concurrent_applies_one_wins() {
     let dir = TempDir::new().unwrap();
     let store = open_store(&dir).await;
+    let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
 
     // Prime the DB: versions 1 through 5 (current = 5).
@@ -180,9 +184,11 @@ async fn two_concurrent_applies_one_wins() {
         .await
         .expect("insert v6");
 
-    // Build two independent appliers sharing the same storage.
-    let applier_a = Arc::new(build_applier(storage.clone()));
-    let applier_b = Arc::new(build_applier(storage.clone()));
+    // Build two independent appliers sharing the same storage and pool but
+    // with separate in-process mutexes (simulating two independent actor
+    // threads that share a DB but have no shared lock state).
+    let applier_a = Arc::new(build_applier(storage.clone(), pool.clone()));
+    let applier_b = Arc::new(build_applier(storage.clone(), pool));
 
     let snap_a = snapshot_v6.clone();
     let snap_b = snapshot_v6.clone();

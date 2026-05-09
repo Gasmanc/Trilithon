@@ -163,6 +163,13 @@ pub enum ApplyError {
     /// A storage-layer error was encountered during the apply sequence.
     #[error("storage: {0}")]
     Storage(String),
+    /// The advisory apply lock for this instance is already held by another
+    /// process; the caller should retry later.
+    #[error("apply lock contested: held by pid {holder_pid}")]
+    LockContested {
+        /// PID of the process currently holding the lock.
+        holder_pid: i32,
+    },
 }
 
 // ---------------------------------------------------------------------------
