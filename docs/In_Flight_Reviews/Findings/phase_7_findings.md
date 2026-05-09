@@ -1,3 +1,44 @@
+## Phase-End Simplify
+**Date:** 2026-05-10
+**Files reviewed:**
+- core/crates/adapters/src/applier_caddy.rs
+- core/crates/adapters/src/audit_notes.rs
+- core/crates/adapters/src/storage_sqlite/locks.rs
+- core/crates/adapters/src/storage_sqlite/snapshots.rs
+- core/crates/adapters/src/tls_observer.rs
+- core/crates/adapters/src/sqlite_storage.rs
+- core/crates/core/src/reconciler/applier.rs
+- core/crates/core/src/reconciler/render.rs
+- core/crates/core/src/reconciler/capability_check.rs
+- core/crates/core/src/diff.rs
+- core/crates/core/src/storage/in_memory.rs
+
+### Findings
+
+**F1** — `applier_caddy.rs` `load_or_fail`, lines 168–228 — WARNING — Copy-paste: `CaddyError::Unreachable` and `CaddyError::Timeout` branches share identical `ApplyAuditNotes` + `AuditAppend` construction; only `detail` differs. — Extract `write_unreachable_audit()` helper.
+
+**F2** — `applier_caddy.rs` `handle_conflict`, lines 376–380 — HIGH — Hand-rolled JSON string interpolation for conflict audit notes; unsafe on integer overflow and inconsistent with `notes_to_string` used everywhere else. — Replace with structured `format!` using raw-string template for correct JSON key ordering.
+
+**F3** — `render.rs` `build_header_ops`, lines 371–394 — WARNING — Leaky empty-object sentinel: function returns `Value::Object(Map::new())` to signal "no headers", forcing the caller to pattern-match `if let Value::Object(ref m) = v { if !m.is_empty() { ... } }`. — Change return type to `Option<Value>`; `None` = no headers.
+
+**F4** — `applier_caddy.rs` module doc, line 27 — SUGGESTION — Stale comment says advisory locks and TLS-state "land in subsequent slices (7.6, 7.8)" — both are now implemented in this phase. — Update comment to reflect current state.
+
+**F5** — `tls_observer.rs`, lines 78–116 — SUGGESTION — Two timeout-emit paths: one at top of loop (deadline reached before poll), one after the sleep computation (`sleep_for.is_zero()`). The logic is correct but the duplication is minor redundancy. — Skip; both paths are needed and the logic is correct.
+
+**F6** — `in_memory.rs` `cas_advance_config_version`, lines 353–358 — WARNING — In-memory double validates `s.config_version == new_version` but the SQLite implementation only checks snapshot existence. Stricter invariant in the test double could mask real bugs or produce false positives. — Skip; the extra check is intentionally more conservative and catches a class of bugs.
+
+### Items Fixed Inline
+- F1: extracted `write_unreachable_audit()` helper (commit 9f22604)
+- F2: replaced hand-rolled JSON string with `format!(r#"..."#)` using sorted keys (commit 9f22604)
+- F3: changed `build_header_ops` to `Option<Value>` (commit 9f22604)
+- F4: updated stale module-doc comment (commit 9f22604)
+
+### Items Left Unfixed
+- F5: two timeout-emit paths in tls_observer — correct logic, skip
+- F6: in-memory CAS stricter than SQLite — intentional conservatism, skip
+
+---
+
 ## Slice 7.8
 **Status:** complete
 **Date:** 2026-05-10

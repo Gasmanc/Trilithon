@@ -1,5 +1,11 @@
 | Unit | Title | Type | Date | Commit |
 |------|-------|------|------|--------|
+| phase-end simplify | Unified unreachable audit branches — core/crates/adapters/src/applier_caddy.rs | Simplify | 2026-05-10 | 9f22604 |
+| phase-end simplify | Safer conflict audit notes format — core/crates/adapters/src/applier_caddy.rs | Simplify | 2026-05-10 | 9f22604 |
+| phase-end simplify | build_header_ops returns Option<Value> — core/crates/core/src/reconciler/render.rs | Simplify | 2026-05-10 | 9f22604 |
+| phase-end simplify | Fix stale module-doc comment — core/crates/adapters/src/applier_caddy.rs | Simplify | 2026-05-10 | 9f22604 |
+| phase-end simplify | Two timeout paths in tls_observer — correct, skip — core/crates/adapters/src/tls_observer.rs | Simplify-skip | 2026-05-10 | — |
+| phase-end simplify | InMemory CAS stricter than SQLite — intentional, skip — core/crates/core/src/storage/in_memory.rs | Simplify-skip | 2026-05-10 | — |
 | multi-review | TRY_INSERT_LOCK_USES_DEFERRED_NOT_IMMEDIATE — core/crates/adapters/src/storage_sqlite/locks.rs | Multi-review | 2026-05-10 | a795a7c |
 | multi-review | COMMIT FAILURE SILENTLY RETURNS Ok — core/crates/adapters/src/sqlite_storage.rs | Multi-review | 2026-05-10 | a795a7c |
 | multi-review | TLS OBSERVER IS DEAD CODE: EMPTY HOSTNAMES ALWAYS PASSED — core/crates/adapters/src/applier_caddy.rs | Multi-review | 2026-05-10 | a795a7c |

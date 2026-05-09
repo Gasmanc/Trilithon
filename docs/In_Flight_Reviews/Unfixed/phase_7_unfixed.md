@@ -168,3 +168,39 @@
 **Severity:** HIGH
 **Status:** open
 **Reason not fixed:** Catch-up mode — phase already merged. ~21 new public symbols (Applier, ApplyOutcome, ApplyAuditNotes, CaddyApplier, TlsIssuanceObserver) not added to contract-roots.toml. Must be done before Phase 9.
+
+## phase-end simplify — Unified unreachable audit branches
+**Date:** 2026-05-10
+**Severity:** WARNING
+**Status:** fixed
+**Fix commit:** 9f22604
+
+## phase-end simplify — Safer conflict audit notes format
+**Date:** 2026-05-10
+**Severity:** HIGH
+**Status:** fixed
+**Fix commit:** 9f22604
+
+## phase-end simplify — build_header_ops returns Option<Value>
+**Date:** 2026-05-10
+**Severity:** WARNING
+**Status:** fixed
+**Fix commit:** 9f22604
+
+## phase-end simplify — Fix stale module-doc comment
+**Date:** 2026-05-10
+**Severity:** SUGGESTION
+**Status:** fixed
+**Fix commit:** 9f22604
+
+## phase-end simplify — Two timeout paths in tls_observer
+**Date:** 2026-05-10
+**Severity:** SUGGESTION
+**Status:** open
+**Reason not fixed:** Both paths are semantically correct — deadline check before sleep vs after sleep computation are distinct guard points. No logic bug; skip.
+
+## phase-end simplify — InMemory CAS stricter than SQLite
+**Date:** 2026-05-10
+**Severity:** WARNING
+**Status:** open
+**Reason not fixed:** The in-memory double intentionally enforces `snapshot.config_version == new_version` as an extra invariant not checked by the SQLite path. This is beneficial conservatism in tests, not a divergence bug. Skip.
