@@ -1,5 +1,18 @@
 | Unit | Title | Type | Date | Commit |
 |------|-------|------|------|--------|
+| multi-review | TRY_INSERT_LOCK_USES_DEFERRED_NOT_IMMEDIATE — core/crates/adapters/src/storage_sqlite/locks.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | COMMIT FAILURE SILENTLY RETURNS Ok — core/crates/adapters/src/sqlite_storage.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | TLS OBSERVER IS DEAD CODE: EMPTY HOSTNAMES ALWAYS PASSED — core/crates/adapters/src/applier_caddy.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | InMemoryStorage CAS DIVERGES FROM SQLITE — core/crates/core/src/storage/in_memory.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | CAS advance UPDATE does not verify row existence — core/crates/adapters/src/storage_sqlite/snapshots.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | CADDY_5XX_PATH_IS_MISCLASSIFIED_AND_UNAUDITED — core/crates/adapters/src/applier_caddy.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | IPv6 upstream addresses rendered without brackets — core/crates/core/src/reconciler/render.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | STALE LOCK REAP RACE: AlreadyHeld REPORTS OWN PID — core/crates/adapters/src/storage_sqlite/locks.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | SHELL SUBPROCESS FOR PROCESS LIVENESS CHECK — core/crates/adapters/src/storage_sqlite/locks.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | notes_to_string AND sort_keys DUPLICATED — core/crates/adapters/src/applier_caddy.rs + tls_observer.rs | Multi-review | 2026-05-10 | a795a7c |
+| multi-review | CONFLICT_OUTCOME_VERSIONS_SWAPPED — core/crates/adapters/src/applier_caddy.rs | Multi-review-skip | 2026-05-10 | — |
+| multi-review | PHANTOM APPLIED VERSION ON PANIC OR 5XX AFTER CAS — core/crates/adapters/src/applier_caddy.rs | Multi-review-skip | 2026-05-10 | — |
+| multi-review | CONFLICT AUDIT NOTE USES HAND-ROLLED JSON — core/crates/adapters/src/applier_caddy.rs | Multi-review-skip | 2026-05-10 | — |
 | 7.8 | Changed tls_observer.as_ref().cloned() to .clone() to fix clippy::option_as_ref_cloned — core/crates/adapters/src/applier_caddy.rs | quality | 2026-05-10 | d45dcbb |
 | 7.8 | Changed is_none_or closure to method reference to fix clippy::redundant_closure_for_method_calls — core/crates/adapters/tests/apply_emits_tls_issuance_followup_row.rs | quality | 2026-05-10 | d45dcbb |
 | 7.7 | Removed unnecessary `status as u16` cast — CaddyError::BadStatus.status is already u16 — core/crates/adapters/src/applier_caddy.rs | quality | 2026-05-09 | 9e2f66a |
