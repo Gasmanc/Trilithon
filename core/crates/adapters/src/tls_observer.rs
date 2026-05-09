@@ -28,6 +28,7 @@ use trilithon_core::{
     storage::types::{AuditOutcome, SnapshotId},
 };
 
+use crate::audit_notes::notes_to_string;
 use crate::audit_writer::{ActorRef, AuditAppend, AuditWriter};
 
 // ---------------------------------------------------------------------------
@@ -57,30 +58,6 @@ pub struct TlsIssuanceObserver {
 }
 
 impl TlsIssuanceObserver {
-    /// Serialise audit notes to a JSON string with sorted keys.
-    fn notes_to_string(notes: &ApplyAuditNotes) -> String {
-        serde_json::to_value(notes)
-            .ok()
-            .and_then(|v| serde_json::to_string(&Self::sort_keys(v)).ok())
-            .unwrap_or_else(|| "{}".to_owned())
-    }
-
-    fn sort_keys(v: serde_json::Value) -> serde_json::Value {
-        use serde_json::Value;
-        match v {
-            Value::Object(map) => {
-                let mut pairs: Vec<(String, serde_json::Value)> = map
-                    .into_iter()
-                    .map(|(k, vv)| (k, Self::sort_keys(vv)))
-                    .collect();
-                pairs.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
-                Value::Object(pairs.into_iter().collect())
-            }
-            Value::Array(arr) => Value::Array(arr.into_iter().map(Self::sort_keys).collect()),
-            other => other,
-        }
-    }
-
     /// Poll for TLS certificate issuance and emit a follow-up audit row.
     ///
     /// Spawning this via `tokio::spawn` is the intended usage; see module docs.
@@ -167,7 +144,7 @@ impl TlsIssuanceObserver {
                 diff: None,
                 outcome: AuditOutcome::Ok,
                 error_kind: None,
-                notes: Some(Self::notes_to_string(&notes)),
+                notes: Some(notes_to_string(&notes)),
             })
             .await;
         tracing::info!(
@@ -206,7 +183,7 @@ impl TlsIssuanceObserver {
                 diff: None,
                 outcome: AuditOutcome::Error,
                 error_kind: Some("TlsIssuanceTimeout".to_owned()),
-                notes: Some(Self::notes_to_string(&notes)),
+                notes: Some(notes_to_string(&notes)),
             })
             .await;
         tracing::warn!(

@@ -98,12 +98,23 @@ pub async fn advance_config_version_if_eq(
     }
 
     // Advance the applied pointer.
-    sqlx::query("UPDATE caddy_instances SET applied_config_version = ? WHERE id = ?")
-        .bind(new_version)
-        .bind(instance_id)
-        .execute(conn)
-        .await
-        .map_err(sqlx_err)?;
+    let update_result =
+        sqlx::query("UPDATE caddy_instances SET applied_config_version = ? WHERE id = ?")
+            .bind(new_version)
+            .bind(instance_id)
+            .execute(conn)
+            .await
+            .map_err(sqlx_err)?;
+
+    // Guard against a missing instance row — the UPDATE would silently affect
+    // 0 rows and return Ok, producing a phantom version advance.
+    if update_result.rows_affected() != 1 {
+        return Err(StorageError::Integrity {
+            detail: format!(
+                "advance_config_version_if_eq: caddy_instances row missing for instance {instance_id}"
+            ),
+        });
+    }
 
     Ok(new_version)
 }

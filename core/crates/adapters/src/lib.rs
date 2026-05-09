@@ -8,6 +8,7 @@
 pub mod test_support;
 
 pub mod applier_caddy;
+pub mod audit_notes;
 pub use applier_caddy::CaddyApplier;
 pub mod audit_writer;
 pub use audit_writer::AuditWriter;

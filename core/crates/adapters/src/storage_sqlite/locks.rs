@@ -137,18 +137,23 @@ impl Drop for AcquiredLock {
 
 /// Returns `true` when process `pid` appears to be alive on this system.
 ///
-/// On Unix, probes via `kill -0 <pid>` (a signal-0 send that merely checks
-/// existence without delivering a signal).  On non-Unix platforms the probe
-/// is not available and always returns `false` so stale locks are
-/// unconditionally reaped.
+/// On Unix, uses the POSIX `kill(pid, 0)` syscall directly via the `nix`
+/// crate.  Signal 0 does not deliver a signal — it merely checks whether the
+/// process exists and the caller has permission to signal it.  This avoids
+/// spawning a shell subprocess and eliminates the PATH-dependent `kill`
+/// binary search.
+///
+/// On non-Unix platforms the probe is unavailable and always returns `false`
+/// so stale locks are unconditionally reaped.
 fn process_alive(pid: i32) -> bool {
     #[cfg(unix)]
     {
-        // `kill -0 <pid>` exits 0 when the process exists and is reachable.
-        std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .output()
-            .is_ok_and(|o| o.status.success())
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+        // Sending `None` (signal 0) checks process existence without
+        // delivering a signal.  Returns `Ok(())` when the process exists and
+        // the caller has permission to signal it.
+        kill(Pid::from_raw(pid), None::<nix::sys::signal::Signal>).is_ok()
     }
     #[cfg(not(unix))]
     {
@@ -222,8 +227,17 @@ pub async fn acquire_apply_lock(
                     holder_pid,
                 });
             }
-            // Still blocked.
-            return Err(LockError::AlreadyHeld { pid: holder_pid });
+            // A different process beat us after the row disappeared.  Look up
+            // the actual holder PID rather than reporting our own PID.
+            let actual_pid: Option<i32> =
+                sqlx::query_scalar("SELECT holder_pid FROM apply_locks WHERE instance_id = ?")
+                    .bind(instance_id)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(|e| LockError::Storage(e.to_string()))?;
+            return Err(LockError::AlreadyHeld {
+                pid: actual_pid.unwrap_or(-1),
+            });
         }
         Some(pid) if process_alive(pid) => {
             return Err(LockError::AlreadyHeld { pid });
@@ -271,32 +285,31 @@ pub async fn acquire_apply_lock(
 /// - `Ok(true)` — inserted successfully (lock acquired).
 /// - `Ok(false)` — `UNIQUE` constraint violation (row already exists).
 /// - `Err(_)` — unexpected database error.
+///
+/// Uses `pool.acquire()` to obtain a raw connection and issues
+/// `BEGIN IMMEDIATE` directly (not via `pool.begin()`), which would start a
+/// `DEFERRED` transaction that cannot be upgraded.  A nested
+/// `BEGIN IMMEDIATE` inside a `DEFERRED` transaction fails with
+/// "cannot start a transaction within a transaction" and the write lock would
+/// never be acquired.
 async fn try_insert_lock(
     pool: &SqlitePool,
     instance_id: &str,
     holder_pid: i32,
     acquired_at: i64,
 ) -> Result<bool, LockError> {
-    let mut tx = pool
-        .begin()
+    let mut conn = pool
+        .acquire()
         .await
         .map_err(|e| LockError::Storage(e.to_string()))?;
 
-    // Upgrade to IMMEDIATE so the read-check-write is fully serialised.
+    // BEGIN IMMEDIATE acquires the write lock immediately, preventing two
+    // concurrent callers from both reading "no row exists" before either
+    // inserts (TOCTOU).
     sqlx::query("BEGIN IMMEDIATE")
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await
-        .or_else(|e| {
-            // SQLite returns "cannot start a transaction within a transaction"
-            // when the pool already began one for us; that is fine — we are
-            // already in an IMMEDIATE transaction via the pool's WAL mode.
-            let msg = e.to_string();
-            if msg.contains("cannot start a transaction") || msg.contains("within a transaction") {
-                Ok(sqlx::sqlite::SqliteQueryResult::default())
-            } else {
-                Err(LockError::Storage(msg))
-            }
-        })?;
+        .map_err(|e| LockError::Storage(e.to_string()))?;
 
     let result = sqlx::query(
         "INSERT INTO apply_locks (instance_id, holder_pid, acquired_at) VALUES (?, ?, ?)",
@@ -304,17 +317,20 @@ async fn try_insert_lock(
     .bind(instance_id)
     .bind(holder_pid)
     .bind(acquired_at)
-    .execute(&mut *tx)
+    .execute(&mut *conn)
     .await;
 
     match result {
         Ok(_) => {
-            tx.commit()
+            sqlx::query("COMMIT")
+                .execute(&mut *conn)
                 .await
                 .map_err(|e| LockError::Storage(e.to_string()))?;
             Ok(true)
         }
         Err(e) => {
+            // Best-effort rollback; ignore errors (connection may be closing).
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
             let code: i32 = if let sqlx::Error::Database(ref db_err) = e {
                 db_err.code().as_deref().unwrap_or("").parse().unwrap_or(0)
             } else {

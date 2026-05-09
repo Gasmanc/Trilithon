@@ -989,15 +989,21 @@ impl Storage for SqliteStorage {
         .await;
 
         // Always release the transaction — COMMIT on success, ROLLBACK on error.
-        match &result {
-            Ok(_) => {
-                let _ = sqlx::query("COMMIT").execute(&mut *conn).await;
+        // COMMIT failure is propagated as an error: a silently discarded COMMIT
+        // would leave the caller believing applied_config_version advanced when
+        // it did not (phantom-version bug).
+        match result {
+            Ok(v) => {
+                sqlx::query("COMMIT")
+                    .execute(&mut *conn)
+                    .await
+                    .map_err(sqlx_err)?;
+                Ok(v)
             }
-            Err(_) => {
+            Err(e) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                Err(e)
             }
         }
-
-        result
     }
 }

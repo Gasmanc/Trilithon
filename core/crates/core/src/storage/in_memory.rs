@@ -17,6 +17,7 @@
 // function body to keep the double simple and prevent TOCTOU inside tests.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use tokio::sync::Mutex;
 
@@ -44,6 +45,13 @@ pub struct InMemoryStorage {
     drift: Mutex<Vec<DriftEventRow>>,
     proposals: Mutex<Vec<ProposalRow>>,
     latest_ptr: Mutex<Option<SnapshotId>>,
+    /// Mirrors `caddy_instances.applied_config_version` in `SQLite`.
+    ///
+    /// Starts at 0 (no successful apply) and is advanced by
+    /// `cas_advance_config_version` on each successful CAS.  This matches the
+    /// `SQLite` implementation which tracks a *separately incremented* applied
+    /// counter, not `MAX(snapshots.config_version)`.
+    applied_config_version: AtomicI64,
 }
 
 impl Default for InMemoryStorage {
@@ -61,6 +69,7 @@ impl InMemoryStorage {
             drift: Mutex::new(Vec::new()),
             proposals: Mutex::new(Vec::new()),
             latest_ptr: Mutex::new(None),
+            applied_config_version: AtomicI64::new(0),
         }
     }
 }
@@ -306,17 +315,10 @@ impl Storage for InMemoryStorage {
     }
 
     async fn current_config_version(&self, _instance_id: &str) -> Result<i64, StorageError> {
-        // Lock order: snapshots first (consistent with insert_snapshot and
-        // latest_desired_state to prevent ABBA deadlock).
-        // V1: InMemoryStorage is per-test and scoped to a single instance;
-        // all snapshots belong to the same implicit instance.
-        let snapshots = self.snapshots.lock().await;
-        let max = snapshots
-            .values()
-            .map(|s| s.config_version)
-            .max()
-            .unwrap_or(0);
-        Ok(max)
+        // Read the separately tracked applied pointer, matching the SQLite
+        // implementation which uses `caddy_instances.applied_config_version`
+        // rather than `MAX(snapshots.config_version)`.
+        Ok(self.applied_config_version.load(Ordering::SeqCst))
     }
 
     async fn cas_advance_config_version(
@@ -329,11 +331,8 @@ impl Storage for InMemoryStorage {
         // V1: single-instance scope — no per-instance filtering needed.
         let snapshots = self.snapshots.lock().await;
 
-        let observed = snapshots
-            .values()
-            .map(|s| s.config_version)
-            .max()
-            .unwrap_or(0);
+        // Read applied pointer (not MAX(snapshots.config_version)).
+        let observed = self.applied_config_version.load(Ordering::SeqCst);
 
         if observed != expected_version {
             return Err(StorageError::OptimisticConflict {
@@ -358,7 +357,11 @@ impl Storage for InMemoryStorage {
                     new_snapshot_id.0, s.config_version
                 ),
             }),
-            Some(_) => Ok(new_version),
+            Some(_) => {
+                self.applied_config_version
+                    .store(new_version, Ordering::SeqCst);
+                Ok(new_version)
+            }
         }
     }
 }

@@ -53,6 +53,7 @@ use trilithon_core::{
 };
 
 use crate::{
+    audit_notes::notes_to_string,
     audit_writer::{ActorRef, AuditAppend, AuditWriter},
     caddy::cache::CapabilityCache,
     storage_sqlite::locks::{LockError, acquire_apply_lock},
@@ -80,36 +81,6 @@ fn bounded_excerpt(s: &str) -> String {
             end -= 1;
         }
         format!("{}…", &s[..end])
-    }
-}
-
-/// Serialise [`ApplyAuditNotes`] to a JSON string suitable for the `notes`
-/// column of an audit row.
-///
-/// Keys are sorted lexicographically by converting to a [`serde_json::Value`]
-/// first, then serialising with the `serde_json` default formatter.  This
-/// mirrors the canonical-JSON intent without requiring the core
-/// `canonicalise_value` helper to be public.
-fn notes_to_string(notes: &ApplyAuditNotes) -> String {
-    // Sort object keys by going through serde_json::Value first.
-    serde_json::to_value(notes)
-        .ok()
-        .and_then(|v| serde_json::to_string(&sort_keys(v)).ok())
-        .unwrap_or_else(|| "{}".to_owned())
-}
-
-/// Recursively sort the keys of all JSON objects within `v`.
-fn sort_keys(v: serde_json::Value) -> serde_json::Value {
-    use serde_json::Value;
-    match v {
-        Value::Object(map) => {
-            let mut pairs: Vec<(String, serde_json::Value)> =
-                map.into_iter().map(|(k, vv)| (k, sort_keys(vv))).collect();
-            pairs.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
-            Value::Object(pairs.into_iter().collect())
-        }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(sort_keys).collect()),
-        other => other,
     }
 }
 
@@ -298,6 +269,53 @@ impl CaddyApplier {
                     detail: excerpt,
                 }))
             }
+            Err(CaddyError::BadStatus { status, body }) => {
+                // Non-4xx (typically 5xx): Caddy is running but returned a server
+                // error.  Write a `config.apply-failed` audit row with
+                // `error_kind = "CaddyServerError"` and return a typed
+                // `ApplyOutcome::Failed` — not a raw `ApplyError::Storage` — so
+                // the outcome is visible in the audit trail.
+                let excerpt = bounded_excerpt(&body);
+                let audit_notes = ApplyAuditNotes {
+                    reload_kind: ReloadKind::Graceful {
+                        drain_window_ms: None,
+                    },
+                    applied_state: AppliedStateTag::Applied,
+                    drain_window_ms: None,
+                    error_kind: Some("CaddyServerError".to_owned()),
+                    error_detail: Some(excerpt.clone()),
+                    caddy_status: Some(status),
+                };
+                let _ = self
+                    .audit
+                    .record(AuditAppend {
+                        correlation_id,
+                        actor: ActorRef::System {
+                            component: "caddy-applier".to_owned(),
+                        },
+                        event: AuditEvent::ApplyFailed,
+                        target_kind: None,
+                        target_id: None,
+                        snapshot_id: Some(snapshot_id.clone()),
+                        diff: None,
+                        outcome: AuditOutcome::Error,
+                        error_kind: Some("CaddyServerError".to_owned()),
+                        notes: Some(notes_to_string(&audit_notes)),
+                    })
+                    .await;
+                tracing::warn!(
+                    event = "apply.failed",
+                    correlation_id = %correlation_id,
+                    snapshot.id = %snapshot_id.0,
+                    status = status,
+                    "caddy returned non-4xx status (server error)"
+                );
+                Ok(Some(ApplyOutcome::Failed {
+                    snapshot_id: snapshot_id.clone(),
+                    kind: ApplyFailureKind::CaddyServerError,
+                    detail: excerpt,
+                }))
+            }
             Err(other_err) => Err(ApplyError::Storage(other_err.to_string())),
         }
     }
@@ -412,6 +430,10 @@ impl CaddyApplier {
 // ---------------------------------------------------------------------------
 
 #[async_trait]
+#[allow(clippy::too_many_lines)]
+// reason: `apply()` has three distinct early-return branches (conflict, lock,
+//         5xx) each requiring audit writes; extracting further would obscure the
+//         sequential apply algorithm
 impl Applier for CaddyApplier {
     async fn apply(
         &self,
@@ -519,8 +541,19 @@ impl Applier for CaddyApplier {
             // return path is unaffected — the task runs independently.
             if let Some(observer) = self.tls_observer.clone() {
                 let sid = snapshot_id.clone();
+                // Known limitation: hostnames are not yet extracted from
+                // desired_state; the observer returns immediately when the
+                // list is empty.  Hostname extraction is deferred to a future
+                // slice (post-Phase 7) that parses TLS-enabled routes.
+                tracing::debug!(
+                    event = "tls_observer.skipped",
+                    correlation_id = %correlation_id,
+                    snapshot.id = %snapshot_id.0,
+                    "tls observer spawned with empty hostname list; \
+                     no TLS issuance polling will occur until hostnames \
+                     are extracted from desired_state"
+                );
                 tokio::spawn(async move {
-                    // Pass empty hostnames; the observer detects certs via polling.
                     observer.observe(correlation_id, vec![], Some(sid)).await;
                 });
             }

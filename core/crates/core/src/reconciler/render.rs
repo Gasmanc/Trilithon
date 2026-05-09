@@ -352,7 +352,13 @@ fn resolve_upstream_dial(
     match &upstream.destination {
         UpstreamDestination::TcpAddr { host, port } => {
             validate_upstream_host(host, &format!("{path_prefix}/upstreams/{idx}/host"))?;
-            Ok(format!("{host}:{port}"))
+            // IPv6 addresses contain ':' and must be wrapped in brackets so
+            // Caddy can distinguish address from port (e.g. `[::1]:8080`).
+            if host.contains(':') {
+                Ok(format!("[{host}]:{port}"))
+            } else {
+                Ok(format!("{host}:{port}"))
+            }
         }
         UpstreamDestination::UnixSocket { path } => Ok(format!("unix/{path}")),
         UpstreamDestination::DockerContainer { container_id, port } => {
