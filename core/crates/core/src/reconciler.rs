@@ -10,8 +10,8 @@ pub mod capability_check;
 pub mod render;
 
 pub use applier::{
-    AppliedState, Applier, ApplyError, ApplyFailureKind, ApplyOutcome, ReloadKind,
-    ValidationFailure, ValidationReport,
+    AppliedState, AppliedStateTag, Applier, ApplyAuditNotes, ApplyError, ApplyFailureKind,
+    ApplyOutcome, ReloadKind, ValidationFailure, ValidationReport,
 };
 pub use capability_check::{CapabilityCheckError, check_against_capability_set};
 pub use render::{CaddyJsonRenderer, DefaultCaddyJsonRenderer, RenderError, canonical_json_bytes};

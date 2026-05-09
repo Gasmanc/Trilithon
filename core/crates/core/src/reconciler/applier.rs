@@ -228,6 +228,46 @@ pub trait Applier: Send + Sync + 'static {
 }
 
 // ---------------------------------------------------------------------------
+// Audit notes
+// ---------------------------------------------------------------------------
+
+/// Flat tag for the applied-state dimension recorded in audit notes.
+///
+/// Unlike [`AppliedState`], this type has no payload so it round-trips through
+/// serde without the tagged-enum envelope.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AppliedStateTag {
+    /// The configuration is fully loaded.
+    Applied,
+    /// A TLS certificate issuance is still in progress.
+    TlsIssuing,
+}
+
+/// Structured JSON payload written to the `notes` column of every terminal
+/// apply audit row (`config.applied`, `config.apply-failed`,
+/// `mutation.conflicted`).
+///
+/// Serialised via `trilithon_core::canonical_json::to_canonical_bytes` before
+/// storage so that the JSON is deterministic and content-addressable.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ApplyAuditNotes {
+    /// How Caddy was asked to reload the configuration.
+    pub reload_kind: ReloadKind,
+    /// Whether the configuration was fully applied or TLS issuance is pending.
+    pub applied_state: AppliedStateTag,
+    /// Drain window in milliseconds; only populated when `reload_kind` is
+    /// `Graceful` and a non-default drain window was configured.
+    pub drain_window_ms: Option<u32>,
+    /// Machine-readable error classification, populated on failure paths.
+    pub error_kind: Option<String>,
+    /// Human-readable error detail, populated on failure paths.
+    pub error_detail: Option<String>,
+    /// HTTP status returned by Caddy on 4xx rejection; `None` on success.
+    pub caddy_status: Option<u16>,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

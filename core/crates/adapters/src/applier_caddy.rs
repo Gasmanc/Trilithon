@@ -45,9 +45,9 @@ use trilithon_core::{
     diff::DiffEngine,
     model::desired_state::DesiredState,
     reconciler::{
-        AppliedState, Applier, ApplyError, ApplyFailureKind, ApplyOutcome, CapabilityCheckError,
-        ReloadKind, ValidationReport, capability_check::check_against_capability_set,
-        render::CaddyJsonRenderer,
+        AppliedState, AppliedStateTag, Applier, ApplyAuditNotes, ApplyError, ApplyFailureKind,
+        ApplyOutcome, CapabilityCheckError, ReloadKind, ValidationReport,
+        capability_check::check_against_capability_set, render::CaddyJsonRenderer,
     },
     storage::{Storage, error::StorageError, types::SnapshotId},
 };
@@ -79,6 +79,36 @@ fn bounded_excerpt(s: &str) -> String {
             end -= 1;
         }
         format!("{}…", &s[..end])
+    }
+}
+
+/// Serialise [`ApplyAuditNotes`] to a JSON string suitable for the `notes`
+/// column of an audit row.
+///
+/// Keys are sorted lexicographically by converting to a [`serde_json::Value`]
+/// first, then serialising with the `serde_json` default formatter.  This
+/// mirrors the canonical-JSON intent without requiring the core
+/// `canonicalise_value` helper to be public.
+fn notes_to_string(notes: &ApplyAuditNotes) -> String {
+    // Sort object keys by going through serde_json::Value first.
+    serde_json::to_value(notes)
+        .ok()
+        .and_then(|v| serde_json::to_string(&sort_keys(v)).ok())
+        .unwrap_or_else(|| "{}".to_owned())
+}
+
+/// Recursively sort the keys of all JSON objects within `v`.
+fn sort_keys(v: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        Value::Object(map) => {
+            let mut pairs: Vec<(String, serde_json::Value)> =
+                map.into_iter().map(|(k, vv)| (k, sort_keys(vv))).collect();
+            pairs.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            Value::Object(pairs.into_iter().collect())
+        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(sort_keys).collect()),
+        other => other,
     }
 }
 
@@ -147,6 +177,9 @@ impl CaddyApplier {
     /// - `Ok(Some(outcome))` — 4xx rejection; caller should return this
     ///   `ApplyOutcome::Failed` directly.
     /// - `Err(e)` — transport or 5xx error; caller propagates.
+    #[allow(clippy::too_many_lines)]
+    // reason: three distinct error branches each require building ApplyAuditNotes +
+    //         an AuditAppend; extracting further would obscure the match structure
     async fn load_or_fail(
         &self,
         caddy_config: CaddyConfig,
@@ -156,6 +189,16 @@ impl CaddyApplier {
         match self.client.load_config(caddy_config).await {
             Ok(()) => Ok(None),
             Err(CaddyError::Unreachable { detail }) => {
+                let audit_notes = ApplyAuditNotes {
+                    reload_kind: ReloadKind::Graceful {
+                        drain_window_ms: None,
+                    },
+                    applied_state: AppliedStateTag::Applied,
+                    drain_window_ms: None,
+                    error_kind: Some("CaddyUnreachable".to_owned()),
+                    error_detail: Some(detail.clone()),
+                    caddy_status: None,
+                };
                 let _ = self
                     .audit
                     .record(AuditAppend {
@@ -170,13 +213,23 @@ impl CaddyApplier {
                         diff: None,
                         outcome: AuditOutcome::Error,
                         error_kind: Some("CaddyUnreachable".to_owned()),
-                        notes: Some(detail.clone()),
+                        notes: Some(notes_to_string(&audit_notes)),
                     })
                     .await;
                 Err(ApplyError::Unreachable { detail })
             }
             Err(CaddyError::Timeout { seconds }) => {
                 let detail = format!("operation timed out after {seconds}s");
+                let audit_notes = ApplyAuditNotes {
+                    reload_kind: ReloadKind::Graceful {
+                        drain_window_ms: None,
+                    },
+                    applied_state: AppliedStateTag::Applied,
+                    drain_window_ms: None,
+                    error_kind: Some("CaddyUnreachable".to_owned()),
+                    error_detail: Some(detail.clone()),
+                    caddy_status: None,
+                };
                 let _ = self
                     .audit
                     .record(AuditAppend {
@@ -191,13 +244,24 @@ impl CaddyApplier {
                         diff: None,
                         outcome: AuditOutcome::Error,
                         error_kind: Some("CaddyUnreachable".to_owned()),
-                        notes: Some(detail.clone()),
+                        notes: Some(notes_to_string(&audit_notes)),
                     })
                     .await;
                 Err(ApplyError::Unreachable { detail })
             }
             Err(CaddyError::BadStatus { status, body }) if status / 100 == 4 => {
                 let excerpt = bounded_excerpt(&body);
+                let caddy_status = Some(status);
+                let audit_notes = ApplyAuditNotes {
+                    reload_kind: ReloadKind::Graceful {
+                        drain_window_ms: None,
+                    },
+                    applied_state: AppliedStateTag::Applied,
+                    drain_window_ms: None,
+                    error_kind: Some("CaddyValidation".to_owned()),
+                    error_detail: Some(excerpt.clone()),
+                    caddy_status,
+                };
                 let _ = self
                     .audit
                     .record(AuditAppend {
@@ -212,7 +276,7 @@ impl CaddyApplier {
                         diff: None,
                         outcome: AuditOutcome::Error,
                         error_kind: Some("CaddyValidation".to_owned()),
-                        notes: Some(excerpt.clone()),
+                        notes: Some(notes_to_string(&audit_notes)),
                     })
                     .await;
                 tracing::warn!(
@@ -307,6 +371,16 @@ impl CaddyApplier {
     /// Write a `config.applied` audit row after a successful load + equivalence
     /// check.
     async fn write_apply_succeeded_audit(&self, correlation_id: Ulid, snapshot_id: &SnapshotId) {
+        let audit_notes = ApplyAuditNotes {
+            reload_kind: ReloadKind::Graceful {
+                drain_window_ms: None,
+            },
+            applied_state: AppliedStateTag::Applied,
+            drain_window_ms: None,
+            error_kind: None,
+            error_detail: None,
+            caddy_status: None,
+        };
         let _ = self
             .audit
             .record(AuditAppend {
@@ -321,7 +395,7 @@ impl CaddyApplier {
                 diff: None,
                 outcome: AuditOutcome::Ok,
                 error_kind: None,
-                notes: Some(r#"{"reload_kind":"graceful","applied_state":"applied"}"#.to_owned()),
+                notes: Some(notes_to_string(&audit_notes)),
             })
             .await;
     }
