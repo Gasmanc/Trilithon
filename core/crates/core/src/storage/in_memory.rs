@@ -304,6 +304,63 @@ impl Storage for InMemoryStorage {
         }
         Ok(count)
     }
+
+    async fn current_config_version(&self, _instance_id: &str) -> Result<i64, StorageError> {
+        // Lock order: snapshots first (consistent with insert_snapshot and
+        // latest_desired_state to prevent ABBA deadlock).
+        // V1: InMemoryStorage is per-test and scoped to a single instance;
+        // all snapshots belong to the same implicit instance.
+        let snapshots = self.snapshots.lock().await;
+        let max = snapshots
+            .values()
+            .map(|s| s.config_version)
+            .max()
+            .unwrap_or(0);
+        Ok(max)
+    }
+
+    async fn cas_advance_config_version(
+        &self,
+        _instance_id: &str,
+        expected_version: i64,
+        new_snapshot_id: &SnapshotId,
+    ) -> Result<i64, StorageError> {
+        // Lock order: snapshots first (consistent with insert_snapshot).
+        // V1: single-instance scope — no per-instance filtering needed.
+        let snapshots = self.snapshots.lock().await;
+
+        let observed = snapshots
+            .values()
+            .map(|s| s.config_version)
+            .max()
+            .unwrap_or(0);
+
+        if observed != expected_version {
+            return Err(StorageError::OptimisticConflict {
+                observed,
+                expected: expected_version,
+            });
+        }
+
+        let new_version = expected_version + 1;
+
+        match snapshots.get(new_snapshot_id) {
+            None => Err(StorageError::Integrity {
+                detail: format!(
+                    "cas_advance_config_version: snapshot {} not found",
+                    new_snapshot_id.0
+                ),
+            }),
+            Some(s) if s.config_version != new_version => Err(StorageError::Integrity {
+                detail: format!(
+                    "cas_advance_config_version: snapshot {} has config_version {}, \
+                     expected {new_version}",
+                    new_snapshot_id.0, s.config_version
+                ),
+            }),
+            Some(_) => Ok(new_version),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

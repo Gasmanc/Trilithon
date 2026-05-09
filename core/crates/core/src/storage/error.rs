@@ -103,6 +103,18 @@ pub enum StorageError {
         #[source]
         source: std::io::Error,
     },
+
+    /// An optimistic-concurrency conflict was detected on `config_version`.
+    ///
+    /// The caller observed `expected` but the database holds `observed`.
+    /// No write was made; the apply must be retried after re-fetching state.
+    #[error("optimistic conflict: observed {observed}, expected {expected}")]
+    OptimisticConflict {
+        /// The `config_version` actually stored in the database.
+        observed: i64,
+        /// The `config_version` the caller expected to find.
+        expected: i64,
+    },
 }
 
 /// Classification of a low-level `SQLite` error.
@@ -169,6 +181,10 @@ mod tests {
             },
             StorageError::Io {
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"),
+            },
+            StorageError::OptimisticConflict {
+                observed: 10,
+                expected: 9,
             },
         ];
 

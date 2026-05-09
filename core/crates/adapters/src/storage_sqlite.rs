@@ -7,3 +7,4 @@
 //! independently.
 
 pub mod audit;
+pub mod snapshots;

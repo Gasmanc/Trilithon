@@ -960,4 +960,44 @@ impl Storage for SqliteStorage {
             reason: "proposals table arrives in Phase 4".to_string(),
         })
     }
+
+    async fn current_config_version(&self, instance_id: &str) -> Result<i64, StorageError> {
+        let mut conn = self.pool.acquire().await.map_err(sqlx_err)?;
+        crate::storage_sqlite::snapshots::current_config_version(&mut conn, instance_id).await
+    }
+
+    async fn cas_advance_config_version(
+        &self,
+        instance_id: &str,
+        expected_version: i64,
+        new_snapshot_id: &SnapshotId,
+    ) -> Result<i64, StorageError> {
+        // BEGIN IMMEDIATE prevents TOCTOU races between the read and the
+        // CAS check (SQLite read-check-write rule, ADR-0012).
+        let mut conn = self.pool.acquire().await.map_err(sqlx_err)?;
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *conn)
+            .await
+            .map_err(sqlx_err)?;
+
+        let result = crate::storage_sqlite::snapshots::advance_config_version_if_eq(
+            &mut conn,
+            instance_id,
+            expected_version,
+            new_snapshot_id,
+        )
+        .await;
+
+        // Always release the transaction — COMMIT on success, ROLLBACK on error.
+        match &result {
+            Ok(_) => {
+                let _ = sqlx::query("COMMIT").execute(&mut *conn).await;
+            }
+            Err(_) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            }
+        }
+
+        result
+    }
 }

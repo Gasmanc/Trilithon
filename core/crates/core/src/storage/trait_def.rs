@@ -83,6 +83,40 @@ pub trait Storage: Send + Sync + 'static {
     ///
     /// Returns the count of proposals that were expired.
     async fn expire_proposals(&self, now: UnixSeconds) -> Result<u32, StorageError>;
+
+    /// Return the current `config_version` for `instance_id`.
+    ///
+    /// Returns `0` when no snapshot has been inserted yet (virgin database).
+    ///
+    /// This is a point-in-time read.  Callers that need a TOCTOU-safe
+    /// read-check-write sequence should use [`Self::cas_advance_config_version`]
+    /// instead.
+    async fn current_config_version(&self, instance_id: &str) -> Result<i64, StorageError>;
+
+    /// Compare-and-swap advance on `config_version`.
+    ///
+    /// Atomically:
+    /// 1. Read `MAX(config_version)` for `instance_id`.
+    /// 2. If the observed value does not equal `expected_version`, return
+    ///    `Err(StorageError::OptimisticConflict { observed, expected })`.
+    /// 3. Otherwise, verify that `new_snapshot_id` is recorded in storage with
+    ///    `config_version = expected_version + 1`.
+    /// 4. Return `Ok(expected_version + 1)`.
+    ///
+    /// The implementation is responsible for issuing `BEGIN IMMEDIATE` (or
+    /// equivalent) to prevent TOCTOU races on the version read.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::OptimisticConflict`] on version mismatch.
+    /// Returns [`StorageError::Integrity`] when `new_snapshot_id` is missing
+    /// or has a mismatched `config_version`.
+    async fn cas_advance_config_version(
+        &self,
+        instance_id: &str,
+        expected_version: i64,
+        new_snapshot_id: &SnapshotId,
+    ) -> Result<i64, StorageError>;
 }
 
 #[cfg(test)]

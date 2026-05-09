@@ -1,8 +1,13 @@
 //! [`CaddyApplier`] — the adapter that drives Caddy from desired state to live
-//! state (Slice 7.4, happy path).
+//! state (Slices 7.4 + 7.5).
 //!
-//! # Apply algorithm (V1 — Slice 7.4)
+//! # Apply algorithm (V1 — Slice 7.5)
 //!
+//! 0. CAS version check (Slice 7.5): open a `BEGIN IMMEDIATE` transaction,
+//!    read the current `config_version` for this instance.
+//!    - If `observed != expected_version`: write a `mutation.conflicted` audit
+//!      row and return `ApplyOutcome::Conflicted { stale_version, current_version }`.
+//!    - If versions match: proceed.
 //! 1. Open an `apply.started` tracing span.
 //! 2. Render the snapshot's desired state to a Caddy JSON document.
 //! 3. Capability re-check: every module required by the desired state must be
@@ -19,12 +24,11 @@
 //! 7. Emit `apply.succeeded` tracing event.
 //! 8. Return `ApplyOutcome::Succeeded { .. }`.
 //!
-//! Optimistic-concurrency, advisory locks, and TLS-state separation land in
-//! subsequent slices (7.5, 7.6, 7.8).
+//! Advisory locks and TLS-state separation land in subsequent slices (7.6, 7.8).
 //!
 //! # Cross-references
 //!
-//! ADR-0002, ADR-0009, ADR-0013 — PRD T1.1, T1.6, T1.7 — §7.1, §8.1.
+//! ADR-0002, ADR-0009, ADR-0012, ADR-0013 — PRD T1.1, T1.6, T1.7 — §7.1, §8.1.
 
 use std::sync::Arc;
 
@@ -44,7 +48,7 @@ use trilithon_core::{
         ReloadKind, ValidationReport, capability_check::check_against_capability_set,
         render::CaddyJsonRenderer,
     },
-    storage::{Storage, types::SnapshotId},
+    storage::{Storage, error::StorageError, types::SnapshotId},
 };
 
 use crate::{
@@ -242,6 +246,50 @@ impl CaddyApplier {
         }
     }
 
+    /// Write a `mutation.conflicted` audit row and return the typed outcome.
+    ///
+    /// Called when the CAS version check fails.  Returns `Ok(Conflicted { .. })`
+    /// so the caller can propagate it directly from `apply`.
+    async fn handle_conflict(
+        &self,
+        correlation_id: Ulid,
+        snapshot_id: &SnapshotId,
+        stale_version: i64,
+        current_version: i64,
+    ) -> Result<ApplyOutcome, ApplyError> {
+        let _ = self
+            .audit
+            .record(AuditAppend {
+                correlation_id,
+                actor: ActorRef::System {
+                    component: "caddy-applier".to_owned(),
+                },
+                event: AuditEvent::MutationConflicted,
+                target_kind: None,
+                target_id: None,
+                snapshot_id: Some(snapshot_id.clone()),
+                diff: None,
+                outcome: AuditOutcome::Error,
+                error_kind: Some("OptimisticConflict".to_owned()),
+                notes: Some(format!(
+                    "{{\"stale_version\":{stale_version},\"current_version\":{current_version}}}"
+                )),
+            })
+            .await;
+        tracing::warn!(
+            event = "apply.conflicted",
+            correlation_id = %correlation_id,
+            snapshot.id = %snapshot_id.0,
+            stale_version = stale_version,
+            current_version = current_version,
+            "optimistic conflict: stale expected_version"
+        );
+        Ok(ApplyOutcome::Conflicted {
+            stale_version,
+            current_version,
+        })
+    }
+
     /// Write a `config.applied` audit row after a successful load + equivalence
     /// check.
     async fn write_apply_succeeded_audit(&self, correlation_id: Ulid, snapshot_id: &SnapshotId) {
@@ -274,7 +322,7 @@ impl Applier for CaddyApplier {
     async fn apply(
         &self,
         snapshot: &Snapshot,
-        _expected_version: i64,
+        expected_version: i64,
     ) -> Result<ApplyOutcome, ApplyError> {
         let snapshot_id = snapshot.snapshot_id.clone();
         let config_version = snapshot.config_version;
@@ -283,6 +331,28 @@ impl Applier for CaddyApplier {
             .correlation_id
             .parse()
             .unwrap_or_else(|_| Ulid::new());
+
+        // Step 0 (Slice 7.5): CAS version check — BEGIN IMMEDIATE in storage.
+        // Prevents TOCTOU races between two concurrent apply() calls.
+        match self
+            .storage
+            .cas_advance_config_version(&self.instance_id, expected_version, &snapshot_id)
+            .await
+        {
+            Ok(_new_version) => {
+                // CAS succeeded; proceed with apply.
+            }
+            Err(StorageError::OptimisticConflict { observed, expected }) => {
+                return self
+                    .handle_conflict(correlation_id, &snapshot_id, expected, observed)
+                    .await;
+            }
+            Err(e) => {
+                return Err(ApplyError::Storage(format!(
+                    "cas_advance_config_version: {e}"
+                )));
+            }
+        }
 
         // Step 1: emit apply.started tracing event (in_scope avoids !Send guard
         // crossing an await point).

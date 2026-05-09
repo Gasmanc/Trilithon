@@ -89,6 +89,19 @@ impl Storage for BusyStorage {
     async fn expire_proposals(&self, _: UnixSeconds) -> Result<u32, StorageError> {
         panic!("not needed in this test")
     }
+
+    async fn current_config_version(&self, _: &str) -> Result<i64, StorageError> {
+        panic!("not needed in this test")
+    }
+
+    async fn cas_advance_config_version(
+        &self,
+        _: &str,
+        _: i64,
+        _: &SnapshotId,
+    ) -> Result<i64, StorageError> {
+        panic!("not needed in this test")
+    }
 }
 
 // ── Test clock ────────────────────────────────────────────────────────────────
