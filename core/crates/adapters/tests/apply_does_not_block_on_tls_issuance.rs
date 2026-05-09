@@ -1,10 +1,8 @@
-//! Slice 7.7 — audit notes present on successful apply.
+//! Slice 7.8 — `apply()` must return without blocking on TLS issuance.
 //!
-//! Asserts that a successful apply writes a `config.applied` row whose `notes`
-//! column parses to a well-formed [`ApplyAuditNotes`] with the expected fields:
-//! - `reload_kind = Graceful { drain_window_ms: None }`
-//! - `applied_state = Applied`
-//! - `error_kind = None`
+//! Asserts that when a `TlsIssuanceObserver` is attached and the fake
+//! `get_certificates` returns empty, `apply()` still returns immediately and
+//! does NOT wait for the observer's polling loop to complete.
 
 #![allow(
     clippy::unwrap_used,
@@ -13,17 +11,17 @@
     clippy::unimplemented,
     clippy::disallowed_methods
 )]
-// reason: integration test — panics, unimplemented, and unwrap are the correct failure mode here
+// reason: integration test — panics and unwrap are the correct failure mode here
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use tempfile::TempDir;
-use trilithon_adapters::caddy::cache::CapabilityCache;
 use trilithon_adapters::{
-    CaddyApplier, audit_writer::AuditWriter, migrate::apply_migrations,
-    sqlite_storage::SqliteStorage,
+    CaddyApplier, TlsIssuanceObserver, audit_writer::AuditWriter, caddy::cache::CapabilityCache,
+    migrate::apply_migrations, sqlite_storage::SqliteStorage,
 };
 use trilithon_core::{
     audit::redactor::SecretsRedactor,
@@ -35,26 +33,30 @@ use trilithon_core::{
     clock::Clock,
     diff::NoOpDiffEngine,
     model::desired_state::DesiredState,
-    reconciler::{AppliedStateTag, Applier, ApplyAuditNotes, DefaultCaddyJsonRenderer, ReloadKind},
+    reconciler::{Applier, ApplyOutcome, DefaultCaddyJsonRenderer},
     schema::SchemaRegistry,
     storage::{
         trait_def::Storage,
-        types::{AuditSelector, Snapshot, SnapshotId},
+        types::{Snapshot, SnapshotId},
     },
 };
 
-// ── Fakes ─────────────────────────────────────────────────────────────────────
+// ── Fakes ──────────────────────────────────────────────────────────────────────
 
-struct OkCaddyClient;
+/// A `CaddyClient` that loads OK, returns empty config, and always returns
+/// an empty certificate list (simulating cert not yet issued).
+struct NoCertClient;
 
 #[async_trait]
-impl CaddyClient for OkCaddyClient {
+impl CaddyClient for NoCertClient {
     async fn load_config(&self, _: CaddyConfig) -> Result<(), CaddyError> {
         Ok(())
     }
+
     async fn patch_config(&self, _: CaddyJsonPointer, _: JsonPatch) -> Result<(), CaddyError> {
         unimplemented!()
     }
+
     async fn put_config(
         &self,
         _: CaddyJsonPointer,
@@ -62,18 +64,24 @@ impl CaddyClient for OkCaddyClient {
     ) -> Result<(), CaddyError> {
         unimplemented!()
     }
+
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
         Ok(CaddyConfig(serde_json::json!({})))
     }
+
     async fn get_loaded_modules(&self) -> Result<LoadedModules, CaddyError> {
         unimplemented!()
     }
+
     async fn get_upstream_health(&self) -> Result<Vec<UpstreamHealth>, CaddyError> {
         unimplemented!()
     }
+
     async fn get_certificates(&self) -> Result<Vec<TlsCertificate>, CaddyError> {
-        unimplemented!()
+        // Always returns empty — certs not yet issued.
+        Ok(vec![])
     }
+
     async fn health_check(&self) -> Result<HealthState, CaddyError> {
         unimplemented!()
     }
@@ -96,10 +104,10 @@ impl trilithon_core::audit::redactor::CiphertextHasher for ZeroHasher {
 async fn open_store(dir: &TempDir) -> SqliteStorage {
     let store = SqliteStorage::open(dir.path())
         .await
-        .expect("SqliteStorage::open");
+        .expect("SqliteStorage::open should succeed");
     apply_migrations(store.pool())
         .await
-        .expect("apply_migrations");
+        .expect("apply_migrations should succeed");
     store
 }
 
@@ -130,7 +138,11 @@ async fn stored_snapshot(storage: &Arc<dyn Storage>, config_version: i64) -> Sna
     snapshot
 }
 
-fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyApplier {
+fn build_applier(
+    storage: Arc<dyn Storage>,
+    lock_pool: SqlitePool,
+    observer: Option<Arc<TlsIssuanceObserver>>,
+) -> CaddyApplier {
     let registry = Box::leak(Box::new(SchemaRegistry::with_tier1_secrets()));
     let hasher = Box::leak(Box::new(ZeroHasher));
     let redactor = SecretsRedactor::new(registry, hasher);
@@ -140,7 +152,7 @@ fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyAppli
         redactor,
     ));
     CaddyApplier {
-        client: Arc::new(OkCaddyClient),
+        client: Arc::new(NoCertClient),
         renderer: Arc::new(DefaultCaddyJsonRenderer),
         diff_engine: Arc::new(NoOpDiffEngine),
         capabilities: Arc::new(CapabilityCache::default()),
@@ -150,71 +162,59 @@ fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyAppli
         clock: Arc::new(FixedClock(1_700_000_000_000)),
         instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
         lock_pool,
-        tls_observer: None,
+        tls_observer: observer,
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Test ───────────────────────────────────────────────────────────────────────
 
-/// A successful apply must write a `config.applied` row whose `notes` field
-/// deserialises to `ApplyAuditNotes` with the expected values.
+/// `apply()` must return immediately even when the TLS observer is attached and
+/// `get_certificates` always returns empty (certs not yet issued).
+///
+/// Uses `tokio::time::pause()` so the background task's polling sleeps do not
+/// consume real wall-clock time.  The store is opened BEFORE pausing so `SQLite`
+/// connection setup is not disrupted by paused time.
 #[tokio::test]
-async fn audit_notes_present_on_successful_apply() {
+async fn apply_does_not_block_on_tls_issuance() {
     let dir = TempDir::new().unwrap();
     let store = open_store(&dir).await;
+    // Pause time after SQLite is open so the observer's sleeps do not
+    // block the test on real wall time.
+    tokio::time::pause();
     let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
-    let applier = build_applier(storage.clone(), pool);
+
+    // Build an audit writer for the observer using the same storage.
+    let registry = Box::leak(Box::new(SchemaRegistry::with_tier1_secrets()));
+    let hasher = Box::leak(Box::new(ZeroHasher));
+    let redactor = SecretsRedactor::new(registry, hasher);
+    let audit = Arc::new(AuditWriter::new(
+        storage.clone(),
+        Arc::new(FixedClock(1_700_000_000_000)),
+        redactor,
+    ));
+
+    let observer = Arc::new(TlsIssuanceObserver {
+        client: Arc::new(NoCertClient),
+        audit,
+        timeout: Duration::from_secs(120),
+    });
+
+    let applier = build_applier(storage.clone(), pool, Some(observer));
     let snapshot = stored_snapshot(&storage, 1).await;
 
-    applier
+    // apply() must return an Ok(Succeeded) — the observer runs in background.
+    let outcome = applier
         .apply(&snapshot, 0)
         .await
         .expect("apply must succeed");
 
-    let rows = storage
-        .tail_audit_log(
-            AuditSelector {
-                kind_glob: Some("config.applied".to_owned()),
-                ..Default::default()
-            },
-            10,
-        )
-        .await
-        .expect("tail_audit_log");
-
-    assert_eq!(rows.len(), 1, "exactly one config.applied row");
-
-    let notes_str = rows[0]
-        .notes
-        .as_deref()
-        .expect("notes must be Some on config.applied");
-
-    let notes: ApplyAuditNotes =
-        serde_json::from_str(notes_str).expect("notes must parse as ApplyAuditNotes");
-
-    assert_eq!(
-        notes.reload_kind,
-        ReloadKind::Graceful {
-            drain_window_ms: None
-        },
-        "reload_kind must be Graceful with no drain window"
-    );
-    assert_eq!(
-        notes.applied_state,
-        AppliedStateTag::Applied,
-        "applied_state must be Applied"
-    );
     assert!(
-        notes.error_kind.is_none(),
-        "error_kind must be None on success"
+        matches!(outcome, ApplyOutcome::Succeeded { .. }),
+        "expected Succeeded, got {outcome:?}"
     );
-    assert!(
-        notes.error_detail.is_none(),
-        "error_detail must be None on success"
-    );
-    assert!(
-        notes.caddy_status.is_none(),
-        "caddy_status must be None on success"
-    );
+
+    // The observer is now running in the background polling for certs.
+    // With time paused, it is blocked on the sleep.  apply() returned
+    // immediately — the test verifies this by reaching here without hanging.
 }

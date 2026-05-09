@@ -188,6 +188,7 @@ fn build_applier(
         clock: Arc::new(FixedClock(1_700_000_000_000)),
         instance_mutex,
         lock_pool,
+        tls_observer: None,
     }
 }
 

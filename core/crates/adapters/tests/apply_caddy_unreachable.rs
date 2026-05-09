@@ -151,6 +151,7 @@ fn build_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyAppli
         clock: Arc::new(FixedClock(1_700_000_000_000)),
         instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
         lock_pool,
+        tls_observer: None,
     }
 }
 

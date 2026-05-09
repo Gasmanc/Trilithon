@@ -56,6 +56,7 @@ use crate::{
     audit_writer::{ActorRef, AuditAppend, AuditWriter},
     caddy::cache::CapabilityCache,
     storage_sqlite::locks::{LockError, acquire_apply_lock},
+    tls_observer::TlsIssuanceObserver,
 };
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,11 @@ pub struct CaddyApplier {
     /// Kept separate from the `storage` field so that advisory lock
     /// acquisition does not go through the `Storage` trait abstraction.
     pub lock_pool: SqlitePool,
+    /// Optional TLS-issuance observer.  When `Some`, the observer is spawned
+    /// as a background Tokio task after every successful apply so that it can
+    /// poll Caddy for certificate issuance and emit a follow-up audit row
+    /// without blocking the `apply()` return path.
+    pub tls_observer: Option<Arc<TlsIssuanceObserver>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +513,17 @@ impl Applier for CaddyApplier {
             // Step 7: write config.applied audit row.
             self.write_apply_succeeded_audit(correlation_id, &snapshot_id)
                 .await;
+
+            // Step 7b (Slice 7.8): if a TLS observer is configured, spawn a
+            // background task to poll for certificate issuance.  The apply()
+            // return path is unaffected — the task runs independently.
+            if let Some(observer) = self.tls_observer.clone() {
+                let sid = snapshot_id.clone();
+                tokio::spawn(async move {
+                    // Pass empty hostnames; the observer detects certs via polling.
+                    observer.observe(correlation_id, vec![], Some(sid)).await;
+                });
+            }
 
             // Step 8: emit apply.succeeded tracing event.
             let latency_ms = {

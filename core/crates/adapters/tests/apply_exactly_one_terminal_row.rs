@@ -266,6 +266,7 @@ fn make_applier(
         clock: Arc::new(FixedClock(1_700_000_000_000)),
         instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
         lock_pool,
+        tls_observer: None,
     }
 }
 

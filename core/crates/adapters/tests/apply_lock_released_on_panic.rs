@@ -200,6 +200,7 @@ fn build_panicking_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> 
         clock: Arc::new(FixedClock(1_700_000_000_000)),
         instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
         lock_pool,
+        tls_observer: None,
     }
 }
 
@@ -223,6 +224,7 @@ fn build_ok_applier(storage: Arc<dyn Storage>, lock_pool: SqlitePool) -> CaddyAp
         clock: Arc::new(FixedClock(1_700_000_000_000)),
         instance_mutex: Arc::new(tokio::sync::Mutex::new(())),
         lock_pool,
+        tls_observer: None,
     }
 }
 
