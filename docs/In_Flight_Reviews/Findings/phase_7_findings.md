@@ -1,3 +1,22 @@
+## Slice 7.8
+**Status:** complete
+**Date:** 2026-05-10
+**Commit:** d45dcbb
+**Summary:** Added `TlsIssuanceObserver` (in `core/crates/adapters/src/tls_observer.rs`) that polls Caddy's `get_certificates` every 5 s and emits a `config.applied` follow-up row (applied_state = "tls-issuing") when all requested hostnames are covered, or a `config.apply-failed` row (error_kind = "TlsIssuanceTimeout") when the deadline expires. `CaddyApplier` gains an optional `tls_observer` field that is `tokio::spawn`-ed as a background task after a successful apply. Twelve existing test struct literals received `tls_observer: None`. Three new integration tests verify the non-blocking guarantee, the follow-up success row, and the timeout row.
+
+### Simplify Findings
+1. `tokio::time::pause()` must be called AFTER `SqliteStorage::open` completes — SQLite connection setup uses real-time internal deadlines that fail under paused time. Both time-sensitive tests were changed from `#[tokio::test(start_paused = true)]` to a manual `pause()` call after the store is open.
+2. The observer passes `snapshot_id = None` in tests to avoid FK constraint violations when no snapshot row exists; the audit INSERT silently discards the error (via `let _ = audit.record(...)`), so tests that pass a fabricated SnapshotId would produce 0 rows.
+3. `sort_keys` and `notes_to_string` helpers are duplicated from `applier_caddy.rs` into `tls_observer.rs` rather than shared, because three-use extraction rule is not yet reached; both are simple private helpers.
+
+### Items Fixed Inline
+- Changed `self.tls_observer.as_ref().cloned()` to `self.tls_observer.clone()` to fix `clippy::option_as_ref_cloned`.
+- Changed `is_none_or(|v| v.is_null())` to `is_none_or(serde_json::Value::is_null)` to fix `clippy::redundant_closure_for_method_calls`.
+- Multiple rustfmt reformats: long method chains, doc-comment backticks, single-line import groups.
+
+### Items Left Unfixed
+none
+
 ## Slice 7.7
 **Status:** complete
 **Date:** 2026-05-09

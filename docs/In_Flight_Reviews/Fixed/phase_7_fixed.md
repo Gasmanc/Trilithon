@@ -1,5 +1,7 @@
 | Unit | Title | Type | Date | Commit |
 |------|-------|------|------|--------|
+| 7.8 | Changed tls_observer.as_ref().cloned() to .clone() to fix clippy::option_as_ref_cloned — core/crates/adapters/src/applier_caddy.rs | quality | 2026-05-10 | d45dcbb |
+| 7.8 | Changed is_none_or closure to method reference to fix clippy::redundant_closure_for_method_calls — core/crates/adapters/tests/apply_emits_tls_issuance_followup_row.rs | quality | 2026-05-10 | d45dcbb |
 | 7.7 | Removed unnecessary `status as u16` cast — CaddyError::BadStatus.status is already u16 — core/crates/adapters/src/applier_caddy.rs | quality | 2026-05-09 | 9e2f66a |
 | 7.7 | Moved NeverCalledClient to module scope to fix clippy::items_after_statements — core/crates/adapters/tests/apply_exactly_one_terminal_row.rs | quality | 2026-05-09 | 9e2f66a |
 | 7.6 | Replaced `let _ = spawn_blocking` with `drop(spawn_blocking(...))` to fix clippy::let_underscore_future — core/crates/adapters/src/storage_sqlite/locks.rs | quality | 2026-05-09 | 868e852 |
