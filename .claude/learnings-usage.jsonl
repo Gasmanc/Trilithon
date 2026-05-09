@@ -24,3 +24,15 @@
 {"event":"surfaced","phase_id":"2","slug":"sqlite-manual-tx-rollback-early-exit","context":"review","ts":"2026-05-07T00:00:00Z"}
 {"event":"surfaced","phase_id":"2","slug":"sqlite-extended-error-codes-mask-2026-05-03","context":"review","ts":"2026-05-07T00:00:00Z"}
 {"event":"surfaced","phase_id":"2","slug":"storage-trait-error-variant-parity","context":"review","ts":"2026-05-07T00:00:00Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "caddy-admin-api-put-not-json-patch", "context": "pre-phase", "ts": "2026-05-08T22:33:58Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "apply-layer-self-defend-missing-field", "context": "pre-phase", "ts": "2026-05-08T22:33:58Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "audit-diff-before-from-original-state", "context": "pre-phase", "ts": "2026-05-08T22:33:58Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "sqlite-begin-immediate-read-check-write", "context": "pre-phase", "ts": "2026-05-08T22:33:58Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "storage-trait-error-variant-parity", "context": "pre-phase", "ts": "2026-05-08T22:33:58Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "sqlite-begin-immediate-read-check-write", "context": "review", "ts": "2026-05-09T15:49:13Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "sqlite-manual-tx-rollback-early-exit", "context": "review", "ts": "2026-05-09T15:49:13Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "version-counter-checked-add-overflow", "context": "review", "ts": "2026-05-09T15:49:13Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "audit-diff-before-from-original-state", "context": "review", "ts": "2026-05-09T15:49:13Z"}
+{"event": "surfaced", "phase_id": "7", "slug": "apply-layer-self-defend-missing-field", "context": "review", "ts": "2026-05-09T15:49:13Z"}
+{"event": "applied", "phase_id": "7", "slug": "sqlite-begin-immediate-read-check-write", "matched_finding": "TRY_INSERT_LOCK_USES_DEFERRED_NOT_IMMEDIATE", "ts": "2026-05-10T00:00:00Z"}
+{"event": "applied", "phase_id": "7", "slug": "sqlite-manual-tx-rollback-early-exit", "matched_finding": "COMMIT FAILURE SILENTLY RETURNS Ok WHILE APPLIED VERSION STAYS UNCHANGED", "ts": "2026-05-10T00:00:00Z"}
