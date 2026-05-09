@@ -26,7 +26,7 @@
 
 ---
 
-## Slice 8.1 — `DiffEngine` structural diff over canonical JSON
+## Slice 8.1 [standard] — `DiffEngine` structural diff over canonical JSON
 
 ### Goal
 
@@ -145,7 +145,7 @@ None.
 
 ---
 
-## Slice 8.2 — Caddy-managed-paths ignore list (architecture §7.2)
+## Slice 8.2 [trivial] — Caddy-managed-paths ignore list (architecture §7.2)
 
 ### Goal
 
@@ -170,7 +170,10 @@ use crate::diff::JsonPointer;
 pub const CADDY_MANAGED_PATH_PATTERNS: &[&str] = &[
     // TLS issuance state, populated by Caddy's ACME machinery.
     "^/apps/tls/automation/policies/[^/]+/managed_certificates(/.*)?$",
-    "^/storage/.*",
+    // Caddy-owned storage sub-paths only — NOT the full /storage/ namespace.
+    // /storage/trilithon-owner (ownership sentinel) must NOT match.
+    "^/storage/acme(/.*)?$",
+    "^/storage/ocsp(/.*)?$",
     // Upstream health caches surfaced via /reverse_proxy/upstreams.
     "^/apps/http/servers/[^/]+/routes/[^/]+/handle/[^/]+/upstreams/[^/]+/health(/.*)?$",
     // automatic_https populates this when the user has not.
@@ -220,7 +223,7 @@ None.
 
 ---
 
-## Slice 8.3 — `DriftEvent`, `DiffCounts`, and `DesiredState::unknown_extensions` round-trip
+## Slice 8.3 [standard] — `DriftEvent`, `DiffCounts`, and `DesiredState::unknown_extensions` round-trip
 
 ### Goal
 
@@ -306,7 +309,7 @@ None.
 
 ---
 
-## Slice 8.4 — Three resolution APIs in core: adopt, reapply, defer
+## Slice 8.4 [standard] — Three resolution APIs in core: adopt, reapply, defer
 
 ### Goal
 
@@ -320,6 +323,7 @@ Provide pure-core functions that translate a drift event into exactly one mutati
 ### Files to create or modify
 
 - `core/crates/core/src/diff/resolve.rs` — the three resolvers.
+- `core/crates/core/src/reconciler/applier.rs` — add match arms for `ReplaceDesiredState`, `ReapplySnapshot`, and `DriftDeferred` variants (cross-phase composition with Phase 7 applier).
 
 ### Signatures and shapes
 
@@ -390,7 +394,7 @@ None.
 
 ---
 
-## Slice 8.5 — `DriftDetector` scheduler with `tokio::time::interval` and apply-in-flight skip
+## Slice 8.5 [cross-cutting] — `DriftDetector` scheduler with `tokio::time::interval` and apply-in-flight skip
 
 ### Goal
 
@@ -543,7 +547,7 @@ None directly (slice 8.6 emits `config.drift-detected`).
 
 ---
 
-## Slice 8.6 — Drift audit row writer plus deduplication per cycle
+## Slice 8.6 [standard] — Drift audit row writer plus deduplication per cycle
 
 ### Goal
 
