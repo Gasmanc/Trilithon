@@ -1,3 +1,20 @@
+## Slice 7.5
+**Status:** complete
+**Date:** 2026-05-09
+**Commit:** a4921b7
+**Summary:** Added optimistic concurrency control to the apply path. `StorageError::OptimisticConflict` added to core error types. `Storage` trait gained `current_config_version` and `cas_advance_config_version` methods, implemented on both `InMemoryStorage` and `SqliteStorage` (SQLite impl uses `BEGIN IMMEDIATE` for TOCTOU safety). `CaddyApplier::apply` now performs a CAS check before executing: on conflict it writes a `mutation.conflicted` audit row and returns `Ok(ApplyOutcome::Conflicted)` (typed outcome, not Err). Three integration tests cover the stale-version rejection, pointer-unchanged-on-conflict, and two-actor race scenarios. Gate green.
+
+### Simplify Findings
+1. `applier_caddy.rs` match arm on `OptimisticConflict` used a full-path qualifier (`trilithon_core::storage::error::StorageError::OptimisticConflict`) when `StorageError` was already importable — added `use` import and simplified the arm.
+2. `InMemoryStorage::current_config_version` and `cas_advance_config_version` filtered snapshots using `s.actor.is_empty()` as a proxy for `caddy_instance_id` (Snapshot has no such field) — removed the spurious filter; V1 is single-instance so all values are iterated directly.
+
+### Items Fixed Inline
+- Added `StorageError` import to `applier_caddy.rs`; simplified match arm from full-path to `StorageError::OptimisticConflict`.
+- Removed incorrect `instance_id == "local" || s.actor.is_empty()` filter from `InMemoryStorage` CAS methods; replaced parameter with `_instance_id`.
+
+### Items Left Unfixed
+none
+
 ## Slice 7.4
 **Status:** complete
 **Date:** 2026-05-09
