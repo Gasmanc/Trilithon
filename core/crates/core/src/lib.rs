@@ -16,6 +16,7 @@ pub mod exit;
 pub mod lifecycle;
 pub mod model;
 pub mod mutation;
+pub mod reconciler;
 pub mod schema;
 pub mod storage;
 

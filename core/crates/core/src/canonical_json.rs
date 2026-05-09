@@ -58,7 +58,7 @@ pub fn to_canonical_string(state: &DesiredState) -> Result<String, serde_json::E
 /// - Arrays: elements are canonicalised in place (order is preserved).
 /// - Numbers: whole-valued floats are converted to integers.
 /// - Everything else: unchanged.
-fn canonicalise_value(value: Value) -> Value {
+pub(crate) fn canonicalise_value(value: Value) -> Value {
     match value {
         Value::Object(map) => {
             let mut sorted: Vec<(String, Value)> = map

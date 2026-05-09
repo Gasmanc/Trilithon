@@ -8,6 +8,7 @@ use crate::model::{
     global::GlobalConfig,
     identifiers::{PolicyId, PresetId, RouteId, UpstreamId},
     policy::{PolicyAttachment, PresetVersion},
+    primitive::JsonPointer,
     route::Route,
     tls::TlsConfig,
     upstream::Upstream,
@@ -33,6 +34,15 @@ pub struct DesiredState {
     pub tls: TlsConfig,
     /// Global proxy configuration.
     pub global: GlobalConfig,
+    /// Opaque JSON extensions to be merged into the rendered Caddy config.
+    ///
+    /// Keys are RFC 6901 JSON Pointers pointing to paths in the Caddy
+    /// configuration tree. Values are merged after the Trilithon-owned keys
+    /// are written; a collision with a Trilithon-owned key is an error.
+    ///
+    /// This field MUST NOT be used to overwrite keys managed by the renderer.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unknown_extensions: BTreeMap<JsonPointer, serde_json::Value>,
 }
 
 impl DesiredState {

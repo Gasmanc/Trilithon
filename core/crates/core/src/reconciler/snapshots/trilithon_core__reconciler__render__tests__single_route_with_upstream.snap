@@ -1,0 +1,42 @@
+---
+source: crates/core/src/reconciler/render.rs
+expression: rendered_up
+---
+{
+  "@id": "trilithon-owner-local",
+  "apps": {
+    "http": {
+      "servers": {
+        "trilithon": {
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [
+                    {
+                      "dial": "127.0.0.1:8080"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "api.example.com"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "tls": {
+      "automation": {}
+    }
+  }
+}

@@ -1,0 +1,23 @@
+---
+source: crates/core/src/reconciler/render.rs
+assertion_line: 806
+expression: rendered
+---
+{
+  "@id": "trilithon-owner-local",
+  "apps": {
+    "http": {
+      "servers": {
+        "trilithon": {
+          "listen": [
+            ":443"
+          ],
+          "routes": []
+        }
+      }
+    },
+    "tls": {
+      "automation": {}
+    }
+  }
+}

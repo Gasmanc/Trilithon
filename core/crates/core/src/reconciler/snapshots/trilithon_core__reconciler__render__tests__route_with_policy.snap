@@ -1,0 +1,41 @@
+---
+source: crates/core/src/reconciler/render.rs
+expression: rendered_policy
+---
+{
+  "@id": "trilithon-owner-local",
+  "apps": {
+    "http": {
+      "servers": {
+        "trilithon": {
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "policy": {
+                    "rate_limit": 100
+                  },
+                  "upstreams": []
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "policy.example.com"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "tls": {
+      "automation": {}
+    }
+  }
+}
