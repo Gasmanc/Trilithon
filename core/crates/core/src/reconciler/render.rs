@@ -305,11 +305,8 @@ fn build_handler(
     h.insert("upstreams".to_owned(), Value::Array(upstream_values));
 
     // Header manipulation.
-    let header_ops = build_header_ops(route);
-    if let Value::Object(ref ops_map) = header_ops {
-        if !ops_map.is_empty() {
-            h.insert("headers".to_owned(), header_ops);
-        }
+    if let Some(header_ops) = build_header_ops(route) {
+        h.insert("headers".to_owned(), header_ops);
     }
 
     // Policy attachment body is embedded in the handler for Phase 7.
@@ -368,19 +365,25 @@ fn resolve_upstream_dial(
 }
 
 /// Build the Caddy header operations object for a route.
-fn build_header_ops(route: &Route) -> Value {
-    let mut request_ops: Vec<Value> = Vec::new();
-    let mut response_ops: Vec<Value> = Vec::new();
-
-    for op in &route.headers.request {
-        request_ops.push(header_op_to_value(op));
-    }
-    for op in &route.headers.response {
-        response_ops.push(header_op_to_value(op));
-    }
+///
+/// Returns `None` when the route has no header manipulation rules so the
+/// caller can skip emitting the `"headers"` key entirely.
+fn build_header_ops(route: &Route) -> Option<Value> {
+    let request_ops: Vec<Value> = route
+        .headers
+        .request
+        .iter()
+        .map(header_op_to_value)
+        .collect();
+    let response_ops: Vec<Value> = route
+        .headers
+        .response
+        .iter()
+        .map(header_op_to_value)
+        .collect();
 
     if request_ops.is_empty() && response_ops.is_empty() {
-        return Value::Object(Map::new());
+        return None;
     }
 
     let mut headers: Map<String, Value> = Map::new();
@@ -390,7 +393,7 @@ fn build_header_ops(route: &Route) -> Value {
     if !response_ops.is_empty() {
         headers.insert("response".to_owned(), Value::Array(response_ops));
     }
-    Value::Object(headers)
+    Some(Value::Object(headers))
 }
 
 /// Convert a single [`HeaderOp`] to its Caddy JSON representation.

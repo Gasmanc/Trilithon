@@ -24,7 +24,7 @@
 //! 7. Emit `apply.succeeded` tracing event.
 //! 8. Return `ApplyOutcome::Succeeded { .. }`.
 //!
-//! Advisory locks and TLS-state separation land in subsequent slices (7.6, 7.8).
+//! Advisory locks (Slice 7.6) and TLS-state separation (Slice 7.8) are both implemented.
 //!
 //! # Cross-references
 //!
@@ -147,6 +147,44 @@ impl CaddyApplier {
 // ---------------------------------------------------------------------------
 
 impl CaddyApplier {
+    /// Write a `caddy.unreachable` audit row for transport errors (`Unreachable` and
+    /// `Timeout`).  Both branches share identical audit note structure; only
+    /// `detail` differs.
+    async fn write_unreachable_audit(
+        &self,
+        correlation_id: Ulid,
+        snapshot_id: &SnapshotId,
+        detail: &str,
+    ) {
+        let audit_notes = ApplyAuditNotes {
+            reload_kind: ReloadKind::Graceful {
+                drain_window_ms: None,
+            },
+            applied_state: AppliedStateTag::Applied,
+            drain_window_ms: None,
+            error_kind: Some("CaddyUnreachable".to_owned()),
+            error_detail: Some(detail.to_owned()),
+            caddy_status: None,
+        };
+        let _ = self
+            .audit
+            .record(AuditAppend {
+                correlation_id,
+                actor: ActorRef::System {
+                    component: "caddy-applier".to_owned(),
+                },
+                event: AuditEvent::CaddyUnreachable,
+                target_kind: None,
+                target_id: None,
+                snapshot_id: Some(snapshot_id.clone()),
+                diff: None,
+                outcome: AuditOutcome::Error,
+                error_kind: Some("CaddyUnreachable".to_owned()),
+                notes: Some(notes_to_string(&audit_notes)),
+            })
+            .await;
+    }
+
     /// Issue `POST /load` and handle transport / 4xx errors.
     ///
     /// Returns:
@@ -166,63 +204,13 @@ impl CaddyApplier {
         match self.client.load_config(caddy_config).await {
             Ok(()) => Ok(None),
             Err(CaddyError::Unreachable { detail }) => {
-                let audit_notes = ApplyAuditNotes {
-                    reload_kind: ReloadKind::Graceful {
-                        drain_window_ms: None,
-                    },
-                    applied_state: AppliedStateTag::Applied,
-                    drain_window_ms: None,
-                    error_kind: Some("CaddyUnreachable".to_owned()),
-                    error_detail: Some(detail.clone()),
-                    caddy_status: None,
-                };
-                let _ = self
-                    .audit
-                    .record(AuditAppend {
-                        correlation_id,
-                        actor: ActorRef::System {
-                            component: "caddy-applier".to_owned(),
-                        },
-                        event: AuditEvent::CaddyUnreachable,
-                        target_kind: None,
-                        target_id: None,
-                        snapshot_id: Some(snapshot_id.clone()),
-                        diff: None,
-                        outcome: AuditOutcome::Error,
-                        error_kind: Some("CaddyUnreachable".to_owned()),
-                        notes: Some(notes_to_string(&audit_notes)),
-                    })
+                self.write_unreachable_audit(correlation_id, snapshot_id, &detail)
                     .await;
                 Err(ApplyError::Unreachable { detail })
             }
             Err(CaddyError::Timeout { seconds }) => {
                 let detail = format!("operation timed out after {seconds}s");
-                let audit_notes = ApplyAuditNotes {
-                    reload_kind: ReloadKind::Graceful {
-                        drain_window_ms: None,
-                    },
-                    applied_state: AppliedStateTag::Applied,
-                    drain_window_ms: None,
-                    error_kind: Some("CaddyUnreachable".to_owned()),
-                    error_detail: Some(detail.clone()),
-                    caddy_status: None,
-                };
-                let _ = self
-                    .audit
-                    .record(AuditAppend {
-                        correlation_id,
-                        actor: ActorRef::System {
-                            component: "caddy-applier".to_owned(),
-                        },
-                        event: AuditEvent::CaddyUnreachable,
-                        target_kind: None,
-                        target_id: None,
-                        snapshot_id: Some(snapshot_id.clone()),
-                        diff: None,
-                        outcome: AuditOutcome::Error,
-                        error_kind: Some("CaddyUnreachable".to_owned()),
-                        notes: Some(notes_to_string(&audit_notes)),
-                    })
+                self.write_unreachable_audit(correlation_id, snapshot_id, &detail)
                     .await;
                 Err(ApplyError::Unreachable { detail })
             }
@@ -374,7 +362,7 @@ impl CaddyApplier {
                 outcome: AuditOutcome::Error,
                 error_kind: Some("OptimisticConflict".to_owned()),
                 notes: Some(format!(
-                    "{{\"stale_version\":{stale_version},\"current_version\":{current_version}}}"
+                    r#"{{"current_version":{current_version},"stale_version":{stale_version}}}"#
                 )),
             })
             .await;
