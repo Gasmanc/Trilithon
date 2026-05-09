@@ -12,6 +12,7 @@ pub mod caddy;
 pub mod canonical_json;
 pub mod clock;
 pub mod config;
+pub mod diff;
 pub mod exit;
 pub mod lifecycle;
 pub mod model;

@@ -1,12 +1,13 @@
-//! Apply-outcome types consumed by the HTTP layer (Phase 9) and produced by
-//! the applier (Phase 7+).
+//! Apply-outcome types and the `Applier` trait consumed by the HTTP layer
+//! (Phase 9) and produced by the applier (Phase 7+).
 //!
-//! This module contains **pure types only** — no behaviour, no I/O. The
-//! applier implementation populates these types at apply-time.
+//! Type-only definitions live here; the concrete implementation lives in
+//! `crates/adapters/src/applier_caddy.rs`.
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::storage::types::SnapshotId;
+use crate::storage::types::{Snapshot, SnapshotId};
 
 // ---------------------------------------------------------------------------
 // Apply outcome
@@ -162,6 +163,61 @@ pub enum ApplyError {
     /// A storage-layer error was encountered during the apply sequence.
     #[error("storage: {0}")]
     Storage(String),
+}
+
+// ---------------------------------------------------------------------------
+// Validation report
+// ---------------------------------------------------------------------------
+
+/// A single validation failure returned by [`Applier::validate`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ValidationFailure {
+    /// JSON pointer to the failing element within the desired state.
+    pub path: String,
+    /// Human-readable description of the failure.
+    pub message: String,
+}
+
+/// Summary of a pre-apply validation pass.
+///
+/// Phase 12 populates this type; in earlier phases `failures` is always empty.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ValidationReport {
+    /// Validation failures found; empty means the configuration is valid.
+    pub failures: Vec<ValidationFailure>,
+}
+
+// ---------------------------------------------------------------------------
+// Applier trait
+// ---------------------------------------------------------------------------
+
+/// The single path that drives Caddy from desired state to live state.
+///
+/// Implementations live in `adapters`; this trait is defined here so that
+/// `core` can reference it without a cross-layer dependency.
+#[async_trait]
+pub trait Applier: Send + Sync + 'static {
+    /// Apply `snapshot` to the running Caddy instance.
+    ///
+    /// `expected_version` is the config version the caller observed; the
+    /// applier uses it for optimistic-concurrency checking (Slice 7.5).
+    async fn apply(
+        &self,
+        snapshot: &Snapshot,
+        expected_version: i64,
+    ) -> Result<ApplyOutcome, ApplyError>;
+
+    /// Validate `snapshot` without applying it.
+    ///
+    /// Phase 12 preflight populates the report; earlier phases return an
+    /// empty report.
+    async fn validate(&self, snapshot: &Snapshot) -> Result<ValidationReport, ApplyError>;
+
+    /// Force a rollback to the snapshot identified by `target`.
+    ///
+    /// Retrieves the target snapshot from storage, then applies it via
+    /// [`Self::apply`].
+    async fn rollback(&self, target: &SnapshotId) -> Result<ApplyOutcome, ApplyError>;
 }
 
 // ---------------------------------------------------------------------------

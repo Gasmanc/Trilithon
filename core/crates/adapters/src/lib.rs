@@ -7,6 +7,8 @@
 #[cfg(test)]
 pub mod test_support;
 
+pub mod applier_caddy;
+pub use applier_caddy::CaddyApplier;
 pub mod audit_writer;
 pub use audit_writer::AuditWriter;
 pub mod sha256_hasher;

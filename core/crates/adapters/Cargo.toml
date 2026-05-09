@@ -143,5 +143,21 @@ path = "tests/audit_row_has_non_null_correlation_id.rs"
 name = "background_task_seeds_per_iteration"
 path = "tests/background_task_seeds_per_iteration.rs"
 
+[[test]]
+name = "apply_happy_path"
+path = "tests/apply_happy_path.rs"
+
+[[test]]
+name = "apply_caddy_400"
+path = "tests/apply_caddy_400.rs"
+
+[[test]]
+name = "apply_caddy_unreachable"
+path = "tests/apply_caddy_unreachable.rs"
+
+[[test]]
+name = "apply_post_load_equivalence_check"
+path = "tests/apply_post_load_equivalence_check.rs"
+
 [lints]
 workspace = true
