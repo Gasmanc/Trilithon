@@ -1,3 +1,40 @@
+## Slice 7.7
+**Status:** complete
+**Date:** 2026-05-09
+**Commit:** 9e2f66a
+**Summary:** Added `ApplyAuditNotes` and `AppliedStateTag` types to `core/crates/core/src/reconciler/applier.rs` and wired them into the three terminal audit-write sites in `applier_caddy.rs` (config.applied, config.apply-failed, caddy.unreachable). Notes are serialised to sorted-key JSON using a local `sort_keys` helper (canonical_json in core accepts only `DesiredState`, not generic types). Three new integration tests verify notes presence, error_kind on failure, and the exactly-one-terminal-row invariant across four scenarios.
+
+### Simplify Findings
+1. `to_canonical_bytes` in `core` is typed to `&DesiredState` rather than generic `Serialize`. A `sort_keys` helper is used in the adapter layer as a lightweight substitute for the canonical key-sorting guarantee.
+2. `load_or_fail` exceeded the 100-line clippy limit after structured notes construction was added; suppressed with an inline allow with justification rather than further extraction, as the three error branches are already minimally structured.
+
+### Items Fixed Inline
+- Removed unnecessary `status as u16` cast (status field in `CaddyError::BadStatus` is already `u16`).
+- Moved `NeverCalledClient` struct from inside the conflict test function to module scope to satisfy `clippy::items_after_statements`.
+
+### Items Left Unfixed
+none
+
+## Slice 7.6
+**Status:** complete
+**Date:** 2026-05-09
+**Commit:** 868e852
+**Summary:** Added at-most-one-apply-in-flight guarantee per `caddy_instance_id` by combining a `tokio::sync::Mutex` (in-process) with a `apply_locks` SQLite table (cross-process). Migration `0007_apply_locks.sql` creates the table; `storage_sqlite::locks` module implements `acquire_apply_lock` with RAII `AcquiredLock` guard and stale-lock reaping via `kill -0`; `CaddyApplier` gains `instance_mutex` and `lock_pool` fields; `ApplyError::LockContested` is the new typed error for contested locks. Gate fails only on 2 pre-existing lib-test failures unrelated to Slice 7.6 (`storage_sqlite::snapshots` CAS tests, broken before this slice).
+
+### Simplify Findings
+1. `LockError::Storage` stores errors as `String` rather than `StorageError` value — forced by `StorageError` not implementing `Clone`. Downcast-free but loses type precision; acceptable for an error type used only in the adapter layer.
+2. `AcquiredLock::drop` spawns a blocking thread that builds a new `current_thread` runtime to drive the async DELETE. Slightly heavyweight but the only safe option from a sync `Drop` context without a handle to the existing runtime.
+
+### Items Fixed Inline
+- Replaced `let _ = task::spawn_blocking(...)` with `drop(task::spawn_blocking(...))` to satisfy `clippy::let_underscore_future`.
+- Changed `process_alive` to use `.is_ok_and(|o| o.status.success())` instead of `.map(...).unwrap_or(false)` per `clippy::map_unwrap_or`.
+- Added `#[allow(clippy::cast_possible_wrap)]` with expiry comment for unix timestamp cast.
+- Removed unused `AtomicI32` import from 32-caller concurrency test.
+- Replaced over-indented doc list with prose to satisfy `clippy::doc_overindented_list_items`.
+
+### Items Left Unfixed
+- Pre-existing lib-test failures in `storage_sqlite::snapshots::tests` (CAS advance tests) — broken before this slice, unrelated to Slice 7.6 changes.
+
 ## Slice 7.5
 **Status:** complete
 **Date:** 2026-05-09
