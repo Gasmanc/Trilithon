@@ -626,6 +626,141 @@ pub trait CaddyDiffEngine: Send + Sync + 'static {
 }
 
 // ---------------------------------------------------------------------------
+// ObjectKind — classifies a JSON pointer to a Caddy object category
+// ---------------------------------------------------------------------------
+
+/// High-level category of a Caddy configuration object.
+///
+/// Used by [`DiffCounts`] to bucket [`DiffEntry`] instances when producing a
+/// [`DriftEvent`] summary.
+#[derive(
+    Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+pub enum ObjectKind {
+    /// An HTTP route (`/apps/http/servers/*/routes/*`).
+    Route,
+    /// An upstream definition.
+    Upstream,
+    /// A TLS configuration entry (`/apps/tls/*`).
+    Tls,
+    /// An HTTP server (`/apps/http/servers/*`).
+    Server,
+    /// A policy attachment.
+    Policy,
+    /// Any path not matched by the above patterns.
+    Other,
+}
+
+impl ObjectKind {
+    /// Classify a [`JsonPointer`] into an [`ObjectKind`] using static prefix
+    /// matching.
+    ///
+    /// Patterns are evaluated longest-first so that more specific matches
+    /// shadow broader ones.
+    #[must_use]
+    pub fn classify(path: &JsonPointer) -> Self {
+        let p = path.as_str();
+        // Most-specific patterns first.
+        if segment_match(p, &["/apps", "/http", "/servers", "*", "/routes", "*"]) {
+            Self::Route
+        } else if segment_match(p, &["/apps", "/tls", "*"]) {
+            Self::Tls
+        } else if segment_match(p, &["/apps", "/http", "/servers", "*"]) {
+            Self::Server
+        } else {
+            Self::Other
+        }
+    }
+}
+
+/// Match `path` against a pattern where `"*"` matches any single segment.
+///
+/// The path must begin with the full pattern (may have additional trailing
+/// segments) for the match to succeed.
+fn segment_match(path: &str, pattern: &[&str]) -> bool {
+    // Strip leading slash; split into segments.
+    let mut segs = path.trim_start_matches('/').split('/');
+    for &pat in pattern {
+        match segs.next() {
+            None => return false,
+            Some(seg) => {
+                if pat != "*" && pat.trim_start_matches('/') != seg {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// DiffCounts — per-kind summary of diff entries
+// ---------------------------------------------------------------------------
+
+/// Count of added, removed, and modified entries for a single [`ObjectKind`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DiffCounts {
+    /// Number of entries added.
+    pub added: u32,
+    /// Number of entries removed.
+    pub removed: u32,
+    /// Number of entries modified.
+    pub modified: u32,
+}
+
+impl DiffCounts {
+    /// Accumulate one [`DiffEntry`] into the appropriate counter.
+    const fn tally(&mut self, entry: &DiffEntry) {
+        match entry {
+            DiffEntry::Added { .. } => self.added += 1,
+            DiffEntry::Removed { .. } => self.removed += 1,
+            DiffEntry::Modified { .. } => self.modified += 1,
+        }
+    }
+}
+
+/// Build a [`BTreeMap`] from [`ObjectKind`] to [`DiffCounts`] by classifying
+/// every entry in `diff`.
+#[must_use]
+pub fn summarise_diff(diff: &Diff) -> std::collections::BTreeMap<ObjectKind, DiffCounts> {
+    let mut map: std::collections::BTreeMap<ObjectKind, DiffCounts> =
+        std::collections::BTreeMap::new();
+    for entry in &diff.entries {
+        let kind = ObjectKind::classify(entry.path());
+        map.entry(kind).or_default().tally(entry);
+    }
+    map
+}
+
+// ---------------------------------------------------------------------------
+// DriftEvent — record stored by Storage::record_drift_event
+// ---------------------------------------------------------------------------
+
+use crate::storage::types::SnapshotId;
+
+/// A full record of a single detected drift event.
+///
+/// Constructed by the detector (Slice 8.5) after running the diff engine and
+/// redactor.  Persisted via `Storage::record_drift_event`.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DriftEvent {
+    /// The snapshot that was the expected ("desired") state at detection time.
+    pub before_snapshot_id: SnapshotId,
+    /// SHA-256 hash (lowercase hex) of the live running-state JSON.
+    pub running_state_hash: String,
+    /// Per-kind breakdown of the diff.
+    pub diff_summary: std::collections::BTreeMap<ObjectKind, DiffCounts>,
+    /// Unix timestamp (seconds, UTC) when the drift was detected.
+    pub detected_at: i64,
+    /// Correlation token linking this event to the triggering detection cycle.
+    pub correlation_id: ulid::Ulid,
+    /// Canonical JSON (keys sorted lexicographically) of the redacted diff.
+    pub redacted_diff_json: String,
+    /// Number of values that were redacted from the diff.
+    pub redaction_sites: u32,
+}
+
+// ---------------------------------------------------------------------------
 // NoOpDiffEngine — implements BOTH traits
 // ---------------------------------------------------------------------------
 
@@ -876,6 +1011,73 @@ mod tests {
             b_bytes, r_bytes,
             "apply_diff must be the inverse of structural_diff"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Slice 8.3: DriftEvent serde round-trip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn drift_event_serde_round_trip() {
+        use std::collections::BTreeMap;
+        use ulid::Ulid;
+
+        let mut summary = BTreeMap::new();
+        summary.insert(
+            ObjectKind::Route,
+            DiffCounts {
+                added: 1,
+                removed: 0,
+                modified: 2,
+            },
+        );
+        summary.insert(
+            ObjectKind::Server,
+            DiffCounts {
+                added: 0,
+                removed: 1,
+                modified: 0,
+            },
+        );
+
+        let event = DriftEvent {
+            before_snapshot_id: crate::storage::types::SnapshotId("snap-abc".to_owned()),
+            running_state_hash: "a".repeat(64),
+            diff_summary: summary,
+            detected_at: 1_700_000_000,
+            correlation_id: Ulid::from_string("01ARZ3NDEKTSV4RRFFQ69G5FAV").unwrap(),
+            redacted_diff_json: r#"{"redacted":true}"#.to_owned(),
+            redaction_sites: 3,
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        let restored: DriftEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, restored);
+    }
+
+    // -----------------------------------------------------------------------
+    // Slice 8.3: DiffCounts classifier
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn diff_counts_classifier() {
+        let cases: &[(&str, ObjectKind)] = &[
+            (
+                "/apps/http/servers/srv0/routes/r1/hostnames/0",
+                ObjectKind::Route,
+            ),
+            ("/apps/http/servers/srv0/routes/r2", ObjectKind::Route),
+            ("/apps/tls/certificates/0", ObjectKind::Tls),
+            ("/apps/http/servers/srv0/listen/0", ObjectKind::Server),
+            ("/apps/http/servers/srv0", ObjectKind::Server),
+            ("/logging/logs/default/level", ObjectKind::Other),
+            ("/admin/listen", ObjectKind::Other),
+        ];
+        for (path, expected) in cases {
+            let ptr = JsonPointer((*path).to_owned());
+            let got = ObjectKind::classify(&ptr);
+            assert_eq!(&got, expected, "path: {path}");
+        }
     }
 
     // -----------------------------------------------------------------------
