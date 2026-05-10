@@ -184,5 +184,25 @@ path = "tests/apply_lock_released_on_panic.rs"
 name = "apply_advisory_lock_blocks_second_process"
 path = "tests/apply_advisory_lock_blocks_second_process.rs"
 
+[[test]]
+name = "drift_default_interval_is_60s"
+path = "tests/drift_default_interval_is_60s.rs"
+
+[[test]]
+name = "drift_clean_state_silent"
+path = "tests/drift_clean_state_silent.rs"
+
+[[test]]
+name = "drift_out_of_band_mutation"
+path = "tests/drift_out_of_band_mutation.rs"
+
+[[test]]
+name = "drift_skip_when_apply_in_flight"
+path = "tests/drift_skip_when_apply_in_flight.rs"
+
+[[test]]
+name = "drift_interval_overridable"
+path = "tests/drift_interval_overridable.rs"
+
 [lints]
 workspace = true

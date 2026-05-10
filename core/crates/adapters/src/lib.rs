@@ -22,6 +22,7 @@ pub use tracing_correlation::{
 pub mod caddy;
 pub mod config_loader;
 pub(crate) mod db_errors;
+pub mod drift;
 pub mod env_provider;
 pub mod integrity_check;
 pub mod lock;

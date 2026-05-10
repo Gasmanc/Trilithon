@@ -54,6 +54,15 @@ impl ShutdownSignal {
     }
 }
 
+impl ShutdownSignal {
+    /// Return a clone of the underlying `watch::Receiver` for use by components
+    /// that accept a raw `watch::Receiver<bool>` (e.g. the drift detector in
+    /// the adapters crate).
+    pub fn subscribe(&self) -> watch::Receiver<bool> {
+        self.rx.clone()
+    }
+}
+
 impl ShutdownObserver for ShutdownSignal {
     fn changed(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
         Box::pin(self.wait())

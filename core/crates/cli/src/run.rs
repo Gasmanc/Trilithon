@@ -96,34 +96,8 @@ async fn check_sentinel(
 ///
 /// Returns an error if OS signal handler installation fails.
 pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::Result<ExitCode> {
-    // Open storage — failure exits 3.
-    let storage = SqliteStorage::open(&config.storage.data_dir)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "storage.open.failed");
-            anyhow::anyhow!("storage open failed: {e}")
-        })?;
-
-    // Apply migrations — failure exits 3.  `apply_migrations` logs
-    // `storage.migrations.applied` with version/applied counts on success.
-    trilithon_adapters::migrate::apply_migrations(storage.pool())
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "migration.failed");
-            anyhow::anyhow!("migration failed: {e}")
-        })?;
-
-    // Verify application_id post-migration to reject wrong-database-file mistakes.
-    storage.verify_application_id().await.map_err(|e| {
-        tracing::error!(error = %e, "storage.application_id.mismatch");
-        anyhow::anyhow!("application_id check failed: {e}")
-    })?;
-
+    let storage = open_and_migrate_storage(&config).await?;
     let pool = storage.pool().clone();
-
-    // Synchronous startup integrity check (ADR-0006).  Must run before
-    // `daemon.started` fires so any corruption is caught before accepting work.
-    run_startup_integrity_check(&storage).await?;
 
     let (controller, signal) = ShutdownController::new();
 
@@ -195,6 +169,14 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         trilithon_adapters::caddy::reconnect::HEALTH_INTERVAL,
     ));
 
+    // Build and spawn the drift detector (Slice 8.5).
+    let detector = build_drift_detector(storage, caddy_client.clone());
+    let detector_task = Arc::clone(&detector);
+    let shutdown_rx = signal.subscribe();
+    tasks.spawn(async move {
+        detector_task.run(shutdown_rx).await;
+    });
+
     // Emit daemon.started only after every startup gate has passed.
     tracing::info!("daemon.started");
 
@@ -227,6 +209,66 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     } else {
         Ok(ExitCode::CleanShutdown)
     }
+}
+
+/// Open the `SQLite` store, run migrations, verify `application_id`, and run the
+/// startup integrity check.
+async fn open_and_migrate_storage(config: &DaemonConfig) -> anyhow::Result<SqliteStorage> {
+    let storage = SqliteStorage::open(&config.storage.data_dir)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "storage.open.failed");
+            anyhow::anyhow!("storage open failed: {e}")
+        })?;
+    trilithon_adapters::migrate::apply_migrations(storage.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "migration.failed");
+            anyhow::anyhow!("migration failed: {e}")
+        })?;
+    storage.verify_application_id().await.map_err(|e| {
+        tracing::error!(error = %e, "storage.application_id.mismatch");
+        anyhow::anyhow!("application_id check failed: {e}")
+    })?;
+    run_startup_integrity_check(&storage).await?;
+    Ok(storage)
+}
+
+/// Construct the [`DriftDetector`] with its audit writer and shared apply mutex.
+///
+/// The `apply_mutex` is the Phase 8 exit contract: shared with the config-apply
+/// path when it is wired in a later slice.
+fn build_drift_detector(
+    storage: SqliteStorage,
+    caddy_client: Arc<trilithon_adapters::caddy::hyper_client::HyperCaddyClient>,
+) -> Arc<trilithon_adapters::drift::DriftDetector> {
+    let apply_mutex = Arc::new(tokio::sync::Mutex::new(()));
+    let drift_storage: Arc<dyn trilithon_core::storage::Storage> = Arc::new(storage);
+    let drift_clock: Arc<dyn trilithon_core::clock::Clock> =
+        Arc::new(trilithon_core::clock::SystemClock);
+    let drift_registry = Box::leak(Box::new(
+        trilithon_core::schema::SchemaRegistry::with_tier1_secrets(),
+    ));
+    let drift_hasher = Box::leak(Box::new(trilithon_adapters::Sha256AuditHasher));
+    let drift_redactor =
+        trilithon_core::audit::redactor::SecretsRedactor::new(drift_registry, drift_hasher);
+    let drift_audit = Arc::new(trilithon_adapters::AuditWriter::new(
+        drift_storage.clone(),
+        drift_clock,
+        drift_redactor,
+    ));
+    let drift_config = trilithon_adapters::drift::DriftDetectorConfig {
+        interval: std::time::Duration::from_secs(60),
+        instance_id: CADDY_INSTANCE_ID.to_owned(),
+    };
+    Arc::new(trilithon_adapters::drift::DriftDetector {
+        config: drift_config,
+        client: caddy_client,
+        diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
+        storage: drift_storage,
+        audit: drift_audit,
+        apply_mutex,
+    })
 }
 
 /// Drain all tasks in `set` within [`DRAIN_BUDGET`], then abort any survivors.
