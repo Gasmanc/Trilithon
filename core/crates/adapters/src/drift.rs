@@ -12,12 +12,16 @@ use std::time::Duration;
 use tokio::sync::watch;
 use ulid::Ulid;
 
+use serde_json::Value;
+use trilithon_core::audit::AuditEvent;
 use trilithon_core::caddy::client::CaddyClient;
+use trilithon_core::clock::Clock;
 use trilithon_core::diff::{DiffEngine, DriftEvent, summarise_diff};
 use trilithon_core::model::desired_state::DesiredState;
 use trilithon_core::storage::Storage;
+use trilithon_core::storage::types::{AuditOutcome, DriftEventRow, DriftResolution, DriftRowId};
 
-use crate::audit_writer::AuditWriter;
+use crate::audit_writer::{ActorRef, AuditAppend, AuditWriter};
 use crate::tracing_correlation::with_correlation_span;
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -95,6 +99,18 @@ pub enum TickError {
 
 // ── DriftDetector ────────────────────────────────────────────────────────────
 
+/// How the operator resolved a detected drift.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResolutionKind {
+    /// Accept the live state as the new desired state.
+    Adopt,
+    /// Re-apply the desired state to Caddy.
+    Reapply,
+    /// Defer action — revisit later.
+    Defer,
+}
+
 /// The drift-detection scheduler.
 ///
 /// Shared via `Arc` — [`Self::run`] takes `Arc<Self>`.
@@ -107,10 +123,15 @@ pub struct DriftDetector {
     pub diff_engine: Arc<dyn DiffEngine>,
     /// Persistent storage.
     pub storage: Arc<dyn Storage>,
-    /// Audit log writer (Slice 8.6 will use this for drift audit rows).
+    /// Audit log writer.
     pub audit: Arc<AuditWriter>,
+    /// Clock for timestamps.
+    pub clock: Arc<dyn Clock>,
     /// Mutex shared with the config-apply path; `try_lock` detects in-flight applies.
     pub apply_mutex: Arc<tokio::sync::Mutex<()>>,
+    /// Deduplication cache: the `running_state_hash` from the last successfully
+    /// recorded drift event. Resets on resolution or daemon restart recovery.
+    pub last_running_hash: tokio::sync::Mutex<Option<String>>,
 }
 
 impl DriftDetector {
@@ -151,6 +172,9 @@ impl DriftDetector {
                         correlation_id = %event.correlation_id,
                         "drift.detected"
                     );
+                    if let Err(e) = self.record(event.clone()).await {
+                        tracing::error!(error = %e, "drift.record-failed");
+                    }
                 }
                 Ok(TickOutcome::SkippedApplyInFlight) => {
                     // Already logged inside tick_once.
@@ -240,5 +264,155 @@ impl DriftDetector {
         };
 
         Ok(TickOutcome::Drifted { event })
+    }
+
+    /// Record a drift event, deduplicating against the previous tick's hash.
+    ///
+    /// Only updates the deduplication hash after both the audit row and the
+    /// typed drift row have been successfully written.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TickError`] if either the audit write or the storage write fails.
+    #[allow(clippy::significant_drop_tightening)]
+    // The guard is intentionally held across both writes — constraint 5 requires
+    // the hash update only after both succeed atomically.
+    pub async fn record(&self, event: DriftEvent) -> Result<(), TickError> {
+        let mut guard = self.last_running_hash.lock().await;
+
+        // Deduplicate: same running hash means same drift cycle — skip.
+        if guard.as_deref() == Some(&event.running_state_hash) {
+            return Ok(());
+        }
+
+        // Step 3: Write the audit row.
+        let diff_value: Value = serde_json::from_str(&event.redacted_diff_json)
+            .map_err(|e| TickError::Serialisation(e.to_string()))?;
+
+        let notes = serde_json::to_string(&event.diff_summary)
+            .map_err(|e| TickError::Serialisation(e.to_string()))?;
+
+        let append = AuditAppend {
+            correlation_id: event.correlation_id,
+            actor: ActorRef::System {
+                component: "drift-detector".to_owned(),
+            },
+            event: AuditEvent::DriftDetected,
+            target_kind: None,
+            target_id: None,
+            snapshot_id: Some(event.before_snapshot_id.clone()),
+            diff: Some(diff_value),
+            outcome: AuditOutcome::Ok,
+            error_kind: None,
+            notes: Some(notes),
+        };
+
+        self.audit
+            .record(append)
+            .await
+            .map_err(|e| TickError::Storage(e.to_string()))?;
+
+        // Step 4: Persist to the typed drift table.
+        let drift_row = DriftEventRow {
+            id: DriftRowId(Ulid::new().to_string()),
+            correlation_id: event.correlation_id.to_string(),
+            detected_at: event.detected_at,
+            snapshot_id: event.before_snapshot_id,
+            diff_json: event.redacted_diff_json,
+            running_state_hash: event.running_state_hash.clone(),
+            resolution: None,
+            resolved_at: None,
+        };
+
+        self.storage
+            .record_drift_event(drift_row)
+            .await
+            .map_err(|e| TickError::Storage(e.to_string()))?;
+
+        // Step 5: Only update hash after both writes succeed.
+        *guard = Some(event.running_state_hash);
+
+        Ok(())
+    }
+
+    /// Mark a drift event as resolved, resetting the deduplication hash so that
+    /// subsequent ticks re-evaluate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TickError`] if the audit write or storage update fails.
+    pub async fn mark_resolved(
+        &self,
+        correlation_id: Ulid,
+        resolution: ResolutionKind,
+    ) -> Result<(), TickError> {
+        let storage_resolution = match resolution {
+            ResolutionKind::Adopt => DriftResolution::Accepted,
+            ResolutionKind::Reapply => DriftResolution::Reapplied,
+            ResolutionKind::Defer => DriftResolution::RolledBack,
+        };
+
+        let now_ms = self.clock.now_unix_ms();
+        let now_secs = now_ms / 1_000;
+
+        // Write the audit row.
+        let mut notes_map = serde_json::Map::new();
+        notes_map.insert(
+            "resolution".to_owned(),
+            serde_json::to_value(resolution)
+                .map_err(|e| TickError::Serialisation(e.to_string()))?,
+        );
+        let notes = serde_json::Value::Object(notes_map).to_string();
+        let append = AuditAppend {
+            correlation_id,
+            actor: ActorRef::System {
+                component: "drift-detector".to_owned(),
+            },
+            event: AuditEvent::DriftResolved,
+            target_kind: None,
+            target_id: None,
+            snapshot_id: None,
+            diff: None,
+            outcome: AuditOutcome::Ok,
+            error_kind: None,
+            notes: Some(notes),
+        };
+
+        self.audit
+            .record(append)
+            .await
+            .map_err(|e| TickError::Storage(e.to_string()))?;
+
+        // Update the drift table.
+        self.storage
+            .resolve_drift_event(&correlation_id.to_string(), storage_resolution, now_secs)
+            .await
+            .map_err(|e| TickError::Storage(e.to_string()))?;
+
+        // Reset deduplication hash so the next tick re-evaluates.
+        *self.last_running_hash.lock().await = None;
+
+        Ok(())
+    }
+
+    /// Initialise the deduplication hash from storage on startup.
+    ///
+    /// Constraint 6: prevents duplicate detection rows across daemon restarts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TickError`] if the storage query fails.
+    pub async fn init_from_storage(&self) -> Result<(), TickError> {
+        let existing = self
+            .storage
+            .latest_unresolved_drift_event(&self.config.instance_id)
+            .await
+            .map_err(|e| TickError::Storage(e.to_string()))?;
+
+        if let Some(row) = existing {
+            *self.last_running_hash.lock().await = Some(row.running_state_hash);
+        }
+
+        Ok(())
     }
 }

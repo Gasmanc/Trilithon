@@ -107,7 +107,9 @@ async fn drift_skip_when_apply_in_flight() {
         diff_engine: Arc::new(DefaultDiffEngine),
         storage,
         audit,
+        clock: Arc::new(FixedClock(1_700_000_000_000)),
         apply_mutex: Arc::clone(&apply_mutex),
+        last_running_hash: tokio::sync::Mutex::new(None),
     });
 
     // Hold the mutex to simulate an in-flight apply.

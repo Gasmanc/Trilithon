@@ -78,6 +78,22 @@ impl Storage for BusyStorage {
         panic!("not needed in this test")
     }
 
+    async fn latest_unresolved_drift_event(
+        &self,
+        _: &str,
+    ) -> Result<Option<DriftEventRow>, StorageError> {
+        panic!("not needed in this test")
+    }
+
+    async fn resolve_drift_event(
+        &self,
+        _: &str,
+        _: trilithon_core::storage::types::DriftResolution,
+        _: UnixSeconds,
+    ) -> Result<(), StorageError> {
+        panic!("not needed in this test")
+    }
+
     async fn enqueue_proposal(&self, _: ProposalRow) -> Result<ProposalId, StorageError> {
         panic!("not needed in this test")
     }

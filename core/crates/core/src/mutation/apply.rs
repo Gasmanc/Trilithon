@@ -114,9 +114,12 @@ fn apply_variant(
         Mutation::ImportFromCaddyfile { parsed, .. } => {
             Ok(apply_import_caddyfile(new_state, parsed))
         }
-        // Rollback always returns Forbidden in Phase 4 — handled by pre_conditions.
-        // This arm is unreachable in practice, but must be exhaustive.
-        Mutation::Rollback { .. } => Err(MutationError::Forbidden {
+        // Rollback and drift resolution variants return Forbidden in Phase 4.
+        // The reconciler / Phase 7 applier handles these directly.
+        Mutation::Rollback { .. }
+        | Mutation::ReplaceDesiredState { .. }
+        | Mutation::ReapplySnapshot { .. }
+        | Mutation::DriftDeferred { .. } => Err(MutationError::Forbidden {
             reason: crate::mutation::error::ForbiddenReason::RollbackTargetUnknown,
         }),
     }
@@ -498,7 +501,10 @@ const fn audit_event_for(kind: MutationKind) -> AuditEvent {
         | MutationKind::UpdateUpstream
         | MutationKind::DeleteUpstream
         | MutationKind::SetGlobalConfig
-        | MutationKind::SetTlsConfig => AuditEvent::MutationApplied,
+        | MutationKind::SetTlsConfig
+        | MutationKind::ReplaceDesiredState
+        | MutationKind::ReapplySnapshot
+        | MutationKind::DriftDeferred => AuditEvent::MutationApplied,
         MutationKind::AttachPolicy => AuditEvent::PolicyPresetAttached,
         MutationKind::DetachPolicy => AuditEvent::PolicyPresetDetached,
         MutationKind::UpgradePolicy => AuditEvent::PolicyPresetUpgraded,

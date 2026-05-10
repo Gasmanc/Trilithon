@@ -254,7 +254,7 @@ fn build_drift_detector(
         trilithon_core::audit::redactor::SecretsRedactor::new(drift_registry, drift_hasher);
     let drift_audit = Arc::new(trilithon_adapters::AuditWriter::new(
         drift_storage.clone(),
-        drift_clock,
+        drift_clock.clone(),
         drift_redactor,
     ));
     let drift_config = trilithon_adapters::drift::DriftDetectorConfig {
@@ -267,7 +267,9 @@ fn build_drift_detector(
         diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
         storage: drift_storage,
         audit: drift_audit,
+        clock: drift_clock,
         apply_mutex,
+        last_running_hash: tokio::sync::Mutex::new(None),
     })
 }
 

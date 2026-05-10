@@ -65,9 +65,14 @@ impl Mutation {
             // ----------------------------------------------------------------
             // Destructive / read-only mutations — no modules required.
             // ----------------------------------------------------------------
-            Self::DeleteRoute { .. } | Self::DeleteUpstream { .. } | Self::Rollback { .. } => {
-                BTreeSet::new()
-            }
+            Self::DeleteRoute { .. }
+            | Self::DeleteUpstream { .. }
+            | Self::Rollback { .. }
+            | Self::ReplaceDesiredState { .. }
+            | Self::ReapplySnapshot { .. }
+            | Self::DriftDeferred { .. }
+            | Self::DetachPolicy { .. }
+            | Self::SetGlobalConfig { .. } => BTreeSet::new(),
 
             // ----------------------------------------------------------------
             // CreateUpstream / UpdateUpstream — reverse_proxy always; active
@@ -107,8 +112,6 @@ impl Mutation {
             // ----------------------------------------------------------------
             // Config mutations — TLS module only when ACME email is set.
             // ----------------------------------------------------------------
-            Self::DetachPolicy { .. } | Self::SetGlobalConfig { .. } => BTreeSet::new(),
-
             Self::SetTlsConfig { patch, .. } => {
                 let mut mods = BTreeSet::new();
                 // Require the tls module whenever any TLS field is being set or cleared,

@@ -62,3 +62,18 @@ Nothing flagged.
 - `DiffCounts::tally` not marked `const` (clippy lint)
 ### Items Left Unfixed
 None.
+
+## Slice 8.5
+**Status:** complete
+**Date:** 2026-05-11
+**Summary:** Implemented the DriftDetector scheduler as a long-lived tokio task with apply-in-flight skip logic. Added DriftDetectorConfig with validation, TickOutcome/TickError types, and wired the detector into run_with_shutdown before the daemon.started event. Five integration tests cover clean state, drift detection, apply-in-flight skip, default interval, and interval configurability.
+### Simplify Findings
+nothing flagged
+### Items Fixed Inline
+- Clippy: `let...else` instead of `match` for try_lock and Option unwrapping
+- Clippy: `RangeInclusive::contains` for validation bounds check
+- Clippy: missing backticks in doc comments for type names
+- Clippy: `run_with_shutdown` too-many-lines — extracted `open_and_migrate_storage` and `build_drift_detector` helpers
+- Clippy: missing `# Errors` doc section on `tick_once`
+### Items Left Unfixed
+None.

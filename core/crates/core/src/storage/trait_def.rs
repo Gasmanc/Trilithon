@@ -68,6 +68,23 @@ pub trait Storage: Send + Sync + 'static {
     /// Return the latest drift event for the current desired-state snapshot.
     async fn latest_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError>;
 
+    /// Return the latest unresolved drift event for a given instance.
+    ///
+    /// Used at daemon startup to initialise the deduplication hash, preventing
+    /// duplicate `config.drift-detected` rows across restarts.
+    async fn latest_unresolved_drift_event(
+        &self,
+        instance_id: &str,
+    ) -> Result<Option<DriftEventRow>, StorageError>;
+
+    /// Mark a drift event as resolved.
+    async fn resolve_drift_event(
+        &self,
+        correlation_id: &str,
+        resolution: crate::storage::types::DriftResolution,
+        resolved_at: UnixSeconds,
+    ) -> Result<(), StorageError>;
+
     /// Insert a proposal into the queue.
     ///
     /// Returns [`StorageError::ProposalDuplicate`] if an open proposal with

@@ -29,8 +29,8 @@ use crate::storage::{
     helpers::{audit_prev_hash_seed, canonical_json_for_audit_hash, compute_audit_chain_hash},
     trait_def::Storage,
     types::{
-        AuditEventRow, AuditRowId, AuditSelector, DriftEventRow, DriftRowId, ParentChain,
-        ProposalId, ProposalRow, ProposalState, Snapshot, SnapshotId, UnixSeconds,
+        AuditEventRow, AuditRowId, AuditSelector, DriftEventRow, DriftResolution, DriftRowId,
+        ParentChain, ProposalId, ProposalRow, ProposalState, Snapshot, SnapshotId, UnixSeconds,
     },
 };
 
@@ -266,6 +266,31 @@ impl Storage for InMemoryStorage {
     async fn latest_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError> {
         let drift = self.drift.lock().await;
         Ok(drift.last().cloned())
+    }
+
+    async fn latest_unresolved_drift_event(
+        &self,
+        _instance_id: &str,
+    ) -> Result<Option<DriftEventRow>, StorageError> {
+        let drift = self.drift.lock().await;
+        Ok(drift.iter().rev().find(|e| e.resolution.is_none()).cloned())
+    }
+
+    async fn resolve_drift_event(
+        &self,
+        correlation_id: &str,
+        resolution: DriftResolution,
+        resolved_at: UnixSeconds,
+    ) -> Result<(), StorageError> {
+        let mut drift = self.drift.lock().await;
+        if let Some(row) = drift
+            .iter_mut()
+            .find(|e| e.correlation_id == correlation_id)
+        {
+            row.resolution = Some(resolution);
+            row.resolved_at = Some(resolved_at);
+        }
+        Ok(())
     }
 
     async fn enqueue_proposal(&self, proposal: ProposalRow) -> Result<ProposalId, StorageError> {

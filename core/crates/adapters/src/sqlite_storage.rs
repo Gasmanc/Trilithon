@@ -20,7 +20,8 @@ use trilithon_core::storage::{
     trait_def::Storage,
     types::{
         ActorKind, AuditEventRow, AuditOutcome, AuditRowId, AuditSelector, DriftEventRow,
-        DriftRowId, ParentChain, ProposalId, ProposalRow, Snapshot, SnapshotId, UnixSeconds,
+        DriftResolution, DriftRowId, ParentChain, ProposalId, ProposalRow, Snapshot, SnapshotId,
+        UnixSeconds,
     },
 };
 
@@ -931,16 +932,97 @@ impl Storage for SqliteStorage {
         rows.iter().map(audit_row_from_sqlite).collect()
     }
 
-    async fn record_drift_event(&self, _event: DriftEventRow) -> Result<DriftRowId, StorageError> {
-        Err(StorageError::NotYetAvailable {
-            reason: "drift_events table arrives in Phase 8".to_string(),
-        })
+    async fn record_drift_event(&self, event: DriftEventRow) -> Result<DriftRowId, StorageError> {
+        let id = event.id.0.clone();
+        sqlx::query(
+            "INSERT INTO drift_events (id, correlation_id, detected_at, snapshot_id, diff_json, running_state_hash, resolution, resolved_at)
+             VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
+        )
+        .bind(&event.id.0)
+        .bind(&event.correlation_id)
+        .bind(event.detected_at)
+        .bind(&event.snapshot_id.0)
+        .bind(&event.diff_json)
+        .bind(&event.running_state_hash)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_err)?;
+        Ok(DriftRowId(id))
     }
 
     async fn latest_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError> {
-        Err(StorageError::NotYetAvailable {
-            reason: "drift_events table arrives in Phase 8".to_string(),
-        })
+        let row: Option<(String, String, i64, String, String, String, Option<String>, Option<i64>)> =
+            sqlx::query_as(
+                "SELECT id, correlation_id, detected_at, snapshot_id, diff_json, running_state_hash, resolution, resolved_at
+                 FROM drift_events ORDER BY detected_at DESC LIMIT 1",
+            )
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_err)?;
+
+        Ok(
+            row.map(|(id, cid, det, sid, dj, rsh, res, rat)| DriftEventRow {
+                id: DriftRowId(id),
+                correlation_id: cid,
+                detected_at: det,
+                snapshot_id: SnapshotId(sid),
+                diff_json: dj,
+                running_state_hash: rsh,
+                resolution: res.and_then(|r| serde_json::from_str(&format!("\"{r}\"")).ok()),
+                resolved_at: rat,
+            }),
+        )
+    }
+
+    async fn latest_unresolved_drift_event(
+        &self,
+        _instance_id: &str,
+    ) -> Result<Option<DriftEventRow>, StorageError> {
+        let row: Option<(String, String, i64, String, String, String, Option<String>, Option<i64>)> =
+            sqlx::query_as(
+                "SELECT id, correlation_id, detected_at, snapshot_id, diff_json, running_state_hash, resolution, resolved_at
+                 FROM drift_events WHERE resolved_at IS NULL ORDER BY detected_at DESC LIMIT 1",
+            )
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_err)?;
+
+        Ok(
+            row.map(|(id, cid, det, sid, dj, rsh, res, rat)| DriftEventRow {
+                id: DriftRowId(id),
+                correlation_id: cid,
+                detected_at: det,
+                snapshot_id: SnapshotId(sid),
+                diff_json: dj,
+                running_state_hash: rsh,
+                resolution: res.and_then(|r| serde_json::from_str(&format!("\"{r}\"")).ok()),
+                resolved_at: rat,
+            }),
+        )
+    }
+
+    async fn resolve_drift_event(
+        &self,
+        correlation_id: &str,
+        resolution: DriftResolution,
+        resolved_at: UnixSeconds,
+    ) -> Result<(), StorageError> {
+        let res_str = serde_json::to_string(&resolution)
+            .map_err(|e| StorageError::Integrity {
+                detail: e.to_string(),
+            })?
+            .trim_matches('"')
+            .to_owned();
+        sqlx::query(
+            "UPDATE drift_events SET resolution = ?, resolved_at = ? WHERE correlation_id = ?",
+        )
+        .bind(&res_str)
+        .bind(resolved_at)
+        .bind(correlation_id)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_err)?;
+        Ok(())
     }
 
     async fn enqueue_proposal(&self, _proposal: ProposalRow) -> Result<ProposalId, StorageError> {

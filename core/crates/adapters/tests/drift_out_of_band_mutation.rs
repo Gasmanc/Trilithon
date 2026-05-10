@@ -145,7 +145,9 @@ async fn drift_out_of_band_mutation() {
         diff_engine: Arc::new(DefaultDiffEngine),
         storage,
         audit,
+        clock: Arc::new(FixedClock(1_700_000_000_000)),
         apply_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        last_running_hash: tokio::sync::Mutex::new(None),
     });
 
     let outcome = detector.tick_once().await.expect("tick should succeed");

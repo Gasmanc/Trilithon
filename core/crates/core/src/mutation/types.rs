@@ -122,6 +122,34 @@ pub enum Mutation {
         /// Target snapshot identifier.
         target: SnapshotId,
     },
+    /// Replace desired state with the observed running state (drift adopt).
+    #[cfg_attr(feature = "schema", schemars(skip))]
+    ReplaceDesiredState {
+        /// Optimistic-concurrency guard.
+        expected_version: i64,
+        /// The new desired state to store.
+        new_state: Box<crate::model::desired_state::DesiredState>,
+        /// Resolution provenance.
+        source: crate::diff::resolve::ResolveSource,
+    },
+    /// Re-apply an existing snapshot to Caddy (drift reapply).
+    #[cfg_attr(feature = "schema", schemars(skip))]
+    ReapplySnapshot {
+        /// Optimistic-concurrency guard.
+        expected_version: i64,
+        /// Snapshot to re-push through the applier.
+        snapshot_id: SnapshotId,
+        /// Resolution provenance.
+        source: crate::diff::resolve::ResolveSource,
+    },
+    /// No-op marker recording that drift was deferred for manual reconciliation.
+    #[cfg_attr(feature = "schema", schemars(skip))]
+    DriftDeferred {
+        /// Optimistic-concurrency guard.
+        expected_version: i64,
+        /// Correlation id of the originating drift event.
+        event_correlation: ulid::Ulid,
+    },
 }
 
 impl Mutation {
@@ -166,6 +194,15 @@ impl Mutation {
             }
             | Self::Rollback {
                 expected_version, ..
+            }
+            | Self::ReplaceDesiredState {
+                expected_version, ..
+            }
+            | Self::ReapplySnapshot {
+                expected_version, ..
+            }
+            | Self::DriftDeferred {
+                expected_version, ..
             } => *expected_version,
         }
     }
@@ -186,6 +223,9 @@ impl Mutation {
             Self::SetTlsConfig { .. } => MutationKind::SetTlsConfig,
             Self::ImportFromCaddyfile { .. } => MutationKind::ImportFromCaddyfile,
             Self::Rollback { .. } => MutationKind::Rollback,
+            Self::ReplaceDesiredState { .. } => MutationKind::ReplaceDesiredState,
+            Self::ReapplySnapshot { .. } => MutationKind::ReapplySnapshot,
+            Self::DriftDeferred { .. } => MutationKind::DriftDeferred,
         }
     }
 }
@@ -220,6 +260,12 @@ pub enum MutationKind {
     ImportFromCaddyfile,
     /// See [`Mutation::Rollback`].
     Rollback,
+    /// See [`Mutation::ReplaceDesiredState`].
+    ReplaceDesiredState,
+    /// See [`Mutation::ReapplySnapshot`].
+    ReapplySnapshot,
+    /// See [`Mutation::DriftDeferred`].
+    DriftDeferred,
 }
 
 #[cfg(test)]

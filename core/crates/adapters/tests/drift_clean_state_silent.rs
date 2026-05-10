@@ -134,7 +134,9 @@ fn build_detector(storage: Arc<dyn Storage>) -> Arc<DriftDetector> {
         diff_engine: Arc::new(DefaultDiffEngine),
         storage,
         audit,
+        clock: Arc::new(FixedClock(1_700_000_000_000)),
         apply_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        last_running_hash: tokio::sync::Mutex::new(None),
     })
 }
 

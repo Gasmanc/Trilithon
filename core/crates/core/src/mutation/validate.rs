@@ -76,7 +76,10 @@ pub fn pre_conditions(state: &DesiredState, mutation: &Mutation) -> Result<(), M
         } => check_upgrade_policy(state, route_id, *to_version),
 
         // Phase 7 wires the snapshot resolver; for Phase 4, rollback always returns RollbackTargetUnknown.
-        Mutation::Rollback { .. } => Err(MutationError::Forbidden {
+        Mutation::Rollback { .. }
+        | Mutation::ReplaceDesiredState { .. }
+        | Mutation::ReapplySnapshot { .. }
+        | Mutation::DriftDeferred { .. } => Err(MutationError::Forbidden {
             reason: ForbiddenReason::RollbackTargetUnknown,
         }),
 

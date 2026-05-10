@@ -222,6 +222,8 @@ pub struct DriftEventRow {
     pub snapshot_id: SnapshotId,
     /// JSON encoding of the structural diff between desired and live state.
     pub diff_json: String,
+    /// SHA-256 hash of the running state at detection time (deduplication key).
+    pub running_state_hash: String,
     /// How the drift was resolved, if it has been.
     pub resolution: Option<DriftResolution>,
     /// Time the drift was resolved, if it has been.

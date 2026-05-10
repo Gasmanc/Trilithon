@@ -10,6 +10,7 @@
 
 pub mod flatten;
 pub mod ignore_list;
+pub mod resolve;
 
 use serde_json::Value;
 
