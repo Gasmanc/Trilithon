@@ -48,3 +48,17 @@ None — all acceptance criteria met on first attempt.
 ### Items Left Unfixed
 
 None.
+
+## Slice 8.3
+**Status:** complete
+**Date:** 2026-05-10
+**Summary:** Landed DriftEvent, DiffCounts, ObjectKind, and DesiredState::unknown_extensions. Fixed test failures: pre-Phase-8 fixture missing `on_demand_enabled` field, and proptest duplicate-key insertion producing non-deterministic values. Added clippy allows to desired_state test module, made DiffCounts::tally const.
+### Simplify Findings
+Nothing flagged.
+### Items Fixed Inline
+- Pre-Phase-8 fixture test missing `on_demand_enabled: false` in TLS JSON
+- Proptest duplicate keys causing false assertion failures (dedup via BTreeMap before insert-order test)
+- Missing `#[allow(clippy::expect_used, ...)]` on desired_state test module
+- `DiffCounts::tally` not marked `const` (clippy lint)
+### Items Left Unfixed
+None.
