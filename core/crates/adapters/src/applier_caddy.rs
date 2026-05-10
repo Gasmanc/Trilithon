@@ -42,7 +42,7 @@ use trilithon_core::{
     audit::AuditEvent,
     caddy::CaddyClient,
     clock::Clock,
-    diff::DiffEngine,
+    diff::CaddyDiffEngine,
     model::desired_state::DesiredState,
     reconciler::{
         AppliedState, AppliedStateTag, Applier, ApplyAuditNotes, ApplyError, ApplyFailureKind,
@@ -99,7 +99,7 @@ pub struct CaddyApplier {
     /// Renders a [`DesiredState`] to Caddy 2.x JSON.
     pub renderer: Arc<dyn CaddyJsonRenderer>,
     /// Compares desired and observed configs after a successful load.
-    pub diff_engine: Arc<dyn DiffEngine>,
+    pub diff_engine: Arc<dyn CaddyDiffEngine>,
     /// Caches the most-recently probed capability set.
     pub capabilities: Arc<CapabilityCache>,
     /// Single entry point for writing to `audit_log`.

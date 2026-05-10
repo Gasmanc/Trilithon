@@ -32,7 +32,7 @@ use trilithon_core::{
     },
     canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes},
     clock::Clock,
-    diff::{DiffEngine, DiffError},
+    diff::{CaddyDiffEngine, DiffError},
     model::desired_state::DesiredState,
     reconciler::{Applier, ApplyError, DefaultCaddyJsonRenderer},
     schema::SchemaRegistry,
@@ -86,7 +86,7 @@ impl CaddyClient for OkLoadClient {
 /// A `DiffEngine` that always reports one differing path.
 struct AlwaysDiffersEngine;
 
-impl DiffEngine for AlwaysDiffersEngine {
+impl CaddyDiffEngine for AlwaysDiffersEngine {
     fn structural_diff(
         &self,
         _desired: &DesiredState,
