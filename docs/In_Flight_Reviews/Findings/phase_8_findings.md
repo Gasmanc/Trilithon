@@ -30,3 +30,21 @@
 
 ### Items Left Unfixed
 - F7: `caddy_sentinel_e2e` compile error — pre-existing, not introduced by Slice 8.1; deferred to a cleanup task
+
+## Slice 8.2 — Caddy-managed-paths ignore list
+
+**Status:** complete
+**Date:** 2026-05-10
+**Summary:** Implemented the closed list of JSON pointers that Caddy mutates on its own and that the diff engine must discard. Covers TLS issuance state, upstream health caches, `automatic_https.disable_redirects` autopopulation, and `request_id` placeholders. Added regex-based pattern matching with static compilation at startup.
+
+### Simplify Findings
+
+Skipped (trivial slice).
+
+### Items Fixed Inline
+
+None — all acceptance criteria met on first attempt.
+
+### Items Left Unfixed
+
+None.
