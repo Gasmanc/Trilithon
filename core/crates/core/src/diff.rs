@@ -9,6 +9,7 @@
 //! no-op placeholder.
 
 pub mod flatten;
+pub mod ignore_list;
 
 use serde_json::Value;
 
@@ -118,16 +119,15 @@ impl Diff {
 }
 
 // ---------------------------------------------------------------------------
-// Ignore-list placeholder (Slice 8.2 replaces this)
+// Ignore-list (Slice 8.2)
 // ---------------------------------------------------------------------------
 
 /// Returns `true` when `path` should be excluded from the diff.
 ///
-/// This is a no-op placeholder.  Slice 8.2 will replace it with an actual
-/// configurable ignore list.
+/// Delegates to the Caddy-managed paths list defined in [`ignore_list`].
 #[inline]
-const fn is_ignored(_path: &JsonPointer) -> bool {
-    false
+fn is_ignored(path: &JsonPointer) -> bool {
+    ignore_list::is_caddy_managed(path)
 }
 
 // ---------------------------------------------------------------------------
