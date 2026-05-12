@@ -19,8 +19,9 @@ use serde_json::Value;
 use ulid::Ulid;
 
 use trilithon_core::{
-    audit::redactor::{RedactorError, SecretsRedactor},
+    audit::redactor::{CiphertextHasher, RedactorError, SecretsRedactor},
     clock::Clock,
+    schema::SchemaRegistry,
     storage::{
         Storage, StorageError,
         helpers::audit_prev_hash_seed,
@@ -157,6 +158,32 @@ impl AuditWriter {
         // running the path-matching walk.
         let redactor_fn = Arc::new(
             move |value: &Value| -> Result<(Value, u32), AuditWriteError> {
+                let result = redactor
+                    .redact_diff(value)
+                    .map_err(AuditWriteError::Redaction)?;
+                Ok((result.value, result.sites))
+            },
+        );
+        Self {
+            storage,
+            redactor: redactor_fn,
+            clock,
+        }
+    }
+
+    /// Construct an `AuditWriter` from `Arc`-owned registry and hasher.
+    ///
+    /// Prefer this over [`AuditWriter::new`] in daemon code — it avoids
+    /// `Box::leak` by cloning the `Arc`s into the redactor closure.
+    pub fn new_with_arcs(
+        storage: Arc<dyn Storage>,
+        clock: Arc<dyn Clock>,
+        registry: Arc<SchemaRegistry>,
+        hasher: Arc<dyn CiphertextHasher>,
+    ) -> Self {
+        let redactor_fn = Arc::new(
+            move |value: &Value| -> Result<(Value, u32), AuditWriteError> {
+                let redactor = SecretsRedactor::new(&registry, &*hasher);
                 let result = redactor
                     .redact_diff(value)
                     .map_err(AuditWriteError::Redaction)?;

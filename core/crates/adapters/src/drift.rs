@@ -279,6 +279,13 @@ impl DriftDetector {
     /// # Errors
     ///
     /// Returns [`TickError`] if either the audit write or the storage write fails.
+    // zd:F010 expires:2026-11-01 reason: audit_log.record() uses BEGIN IMMEDIATE internally
+    // for hash-chain integrity; nesting it inside a second transaction would deadlock on
+    // SQLite. The two writes are therefore not atomic: a crash between them leaves an orphan
+    // audit row with no matching drift_events row. Accepted trade-off — the dedup guard
+    // (last_running_hash) prevents double-writes across restarts, and the audit chain's
+    // own hash verification can detect the gap. Proper fix requires splitting record_audit_event
+    // into a "prepare" + "commit" API so both rows can share one connection.
     #[allow(clippy::significant_drop_tightening)]
     // The guard is intentionally held across both writes — constraint 5 requires
     // the hash update only after both writes succeed.

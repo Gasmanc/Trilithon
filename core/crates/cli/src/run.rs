@@ -169,8 +169,12 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         trilithon_adapters::caddy::reconnect::HEALTH_INTERVAL,
     ));
 
+    // Shared apply mutex — held during Caddy config writes to prevent the drift
+    // detector from ticking while an apply is in flight (Slice 8.5).
+    let apply_mutex: Arc<tokio::sync::Mutex<()>> = Arc::new(tokio::sync::Mutex::new(()));
+
     // Build and spawn the drift detector (Slice 8.5).
-    let detector = build_drift_detector(storage, caddy_client.clone());
+    let detector = build_drift_detector(storage, caddy_client.clone(), apply_mutex.clone());
     if let Err(e) = detector.init_from_storage().await {
         tracing::warn!(error = %e, "drift-detector.init-from-storage-failed");
     }
@@ -239,26 +243,24 @@ async fn open_and_migrate_storage(config: &DaemonConfig) -> anyhow::Result<Sqlit
 
 /// Construct the [`DriftDetector`] with its audit writer and shared apply mutex.
 ///
-/// The `apply_mutex` is the Phase 8 exit contract: shared with the config-apply
-/// path when it is wired in a later slice.
+/// `apply_mutex` must be the same `Arc` passed to `CaddyApplier` so that
+/// `SkippedApplyInFlight` can trigger correctly when a config-write is active.
 fn build_drift_detector(
     storage: SqliteStorage,
     caddy_client: Arc<trilithon_adapters::caddy::hyper_client::HyperCaddyClient>,
+    apply_mutex: Arc<tokio::sync::Mutex<()>>,
 ) -> Arc<trilithon_adapters::drift::DriftDetector> {
-    let apply_mutex = Arc::new(tokio::sync::Mutex::new(()));
     let drift_storage: Arc<dyn trilithon_core::storage::Storage> = Arc::new(storage);
     let drift_clock: Arc<dyn trilithon_core::clock::Clock> =
         Arc::new(trilithon_core::clock::SystemClock);
-    let drift_registry = Box::leak(Box::new(
-        trilithon_core::schema::SchemaRegistry::with_tier1_secrets(),
-    ));
-    let drift_hasher = Box::leak(Box::new(trilithon_adapters::Sha256AuditHasher));
-    let drift_redactor =
-        trilithon_core::audit::redactor::SecretsRedactor::new(drift_registry, drift_hasher);
-    let drift_audit = Arc::new(trilithon_adapters::AuditWriter::new(
+    let drift_registry = Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets());
+    let drift_hasher: Arc<dyn trilithon_core::audit::redactor::CiphertextHasher> =
+        Arc::new(trilithon_adapters::Sha256AuditHasher);
+    let drift_audit = Arc::new(trilithon_adapters::AuditWriter::new_with_arcs(
         drift_storage.clone(),
         drift_clock.clone(),
-        drift_redactor,
+        drift_registry,
+        drift_hasher,
     ));
     let drift_config = trilithon_adapters::drift::DriftDetectorConfig {
         interval: std::time::Duration::from_secs(60),
