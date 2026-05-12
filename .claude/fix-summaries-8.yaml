@@ -1,0 +1,14 @@
+- finding_id: F008
+  fix_diff_summary: "Added diff_caddy_values() free function; replaced DiffEngine with CaddyJsonRenderer in DriftDetector; updated all drift tests to use renderer"
+  generalizable: true
+  one_sentence_lesson: "When diffing live Caddy state against desired state, always compare same-schema JSON blobs — rendering DesiredState to Caddy JSON before comparing prevents false drift from schema mismatches"
+
+- finding_id: F011
+  fix_diff_summary: "Lifted apply_mutex creation out of build_drift_detector into run_with_shutdown scope; passes Arc clone to detector"
+  generalizable: true
+  one_sentence_lesson: "A mutex shared between two subsystems must be created at the scope that owns both subsystems — creating it inside one subsystem makes it permanently invisible to the other"
+
+- finding_id: F012
+  fix_diff_summary: "Added AuditWriter::new_with_arcs accepting Arc<SchemaRegistry> and Arc<dyn CiphertextHasher>; removed Box::leak from daemon startup"
+  generalizable: true
+  one_sentence_lesson: "Avoid Box::leak in daemon startup paths by capturing Arc clones inside the closure instead of deriving 'static references from leaked allocations"

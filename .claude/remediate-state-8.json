@@ -1,0 +1,33 @@
+{
+  "phase_id": "8",
+  "session_start": "2026-05-12T00:00:00Z",
+  "session_resumed": "2026-05-13T00:00:00Z",
+  "aggregate_file": "docs/Codebase_MultiReview_Aggregate/phase_8_aggregate.md",
+  "gate_command": "just check-rust",
+  "findings": [
+    {"id": "F001", "title": "DETECTED_AT_BYPASSES_CLOCK", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F002", "title": "INIT_FROM_STORAGE_NEVER_CALLED", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F003", "title": "DEFER_MAPS_TO_ROLLEDBACK", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F004", "title": "FRAGILE_RESOLUTION_DESERIALIZATION", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F005", "title": "RESOLVE_SILENTLY_SUCCEEDS", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F006", "title": "IGNORED_COUNT_DOUBLE_COUNTS", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F007", "title": "MISLEADING_ATOMICITY_COMMENT", "status": "wont_fix", "wont_fix_reason": "superseded — fixed in partial remediation commit 97d5f42"},
+    {"id": "F008", "title": "DRIFT_DETECTOR_DESERIALIZES_WRONG_SCHEMA", "status": "fixed", "commit": "7adeb31", "resolved_date": "2026-05-12"},
+    {"id": "F009", "title": "MISSING_CLI_INTEGRATION_TEST", "status": "fixed", "commit": "a81d952", "resolved_date": "2026-05-13"},
+    {"id": "F010", "title": "NON_ATOMIC_DUAL_WRITE_IN_RECORD", "status": "deferred", "defer_reason": "audit_log.record() uses BEGIN IMMEDIATE internally — nested transaction would deadlock. Documented with zd:F010 comment; proper fix requires split record_audit_event API.", "commit": "583877b", "resolved_date": "2026-05-13"},
+    {"id": "F011", "title": "APPLY_MUTEX_NOT_SHARED", "status": "fixed", "commit": "583877b", "resolved_date": "2026-05-13"},
+    {"id": "F012", "title": "BOX_LEAK_STATIC_REFS", "status": "fixed", "commit": "583877b", "resolved_date": "2026-05-13"},
+    {"id": "F013", "title": "ADOPT_MUTATION_OCC_GUARD_WRONG_VERSION", "status": "wont_fix", "wont_fix_reason": "superseded — desired_version parameter already added in partial remediation commit 97d5f42"},
+    {"id": "F014", "title": "INSTANCE_ID_UNUSED_IN_QUERY", "status": "fixed", "commit": "e582e7e", "resolved_date": "2026-05-13"},
+    {"id": "F015", "title": "RESOLVE_NO_UNIQUE_CONSTRAINT", "status": "fixed", "commit": "e582e7e", "resolved_date": "2026-05-13"},
+    {"id": "F016", "title": "POINTER_REMOVE_IGNORES_OOB", "status": "fixed", "commit": "e582e7e", "resolved_date": "2026-05-13"},
+    {"id": "F017", "title": "OBJECTKIND_DEAD_VARIANTS", "status": "fixed", "commit": "e582e7e", "resolved_date": "2026-05-13"},
+    {"id": "F018", "title": "INTERVAL_NOT_WIRED_FROM_SETTINGS", "status": "deferred", "defer_reason": "Requires config schema changes and a new DaemonConfig field — scope-expanding for this remediation pass. Defer to Phase 9 config layer.", "resolved_date": "2026-05-13"},
+    {"id": "F019", "title": "DIFF_JSON_STORED_WITHOUT_REDACTION", "status": "fixed", "commit": "e582e7e", "resolved_date": "2026-05-13"},
+    {"id": "F020", "title": "DUPLICATE_ROW_MAPPING", "status": "deferred", "defer_reason": "Three-use threshold not fully met; extracting helper deferred to next routine refactor pass.", "resolved_date": "2026-05-13"},
+    {"id": "F021", "title": "TICKERROR_ERASES_TYPES", "status": "deferred", "defer_reason": "Wrapping original error types requires changes to TickError enum and all callers; deferred to avoid scope creep in this pass.", "resolved_date": "2026-05-13"},
+    {"id": "F022", "title": "INITIAL_TICK_ON_SHUTDOWN", "status": "fixed", "commit": "957e551", "resolved_date": "2026-05-13"},
+    {"id": "F023", "title": "DIFF_IS_EMPTY_DOC", "status": "fixed", "commit": "957e551", "resolved_date": "2026-05-13"},
+    {"id": "F024", "title": "PUBLIC_TEST_MODULE", "status": "wont_fix", "wont_fix_reason": "Finding was incorrect — test module is already private (mod tests, not pub mod tests)"}
+  ]
+}
