@@ -140,6 +140,12 @@ impl DriftDetector {
     ///
     /// Ticks once immediately at startup, then at [`DriftDetectorConfig::interval`].
     pub async fn run(self: Arc<Self>, mut shutdown: watch::Receiver<bool>) {
+        // Guard against a shutdown that was already signaled before we started.
+        if *shutdown.borrow() {
+            tracing::info!("drift-detector.shutdown");
+            return;
+        }
+
         let mut interval = tokio::time::interval(self.config.interval);
         // First tick fires immediately.
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

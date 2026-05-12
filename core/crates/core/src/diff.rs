@@ -112,7 +112,11 @@ pub struct Diff {
 }
 
 impl Diff {
-    /// Return `true` when the two states are byte-identical in canonical JSON.
+    /// Return `true` when no meaningful diff entries exist.
+    ///
+    /// Note: [`Diff::ignored_count`] is **not** considered — a diff is empty
+    /// if and only if `entries` is empty, regardless of how many paths were
+    /// suppressed by the ignore-list.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
