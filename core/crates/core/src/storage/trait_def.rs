@@ -68,14 +68,16 @@ pub trait Storage: Send + Sync + 'static {
     /// Return the latest drift event for the current desired-state snapshot.
     async fn latest_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError>;
 
-    /// Return the latest unresolved drift event for a given instance.
+    /// Return the latest unresolved drift event.
     ///
     /// Used at daemon startup to initialise the deduplication hash, preventing
     /// duplicate `config.drift-detected` rows across restarts.
-    async fn latest_unresolved_drift_event(
-        &self,
-        instance_id: &str,
-    ) -> Result<Option<DriftEventRow>, StorageError>;
+    ///
+    /// Note: this implementation is single-instance. The `instance_id` parameter
+    /// was removed because it was accepted but never used in the SQL query.
+    /// Multi-instance isolation requires adding a `caddy_instance_id` column to
+    /// `drift_events` (deferred to the multi-instance phase).
+    async fn latest_unresolved_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError>;
 
     /// Mark a drift event as resolved.
     async fn resolve_drift_event(

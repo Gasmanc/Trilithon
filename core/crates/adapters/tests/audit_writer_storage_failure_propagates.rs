@@ -78,10 +78,7 @@ impl Storage for BusyStorage {
         panic!("not needed in this test")
     }
 
-    async fn latest_unresolved_drift_event(
-        &self,
-        _: &str,
-    ) -> Result<Option<DriftEventRow>, StorageError> {
+    async fn latest_unresolved_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError> {
         panic!("not needed in this test")
     }
 

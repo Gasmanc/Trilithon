@@ -980,10 +980,7 @@ impl Storage for SqliteStorage {
         )
     }
 
-    async fn latest_unresolved_drift_event(
-        &self,
-        _instance_id: &str,
-    ) -> Result<Option<DriftEventRow>, StorageError> {
+    async fn latest_unresolved_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError> {
         let row: Option<(String, String, i64, String, String, String, Option<String>, Option<i64>)> =
             sqlx::query_as(
                 "SELECT id, correlation_id, detected_at, snapshot_id, diff_json, running_state_hash, resolution, resolved_at
@@ -1034,14 +1031,20 @@ impl Storage for SqliteStorage {
         .execute(&self.pool)
         .await
         .map_err(sqlx_err)?;
-        if result.rows_affected() == 0 {
-            return Err(StorageError::Integrity {
+        match result.rows_affected() {
+            0 => Err(StorageError::Integrity {
                 detail: format!(
                     "resolve_drift_event: no row matched correlation_id={correlation_id}"
                 ),
-            });
+            }),
+            1 => Ok(()),
+            n => Err(StorageError::Integrity {
+                detail: format!(
+                    "resolve_drift_event: expected 1 row affected, got {n} for \
+                     correlation_id={correlation_id} (UNIQUE index missing?)"
+                ),
+            }),
         }
-        Ok(())
     }
 
     async fn enqueue_proposal(&self, _proposal: ProposalRow) -> Result<ProposalId, StorageError> {

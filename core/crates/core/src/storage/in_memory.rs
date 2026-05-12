@@ -268,10 +268,7 @@ impl Storage for InMemoryStorage {
         Ok(drift.last().cloned())
     }
 
-    async fn latest_unresolved_drift_event(
-        &self,
-        _instance_id: &str,
-    ) -> Result<Option<DriftEventRow>, StorageError> {
+    async fn latest_unresolved_drift_event(&self) -> Result<Option<DriftEventRow>, StorageError> {
         let drift = self.drift.lock().await;
         Ok(drift.iter().rev().find(|e| e.resolution.is_none()).cloned())
     }

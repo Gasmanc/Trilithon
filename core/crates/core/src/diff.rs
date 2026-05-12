@@ -548,8 +548,10 @@ fn pointer_remove(root: &mut Value, ptr: &JsonPointer) -> Result<(), DiffError> 
                 .map_err(|_| DiffError::MissingParentPath { path: ptr.clone() })?;
             if idx < arr.len() {
                 arr.remove(idx);
+                Ok(())
+            } else {
+                Err(DiffError::MissingParentPath { path: ptr.clone() })
             }
-            Ok(())
         }
         other => Err(DiffError::IncompatibleShape {
             path: ptr.clone(),
@@ -697,12 +699,20 @@ pub enum ObjectKind {
     /// An HTTP route (`/apps/http/servers/*/routes/*`).
     Route,
     /// An upstream definition.
+    ///
+    /// Reserved for a future phase — `classify()` does not yet return this
+    /// variant because Caddy upstream paths are not yet part of the managed
+    /// surface. Keeping the variant avoids a breaking enum change when the
+    /// classifier is extended.
     Upstream,
     /// A TLS configuration entry (`/apps/tls/*`).
     Tls,
     /// An HTTP server (`/apps/http/servers/*`).
     Server,
     /// A policy attachment.
+    ///
+    /// Reserved for a future phase — `classify()` does not yet return this
+    /// variant. See `Upstream` for the same rationale.
     Policy,
     /// Any path not matched by the above patterns.
     Other,

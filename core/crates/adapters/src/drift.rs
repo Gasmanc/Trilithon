@@ -253,10 +253,14 @@ impl DriftDetector {
         // Build diff summary.
         let diff_summary = summarise_diff(&diff);
 
-        // Redacted diff JSON — for now, store canonical serialisation of the diff.
-        // Phase 6 redactor integration is deferred to Slice 8.6.
-        let redacted_diff_json =
-            serde_json::to_string(&diff).map_err(|e| TickError::Serialisation(e.to_string()))?;
+        // Route diff JSON through the audit redactor so secrets in Caddy config
+        // values (TLS keys, API tokens) are masked before persisting to drift_events.
+        let diff_value =
+            serde_json::to_value(&diff).map_err(|e| TickError::Serialisation(e.to_string()))?;
+        let (redacted_diff_json, redaction_sites_count) = self
+            .audit
+            .redact_diff(&diff_value)
+            .map_err(|e| TickError::Serialisation(e.to_string()))?;
 
         let event = DriftEvent {
             before_snapshot_id: snapshot.snapshot_id,
@@ -265,7 +269,7 @@ impl DriftDetector {
             detected_at: self.clock.now_unix_ms() / 1_000,
             correlation_id: Ulid::new(),
             redacted_diff_json,
-            redaction_sites: 0,
+            redaction_sites: redaction_sites_count,
         };
 
         Ok(TickOutcome::Drifted { event })
@@ -417,7 +421,7 @@ impl DriftDetector {
     pub async fn init_from_storage(&self) -> Result<(), TickError> {
         let existing = self
             .storage
-            .latest_unresolved_drift_event(&self.config.instance_id)
+            .latest_unresolved_drift_event()
             .await
             .map_err(|e| TickError::Storage(e.to_string()))?;
 

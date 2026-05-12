@@ -197,6 +197,23 @@ impl AuditWriter {
         }
     }
 
+    /// Redact a diff value using the writer's configured redactor.
+    ///
+    /// Returns `(redacted_json_string, redaction_site_count)`. Use this when
+    /// storing diff payloads outside the audit log (e.g., `drift_events`) to
+    /// ensure secrets are masked consistently.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AuditWriteError::Redaction`] if the redactor rejects the payload,
+    /// or [`AuditWriteError::Serialization`] if serialisation fails.
+    pub fn redact_diff(&self, diff: &Value) -> Result<(String, u32), AuditWriteError> {
+        let (redacted, sites) = (self.redactor)(diff)?;
+        let json = serde_json::to_string(&redacted)
+            .map_err(|e| AuditWriteError::Serialization(e.to_string()))?;
+        Ok((json, sites))
+    }
+
     /// The single, public path into `audit_log`.
     ///
     /// Generates a fresh row id, reads the clock, runs the redactor on any
