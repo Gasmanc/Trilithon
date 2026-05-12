@@ -16,8 +16,9 @@ use serde_json::Value;
 use trilithon_core::audit::AuditEvent;
 use trilithon_core::caddy::client::CaddyClient;
 use trilithon_core::clock::Clock;
-use trilithon_core::diff::{DiffEngine, DriftEvent, summarise_diff};
+use trilithon_core::diff::{DriftEvent, diff_caddy_values, summarise_diff};
 use trilithon_core::model::desired_state::DesiredState;
+use trilithon_core::reconciler::CaddyJsonRenderer;
 use trilithon_core::storage::Storage;
 use trilithon_core::storage::types::{AuditOutcome, DriftEventRow, DriftResolution, DriftRowId};
 
@@ -119,8 +120,8 @@ pub struct DriftDetector {
     pub config: DriftDetectorConfig,
     /// Caddy admin API client.
     pub client: Arc<dyn CaddyClient>,
-    /// Structural diff engine.
-    pub diff_engine: Arc<dyn DiffEngine>,
+    /// Renderer: converts [`DesiredState`] → Caddy JSON for live-config comparison.
+    pub renderer: Arc<dyn CaddyJsonRenderer>,
     /// Persistent storage.
     pub storage: Arc<dyn Storage>,
     /// Audit log writer.
@@ -202,16 +203,12 @@ impl DriftDetector {
             return Ok(TickOutcome::SkippedApplyInFlight);
         };
 
-        // Fetch the running Caddy config.
+        // Fetch the running Caddy config (raw Caddy JSON).
         let running_config = self
             .client
             .get_running_config()
             .await
             .map_err(|e| TickError::CaddyFetch(e.to_string()))?;
-
-        // Parse running config into DesiredState for comparison.
-        let running: DesiredState = serde_json::from_value(running_config.0.clone())
-            .map_err(|e| TickError::Serialisation(e.to_string()))?;
 
         // Fetch latest desired-state snapshot.
         let snapshot = self
@@ -229,15 +226,23 @@ impl DriftDetector {
         let desired: DesiredState = serde_json::from_str(&snapshot.desired_state_json)
             .map_err(|e| TickError::Serialisation(e.to_string()))?;
 
-        // Compute structural diff.
-        let diff = self.diff_engine.structural_diff(&desired, &running)?;
+        // Render desired state to Caddy JSON so both sides share the same schema.
+        // Comparing DesiredState (Trilithon schema) against raw Caddy JSON directly
+        // would produce a false diff because the schemas are different.
+        let rendered_desired = self
+            .renderer
+            .render(&desired)
+            .map_err(|e| TickError::Serialisation(e.to_string()))?;
+
+        // Compute structural diff between rendered desired and live running config.
+        let diff = diff_caddy_values(&rendered_desired, &running_config.0);
 
         if diff.entries.is_empty() {
             return Ok(TickOutcome::Clean);
         }
 
-        // Compute running-state hash (SHA-256 of canonical JSON).
-        let running_canonical = trilithon_core::canonical_json::to_canonical_bytes(&running)
+        // Compute running-state hash (SHA-256 of canonical Caddy JSON).
+        let running_canonical = serde_json::to_vec(&running_config.0)
             .map_err(|e| TickError::Serialisation(e.to_string()))?;
         let running_state_hash = {
             use sha2::{Digest, Sha256};

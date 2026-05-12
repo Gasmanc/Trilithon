@@ -327,6 +327,59 @@ fn state_to_value(state: &DesiredState) -> Result<Value, DiffError> {
         })
 }
 
+/// Compute a structural diff between two raw JSON [`Value`]s.
+///
+/// Both sides are canonicalised before flattening so that key ordering and
+/// numeric representation are normalised.  Used by the drift detector to
+/// compare a rendered Caddy JSON blob (desired) against the live running
+/// config (observed) — both in Caddy JSON schema.
+pub fn diff_caddy_values(before: &Value, after: &Value) -> Diff {
+    let flat_before = flatten::flatten(&canonicalise_value(before.clone()));
+    let flat_after = flatten::flatten(&canonicalise_value(after.clone()));
+
+    let mut entries: Vec<DiffEntry> = Vec::new();
+    let mut ignored_count: u32 = 0;
+
+    for (path, bv) in &flat_before {
+        if is_ignored(path) {
+            ignored_count += 1;
+            continue;
+        }
+        match flat_after.get(path) {
+            None => entries.push(DiffEntry::Removed {
+                path: path.clone(),
+                before: bv.clone(),
+            }),
+            Some(av) if av != bv => entries.push(DiffEntry::Modified {
+                path: path.clone(),
+                before: bv.clone(),
+                after: av.clone(),
+            }),
+            Some(_) => {}
+        }
+    }
+    for (path, av) in &flat_after {
+        if is_ignored(path) {
+            if !flat_before.contains_key(path) {
+                ignored_count += 1;
+            }
+            continue;
+        }
+        if !flat_before.contains_key(path) {
+            entries.push(DiffEntry::Added {
+                path: path.clone(),
+                after: av.clone(),
+            });
+        }
+    }
+
+    entries.sort_unstable_by(|a, b| a.path().0.cmp(&b.path().0));
+    Diff {
+        entries,
+        ignored_count,
+    }
+}
+
 /// Return a human-readable kind name for a [`Value`].
 const fn kind_name(v: &Value) -> &'static str {
     match v {

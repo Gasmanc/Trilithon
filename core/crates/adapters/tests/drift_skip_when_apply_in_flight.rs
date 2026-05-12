@@ -26,7 +26,7 @@ use trilithon_core::{
         LoadedModules, TlsCertificate, UpstreamHealth,
     },
     clock::Clock,
-    diff::DefaultDiffEngine,
+    reconciler::DefaultCaddyJsonRenderer,
     schema::SchemaRegistry,
     storage::trait_def::Storage,
 };
@@ -104,7 +104,7 @@ async fn drift_skip_when_apply_in_flight() {
     let detector = Arc::new(DriftDetector {
         config: DriftDetectorConfig::default(),
         client: Arc::new(UnreachableCaddyClient),
-        diff_engine: Arc::new(DefaultDiffEngine),
+        renderer: Arc::new(DefaultCaddyJsonRenderer),
         storage,
         audit,
         clock: Arc::new(FixedClock(1_700_000_000_000)),

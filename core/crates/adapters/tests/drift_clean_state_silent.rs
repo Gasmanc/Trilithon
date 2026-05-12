@@ -27,8 +27,8 @@ use trilithon_core::{
     },
     canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes},
     clock::Clock,
-    diff::DefaultDiffEngine,
     model::desired_state::DesiredState,
+    reconciler::{CaddyJsonRenderer as _, DefaultCaddyJsonRenderer},
     schema::SchemaRegistry,
     storage::{
         trait_def::Storage,
@@ -58,7 +58,7 @@ impl CaddyClient for EmptyCaddyClient {
     }
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
         let state = DesiredState::empty();
-        let val = serde_json::to_value(&state).unwrap();
+        let val = DefaultCaddyJsonRenderer.render(&state).unwrap();
         Ok(CaddyConfig(val))
     }
     async fn get_loaded_modules(&self) -> Result<LoadedModules, CaddyError> {
@@ -131,7 +131,7 @@ fn build_detector(storage: Arc<dyn Storage>) -> Arc<DriftDetector> {
     Arc::new(DriftDetector {
         config: DriftDetectorConfig::default(),
         client: Arc::new(EmptyCaddyClient),
-        diff_engine: Arc::new(DefaultDiffEngine),
+        renderer: Arc::new(DefaultCaddyJsonRenderer),
         storage,
         audit,
         clock: Arc::new(FixedClock(1_700_000_000_000)),

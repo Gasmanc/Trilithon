@@ -267,7 +267,7 @@ fn build_drift_detector(
     Arc::new(trilithon_adapters::drift::DriftDetector {
         config: drift_config,
         client: caddy_client,
-        diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
+        renderer: Arc::new(trilithon_core::reconciler::DefaultCaddyJsonRenderer),
         storage: drift_storage,
         audit: drift_audit,
         clock: drift_clock,

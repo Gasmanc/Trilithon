@@ -28,8 +28,8 @@ use trilithon_core::{
     },
     canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes},
     clock::Clock,
-    diff::DefaultDiffEngine,
     model::desired_state::DesiredState,
+    reconciler::DefaultCaddyJsonRenderer,
     schema::SchemaRegistry,
     storage::{
         trait_def::Storage,
@@ -64,10 +64,7 @@ impl CaddyClient for TrapCaddyClient {
         panic!("detector must not call put_config")
     }
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
-        let mut state = DesiredState::empty();
-        state.version = 999;
-        let val = serde_json::to_value(&state).unwrap();
-        Ok(CaddyConfig(val))
+        Ok(CaddyConfig(serde_json::json!({"__drift_marker": true})))
     }
     async fn get_loaded_modules(&self) -> Result<LoadedModules, CaddyError> {
         unimplemented!()
@@ -150,7 +147,7 @@ async fn drift_never_silently_overwrites() {
     let detector = Arc::new(DriftDetector {
         config: DriftDetectorConfig::default(),
         client: trap_client.clone(),
-        diff_engine: Arc::new(DefaultDiffEngine),
+        renderer: Arc::new(DefaultCaddyJsonRenderer),
         storage: storage.clone(),
         audit,
         clock,

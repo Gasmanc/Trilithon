@@ -28,8 +28,8 @@ use trilithon_core::{
     },
     canonical_json::{CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes},
     clock::Clock,
-    diff::DefaultDiffEngine,
     model::desired_state::DesiredState,
+    reconciler::DefaultCaddyJsonRenderer,
     schema::SchemaRegistry,
     storage::{
         trait_def::Storage,
@@ -60,11 +60,9 @@ impl CaddyClient for MutatingCaddyClient {
         unimplemented!()
     }
     async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
+        // Use the counter value in the Caddy JSON so each tick produces a distinct hash.
         let ver = self.version.load(Ordering::Relaxed);
-        let mut state = DesiredState::empty();
-        state.version = i64::from(ver);
-        let val = serde_json::to_value(&state).unwrap();
-        Ok(CaddyConfig(val))
+        Ok(CaddyConfig(serde_json::json!({"__drift_marker": ver})))
     }
     async fn get_loaded_modules(&self) -> Result<LoadedModules, CaddyError> {
         unimplemented!()
@@ -146,7 +144,7 @@ async fn drift_records_two_rows_for_two_cycles() {
     let detector = Arc::new(DriftDetector {
         config: DriftDetectorConfig::default(),
         client: caddy_client.clone(),
-        diff_engine: Arc::new(DefaultDiffEngine),
+        renderer: Arc::new(DefaultCaddyJsonRenderer),
         storage: storage.clone(),
         audit,
         clock,
