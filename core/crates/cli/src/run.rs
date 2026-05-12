@@ -171,6 +171,9 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
 
     // Build and spawn the drift detector (Slice 8.5).
     let detector = build_drift_detector(storage, caddy_client.clone());
+    if let Err(e) = detector.init_from_storage().await {
+        tracing::warn!(error = %e, "drift-detector.init-from-storage-failed");
+    }
     let detector_task = Arc::clone(&detector);
     let shutdown_rx = signal.subscribe();
     tasks.spawn(async move {

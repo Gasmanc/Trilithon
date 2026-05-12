@@ -968,7 +968,13 @@ impl Storage for SqliteStorage {
                 snapshot_id: SnapshotId(sid),
                 diff_json: dj,
                 running_state_hash: rsh,
-                resolution: res.and_then(|r| serde_json::from_str(&format!("\"{r}\"")).ok()),
+                resolution: res.and_then(|r| match r.as_str() {
+                    "reapplied" => Some(DriftResolution::Reapplied),
+                    "accepted" => Some(DriftResolution::Accepted),
+                    "rolled_back" => Some(DriftResolution::RolledBack),
+                    "deferred" => Some(DriftResolution::Deferred),
+                    _ => None,
+                }),
                 resolved_at: rat,
             }),
         )
@@ -995,7 +1001,13 @@ impl Storage for SqliteStorage {
                 snapshot_id: SnapshotId(sid),
                 diff_json: dj,
                 running_state_hash: rsh,
-                resolution: res.and_then(|r| serde_json::from_str(&format!("\"{r}\"")).ok()),
+                resolution: res.and_then(|r| match r.as_str() {
+                    "reapplied" => Some(DriftResolution::Reapplied),
+                    "accepted" => Some(DriftResolution::Accepted),
+                    "rolled_back" => Some(DriftResolution::RolledBack),
+                    "deferred" => Some(DriftResolution::Deferred),
+                    _ => None,
+                }),
                 resolved_at: rat,
             }),
         )
@@ -1013,7 +1025,7 @@ impl Storage for SqliteStorage {
             })?
             .trim_matches('"')
             .to_owned();
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE drift_events SET resolution = ?, resolved_at = ? WHERE correlation_id = ?",
         )
         .bind(&res_str)
@@ -1022,6 +1034,13 @@ impl Storage for SqliteStorage {
         .execute(&self.pool)
         .await
         .map_err(sqlx_err)?;
+        if result.rows_affected() == 0 {
+            return Err(StorageError::Integrity {
+                detail: format!(
+                    "resolve_drift_event: no row matched correlation_id={correlation_id}"
+                ),
+            });
+        }
         Ok(())
     }
 

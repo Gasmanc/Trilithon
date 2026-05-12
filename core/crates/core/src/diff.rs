@@ -229,7 +229,10 @@ impl DiffEngine for DefaultDiffEngine {
         }
         for (path, av) in &flat_after {
             if is_ignored(path) {
-                ignored_count += 1;
+                // Only count once: skip paths already counted in the before loop.
+                if !flat_before.contains_key(path) {
+                    ignored_count += 1;
+                }
                 continue;
             }
             if !flat_before.contains_key(path) {

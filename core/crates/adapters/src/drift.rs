@@ -257,7 +257,7 @@ impl DriftDetector {
             before_snapshot_id: snapshot.snapshot_id,
             running_state_hash,
             diff_summary,
-            detected_at: time::OffsetDateTime::now_utc().unix_timestamp(),
+            detected_at: self.clock.now_unix_ms() / 1_000,
             correlation_id: Ulid::new(),
             redacted_diff_json,
             redaction_sites: 0,
@@ -276,7 +276,7 @@ impl DriftDetector {
     /// Returns [`TickError`] if either the audit write or the storage write fails.
     #[allow(clippy::significant_drop_tightening)]
     // The guard is intentionally held across both writes — constraint 5 requires
-    // the hash update only after both succeed atomically.
+    // the hash update only after both writes succeed.
     pub async fn record(&self, event: DriftEvent) -> Result<(), TickError> {
         let mut guard = self.last_running_hash.lock().await;
 
@@ -349,7 +349,7 @@ impl DriftDetector {
         let storage_resolution = match resolution {
             ResolutionKind::Adopt => DriftResolution::Accepted,
             ResolutionKind::Reapply => DriftResolution::Reapplied,
-            ResolutionKind::Defer => DriftResolution::RolledBack,
+            ResolutionKind::Defer => DriftResolution::Deferred,
         };
 
         let now_ms = self.clock.now_unix_ms();

@@ -240,6 +240,8 @@ pub enum DriftResolution {
     Accepted,
     /// A previous snapshot was restored.
     RolledBack,
+    /// Action was deferred for later manual reconciliation.
+    Deferred,
 }
 
 /// A proposal row in the pending-proposals queue.
