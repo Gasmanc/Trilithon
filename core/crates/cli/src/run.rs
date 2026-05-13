@@ -6,6 +6,7 @@ use tokio::task::JoinSet;
 use trilithon_adapters::sqlite_storage::SqliteStorage;
 use trilithon_core::config::DaemonConfig;
 use trilithon_core::exit::ExitCode;
+use trilithon_core::http::HttpServer as _;
 
 use crate::exit::caddy_startup_exit_code;
 use crate::shutdown::{
@@ -194,8 +195,17 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         detector_task.run(shutdown_rx).await;
     });
 
+    // Build and spawn the HTTP server (Slice 9.1).
+    let ready_since_ms = match bind_and_spawn_http(&config, &mut tasks, signal.clone()).await {
+        Ok(r) => r,
+        Err(code) => return Ok(code),
+    };
+
     // Emit daemon.started only after every startup gate has passed.
     tracing::info!("daemon.started");
+
+    // Mark the server ready and record the timestamp.
+    trilithon_adapters::http_axum::mark_ready(&ready_since_ms);
 
     tasks.spawn(daemon_loop(signal));
 
@@ -286,6 +296,57 @@ fn build_drift_detector(
         apply_mutex,
         last_running_hash: tokio::sync::Mutex::new(None),
     })
+}
+
+/// Bind the HTTP server from `config`, spawn it into `tasks`, and return the
+/// `ready_since_unix_ms` atomic so the caller can mark the daemon ready.
+///
+/// Returns `Err(ExitCode)` if the bind fails.
+async fn bind_and_spawn_http(
+    config: &DaemonConfig,
+    tasks: &mut JoinSet<()>,
+    signal: crate::shutdown::ShutdownSignal,
+) -> Result<Arc<std::sync::atomic::AtomicU64>, ExitCode> {
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+
+    let apply_in_flight_flag = Arc::new(AtomicBool::new(false));
+    let ready_since_ms = Arc::new(AtomicU64::new(0));
+    let http_state = Arc::new(trilithon_adapters::http_axum::AppState {
+        apply_in_flight: Arc::clone(&apply_in_flight_flag),
+        ready_since_unix_ms: Arc::clone(&ready_since_ms),
+    });
+    let http_server_cfg = trilithon_adapters::http_axum::AxumServerConfig {
+        bind_host: config.server.bind.ip().to_string(),
+        bind_port: config.server.bind.port(),
+        allow_remote_binding: config.server.allow_remote,
+        ..trilithon_adapters::http_axum::AxumServerConfig::default()
+    };
+    let mut http_server =
+        trilithon_adapters::http_axum::AxumServer::new(http_server_cfg, http_state);
+
+    match http_server.bind(&config.server).await {
+        Ok(addr) => {
+            tracing::info!(bind = %addr, "http.server.bound");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "http.server.bind-failed");
+            return Err(ExitCode::StartupPreconditionFailure);
+        }
+    }
+
+    let http_shutdown = Box::pin({
+        let mut s = signal;
+        async move {
+            s.wait().await;
+        }
+    });
+    tasks.spawn(async move {
+        if let Err(e) = http_server.run(http_shutdown).await {
+            tracing::error!(error = %e, "http.server.crashed");
+        }
+    });
+
+    Ok(ready_since_ms)
 }
 
 /// Drain all tasks in `set` within [`DRAIN_BUDGET`], then abort any survivors.

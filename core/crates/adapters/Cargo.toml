@@ -24,6 +24,7 @@ hyper-rustls = { version = "0.27", features = ["rustls-native-certs"] }
 rustls-pemfile = "2"
 http-body-util = "0.1"
 http = "1"
+axum = { version = "0.8", features = ["tokio", "json"] }
 tower = { version = "0.5", features = ["util"] }
 pin-project-lite = "0.2"
 bytes = "1"
@@ -42,6 +43,8 @@ tokio = { version = "1", features = ["full", "test-util"] }
 url = { workspace = true }
 httptest = "0.16"
 tracing-subscriber = { workspace = true }
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
+reqwest = { version = "0.12", features = ["json"], default-features = false, package = "reqwest" }
 ulid = { workspace = true }
 
 [[test]]
@@ -225,6 +228,26 @@ path = "tests/cross_phase/apply_lock_coordination.rs"
 [[test]]
 name = "cross_phase_apply_audit_notes_format"
 path = "tests/cross_phase/apply_audit_notes_format.rs"
+
+[[test]]
+name = "http_health_returns_200"
+path = "tests/http_health_returns_200.rs"
+
+[[test]]
+name = "http_loopback_default"
+path = "tests/http_loopback_default.rs"
+
+[[test]]
+name = "http_remote_bind_rejected_without_flag"
+path = "tests/http_remote_bind_rejected_without_flag.rs"
+
+[[test]]
+name = "http_remote_bind_warns_with_flag"
+path = "tests/http_remote_bind_warns_with_flag.rs"
+
+[[test]]
+name = "http_openapi_placeholder"
+path = "tests/http_openapi_placeholder.rs"
 
 [lints]
 workspace = true
