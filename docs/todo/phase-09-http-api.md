@@ -31,7 +31,7 @@
 
 ---
 
-## Slice 9.1 — `axum` server scaffold, loopback bind, `/api/v1/health`, OpenAPI surface
+## Slice 9.1 [cross-cutting] — `axum` server scaffold, loopback bind, `/api/v1/health`, OpenAPI surface
 
 ### Goal
 
@@ -149,7 +149,7 @@ None directly.
 
 ---
 
-## Slice 9.2 — Argon2id password hashing and `users` adapter
+## Slice 9.2 [standard] — Argon2id password hashing and `users` adapter
 
 ### Goal
 
@@ -253,7 +253,7 @@ None new.
 
 ---
 
-## Slice 9.3 — Sessions table writer, cookie codec, login rate limiter
+## Slice 9.3 [standard] — Sessions table writer, cookie codec, login rate limiter
 
 ### Goal
 
@@ -347,7 +347,7 @@ None new.
 
 ---
 
-## Slice 9.4 — Bootstrap-account flow with `bootstrap-credentials.txt` mode 0600
+## Slice 9.4 [cross-cutting] — Bootstrap-account flow with `bootstrap-credentials.txt` mode 0600
 
 ### Goal
 
@@ -433,7 +433,7 @@ pub async fn bootstrap_if_empty(
 
 ---
 
-## Slice 9.5 — Auth endpoints: login, logout, change-password
+## Slice 9.5 [standard] — Auth endpoints: login, logout, change-password
 
 ### Goal
 
@@ -536,7 +536,7 @@ pub async fn change_password(
 
 ---
 
-## Slice 9.6 — Authentication middleware (sessions and tokens)
+## Slice 9.6 [cross-cutting] — Authentication middleware (sessions and tokens)
 
 ### Goal
 
@@ -618,7 +618,7 @@ None directly.
 
 ---
 
-## Slice 9.7 — `POST /api/v1/mutations` with `expected_version` envelope
+## Slice 9.7 [standard] — `POST /api/v1/mutations` with `expected_version` envelope
 
 ### Goal
 
@@ -709,7 +709,7 @@ pub async fn post_mutation(
 
 ---
 
-## Slice 9.8 — Snapshot and route read endpoints
+## Slice 9.8 [cross-cutting] — Snapshot and route read endpoints
 
 ### Goal
 
@@ -840,7 +840,7 @@ None.
 
 ---
 
-## Slice 9.9 — `GET /api/v1/audit` with paginated filters
+## Slice 9.9 [standard] — `GET /api/v1/audit` with paginated filters
 
 ### Goal
 
@@ -934,7 +934,7 @@ None.
 
 ---
 
-## Slice 9.10 — Drift endpoints: current, adopt, reapply, defer
+## Slice 9.10 [standard] — Drift endpoints: current, adopt, reapply, defer
 
 ### Goal
 
@@ -1022,7 +1022,7 @@ pub async fn defer  (/* same shape */) -> Result<http::StatusCode /* 204 */, Api
 
 ---
 
-## Slice 9.11 — `GET /api/v1/capabilities` plus error envelope and OpenAPI publication
+## Slice 9.11 [cross-cutting] — `GET /api/v1/capabilities` plus error envelope and OpenAPI publication
 
 ### Goal
 
