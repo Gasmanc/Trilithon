@@ -37,6 +37,7 @@ use sqlx::SqlitePool;
 use ulid::Ulid;
 
 use trilithon_core::caddy::{CaddyConfig, CaddyError};
+use trilithon_core::model::route::HostPattern;
 use trilithon_core::storage::types::{AuditOutcome, Snapshot};
 use trilithon_core::{
     audit::AuditEvent,
@@ -49,7 +50,7 @@ use trilithon_core::{
         ApplyOutcome, CapabilityCheckError, ReloadKind, ValidationReport,
         capability_check::check_against_capability_set, render::CaddyJsonRenderer,
     },
-    storage::{Storage, error::StorageError, types::SnapshotId},
+    storage::{Storage, types::SnapshotId},
 };
 
 use crate::{
@@ -455,26 +456,26 @@ impl Applier for CaddyApplier {
         // This guarantees the advisory lock row is deleted before the next
         // caller can acquire the mutex and attempt its own INSERT.
         let result = async {
-            // Step 0 (Slice 7.5): CAS version check — BEGIN IMMEDIATE in storage.
-            // Prevents TOCTOU races between two concurrent apply() calls.
-            match self
+            // Step 0 (Slice 7.5): early conflict detection — non-advancing read.
+            // The advisory lock above serialises all apply() calls, so no other
+            // process can advance applied_config_version while we hold it.
+            // We read here for a fast early-exit before expensive Caddy I/O;
+            // the actual CAS advance is deferred to Step 6b, after Caddy has
+            // confirmed the config was loaded and verified.
+            let observed = self
                 .storage
-                .cas_advance_config_version(&self.instance_id, expected_version, &snapshot_id)
+                .current_config_version(&self.instance_id)
                 .await
-            {
-                Ok(_new_version) => {
-                    // CAS succeeded; proceed with apply.
-                }
-                Err(StorageError::OptimisticConflict { observed, expected }) => {
-                    return self
-                        .handle_conflict(correlation_id, &snapshot_id, expected, observed)
-                        .await;
-                }
-                Err(e) => {
-                    return Err(ApplyError::Storage(format!(
-                        "cas_advance_config_version: {e}"
-                    )));
-                }
+                .map_err(|e| ApplyError::Storage(format!("current_config_version: {e}")))?;
+            if observed != expected_version {
+                return self
+                    .handle_conflict(
+                        correlation_id,
+                        &snapshot_id,
+                        expected_version,
+                        observed,
+                    )
+                    .await;
             }
 
             // Step 1: emit apply.started tracing event (in_scope avoids !Send guard
@@ -520,6 +521,14 @@ impl Applier for CaddyApplier {
             // Step 6: verify post-load structural equivalence.
             self.verify_equivalence(&desired_state).await?;
 
+            // Step 6b: CAS advance — applied_config_version only moves forward
+            // after Caddy has accepted and structurally verified the new config.
+            // The advisory lock guarantees no other process can race here.
+            self.storage
+                .cas_advance_config_version(&self.instance_id, expected_version, &snapshot_id)
+                .await
+                .map_err(|e| ApplyError::Storage(format!("cas_advance_config_version: {e}")))?;
+
             // Step 7: write config.applied audit row.
             self.write_apply_succeeded_audit(correlation_id, &snapshot_id)
                 .await;
@@ -529,21 +538,24 @@ impl Applier for CaddyApplier {
             // return path is unaffected — the task runs independently.
             if let Some(observer) = self.tls_observer.clone() {
                 let sid = snapshot_id.clone();
-                // Known limitation: hostnames are not yet extracted from
-                // desired_state; the observer returns immediately when the
-                // list is empty.  Hostname extraction is deferred to a future
-                // slice (post-Phase 7) that parses TLS-enabled routes.
-                tracing::debug!(
-                    event = "tls_observer.skipped",
-                    correlation_id = %correlation_id,
-                    snapshot.id = %snapshot_id.0,
-                    "tls observer spawned with empty hostname list; \
-                     no TLS issuance polling will occur until hostnames \
-                     are extracted from desired_state"
-                );
-                tokio::spawn(async move {
-                    observer.observe(correlation_id, vec![], Some(sid)).await;
-                });
+                // Collect hostnames from all enabled routes to pass to the
+                // TLS issuance observer. Both Exact and Wildcard patterns
+                // expose the hostname string directly.
+                let hostnames: Vec<String> = desired_state
+                    .routes
+                    .values()
+                    .filter(|r| r.enabled)
+                    .flat_map(|r| {
+                        r.hostnames.iter().map(|hp| match hp {
+                            HostPattern::Exact(h) | HostPattern::Wildcard(h) => h.clone(),
+                        })
+                    })
+                    .collect();
+                if !hostnames.is_empty() {
+                    tokio::spawn(async move {
+                        observer.observe(correlation_id, hostnames, Some(sid)).await;
+                    });
+                }
             }
 
             // Step 8: emit apply.succeeded tracing event.
@@ -597,7 +609,16 @@ impl Applier for CaddyApplier {
                 ApplyError::Storage(format!("rollback target snapshot {target:?} not found"))
             })?;
 
-        let expected = snapshot.config_version;
+        // The CAS gate compares expected_version against applied_config_version.
+        // Using the target snapshot's config_version as expected would always
+        // conflict when rolling back to any version other than the immediately
+        // preceding one (applied=N, target.config_version=M<N → mismatch).
+        // Read the current applied pointer instead.
+        let expected = self
+            .storage
+            .current_config_version(&self.instance_id)
+            .await
+            .map_err(|e| ApplyError::Storage(format!("current_config_version: {e}")))?;
         self.apply(&snapshot, expected).await
     }
 }

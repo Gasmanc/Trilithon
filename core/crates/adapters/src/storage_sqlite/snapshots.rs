@@ -78,20 +78,27 @@ pub async fn advance_config_version_if_eq(
 
     let new_version = expected_version + 1;
 
-    // Verify the target snapshot exists in the DB.
-    let exists: bool =
-        sqlx::query_scalar("SELECT COUNT(*) FROM snapshots WHERE id = ? AND caddy_instance_id = ?")
-            .bind(&new_snapshot_id.0)
-            .bind(instance_id)
-            .fetch_one(&mut *conn)
-            .await
-            .map(|c: i64| c > 0)
-            .map_err(sqlx_err)?;
+    // Verify the target snapshot exists and carries the expected next version.
+    // Checking config_version = new_version prevents advancing the pointer to
+    // an unrelated snapshot that happens to share the same id but has a
+    // mismatched version.
+    let exists: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM snapshots \
+         WHERE id = ? AND caddy_instance_id = ? AND config_version = ?",
+    )
+    .bind(&new_snapshot_id.0)
+    .bind(instance_id)
+    .bind(new_version)
+    .fetch_one(&mut *conn)
+    .await
+    .map(|c: i64| c > 0)
+    .map_err(sqlx_err)?;
 
     if !exists {
         return Err(StorageError::Integrity {
             detail: format!(
-                "advance_config_version_if_eq: snapshot {} not found for instance {}",
+                "advance_config_version_if_eq: snapshot {} not found or config_version \
+                 mismatch for instance {} (expected config_version={new_version})",
                 new_snapshot_id.0, instance_id
             ),
         });
