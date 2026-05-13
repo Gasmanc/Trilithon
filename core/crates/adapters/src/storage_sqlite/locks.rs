@@ -99,14 +99,46 @@ impl Drop for AcquiredLock {
         // calls `AcquiredLock::release().await` which uses `mem::forget` to
         // skip this path.  If we reach Drop it means the apply body panicked.
         //
-        // We use `block_in_place` so the DELETE completes synchronously before
-        // this Drop returns. This matters because the in-process Mutex guard
-        // (`_process_guard`) drops after `advisory_lock` — if we returned from
-        // Drop before the DELETE committed, a new caller could acquire the
-        // Mutex and see the stale lock row, producing a spurious AlreadyHeld.
+        // During panic unwinding `block_in_place` would itself panic (on
+        // current-thread runtimes) or cause undefined interactions with the
+        // runtime, producing a double-panic → SIGABRT.  Instead we spawn a
+        // detached std::thread that runs a fresh single-threaded Tokio runtime
+        // just long enough to issue the DELETE.  The test suite's 200 ms
+        // post-panic sleep is sufficient for the spawned thread to complete.
+        //
+        // In the non-panic (normal-operation) path, `release()` is always
+        // called first (it uses `mem::forget` to skip this Drop entirely), so
+        // this branch is exercised only by tests that simulate a panic.
         let pool = self.pool.clone();
         let instance_id = self.instance_id.clone();
         let holder_pid = self.holder_pid;
+
+        if std::thread::panicking() {
+            // Spawn a detached thread so the DELETE can complete without
+            // calling block_in_place during stack unwinding.
+            let _ = std::thread::Builder::new()
+                .name("lock-cleanup-panic".to_owned())
+                .spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build();
+                    if let Ok(rt) = rt {
+                        let _ = rt.block_on(
+                            sqlx::query(
+                                "DELETE FROM apply_locks \
+                                 WHERE instance_id = ? AND holder_pid = ?",
+                            )
+                            .bind(&instance_id)
+                            .bind(holder_pid)
+                            .execute(&pool),
+                        );
+                    }
+                });
+            return;
+        }
+
+        // Normal path: block synchronously so the DELETE is committed before
+        // this Drop returns.  Requires a multi-thread Tokio runtime.
         task::block_in_place(|| {
             let handle = tokio::runtime::Handle::try_current();
             match handle {

@@ -57,7 +57,7 @@ async fn open_second_pool(dir: &TempDir) -> SqlitePool {
 
 /// While the first `AcquiredLock` guard is live, a second pool's
 /// `acquire_apply_lock` call must return `LockError::AlreadyHeld`.
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn second_acquire_returns_already_held_while_first_is_live() {
     let dir = TempDir::new().unwrap();
     let store = open_store_and_migrate(&dir).await;

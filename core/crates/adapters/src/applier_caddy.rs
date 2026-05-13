@@ -229,6 +229,8 @@ impl CaddyApplier {
                     error_kind: Some("CaddyValidation".to_owned()),
                     error_detail: Some(excerpt.clone()),
                     caddy_status,
+                    stale_version: None,
+                    current_version: None,
                 };
                 let _ = self
                     .audit
@@ -276,8 +278,8 @@ impl CaddyApplier {
                     error_kind: Some("CaddyServerError".to_owned()),
                     error_detail: Some(excerpt.clone()),
                     caddy_status: Some(status),
-            stale_version: None,
-            current_version: None,
+                    stale_version: None,
+                    current_version: None,
                 };
                 let _ = self
                     .audit
@@ -322,13 +324,15 @@ impl CaddyApplier {
             .await
             .map_err(|e| match e {
                 CaddyError::Unreachable { .. } | CaddyError::Timeout { .. } => {
-                    ApplyError::Unreachable { detail: e.to_string() }
+                    ApplyError::Unreachable {
+                        detail: e.to_string(),
+                    }
                 }
                 CaddyError::BadStatus { .. }
                 | CaddyError::ProtocolViolation { .. }
-                | CaddyError::InvalidEndpoint { .. } => {
-                    ApplyError::CaddyRejected { detail: e.to_string() }
-                }
+                | CaddyError::InvalidEndpoint { .. } => ApplyError::CaddyRejected {
+                    detail: e.to_string(),
+                },
             })?;
 
         let diffs = self
@@ -375,7 +379,9 @@ impl CaddyApplier {
                 outcome: AuditOutcome::Error,
                 error_kind: Some("OptimisticConflict".to_owned()),
                 notes: Some(notes_to_string(&ApplyAuditNotes {
-                    reload_kind: ReloadKind::Graceful { drain_window_ms: None },
+                    reload_kind: ReloadKind::Graceful {
+                        drain_window_ms: None,
+                    },
                     applied_state: AppliedStateTag::Applied,
                     drain_window_ms: None,
                     error_kind: Some("OptimisticConflict".to_owned()),
@@ -453,21 +459,18 @@ impl Applier for CaddyApplier {
         let snapshot_id = snapshot.snapshot_id.clone();
         let config_version = snapshot.config_version;
 
-        let correlation_id: Ulid = snapshot
-            .correlation_id
-            .parse()
-            .unwrap_or_else(|_| {
-                let fallback = Ulid::new();
-                tracing::warn!(
-                    event = "apply.correlation_id.parse_failed",
-                    raw_correlation_id = %snapshot.correlation_id,
-                    snapshot.id = %snapshot.snapshot_id.0,
-                    fallback_id = %fallback,
-                    "snapshot correlation_id is not a valid ULID; \
-                     audit rows will carry a different ID than the mutation pipeline"
-                );
-                fallback
-            });
+        let correlation_id: Ulid = snapshot.correlation_id.parse().unwrap_or_else(|_| {
+            let fallback = Ulid::new();
+            tracing::warn!(
+                event = "apply.correlation_id.parse_failed",
+                raw_correlation_id = %snapshot.correlation_id,
+                snapshot.id = %snapshot.snapshot_id.0,
+                fallback_id = %fallback,
+                "snapshot correlation_id is not a valid ULID; \
+                 audit rows will carry a different ID than the mutation pipeline"
+            );
+            fallback
+        });
 
         // Step -1 (Slice 7.6): acquire in-process mutex first, then the
         // SQLite advisory lock.  Together these guarantee at most one apply
@@ -501,12 +504,7 @@ impl Applier for CaddyApplier {
                 .map_err(|e| ApplyError::Storage(format!("current_config_version: {e}")))?;
             if observed != expected_version {
                 return self
-                    .handle_conflict(
-                        correlation_id,
-                        &snapshot_id,
-                        expected_version,
-                        observed,
-                    )
+                    .handle_conflict(correlation_id, &snapshot_id, expected_version, observed)
                     .await;
             }
 

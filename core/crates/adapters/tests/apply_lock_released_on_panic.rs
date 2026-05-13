@@ -238,13 +238,12 @@ async fn lock_released_after_panic_allows_next_apply() {
     let pool = store.pool().clone();
     let storage: Arc<dyn Storage> = Arc::new(store);
 
-    // Insert two snapshots so both applies have something to work with.
-    for v in 1..=2_i64 {
-        storage
-            .insert_snapshot(make_snapshot(v))
-            .await
-            .expect("insert snapshot");
-    }
+    // Insert snapshot v=1 for both applies to target.  Both the panicking apply
+    // and the recovery apply use config_version=1 (expected_version=0 → new=1).
+    storage
+        .insert_snapshot(make_snapshot(1))
+        .await
+        .expect("insert snapshot");
 
     // First apply: panics inside load_config.  Spawn in a task so the panic
     // is caught by tokio and returned as a JoinError.
@@ -268,13 +267,15 @@ async fn lock_released_after_panic_allows_next_apply() {
 
     // Second apply on a fresh applier with a fresh mutex — must succeed,
     // proving the advisory lock row was cleaned up.
+    //
+    // The panicking apply panicked inside load_config, which runs BEFORE the
+    // CAS-advance step, so config_version is still 0.  The second apply must
+    // use a snapshot with config_version=1 (= expected_version + 1 = 0 + 1).
+    // If the lock row is not cleaned up this would return LockContested instead.
     let applier2 = build_ok_applier(storage.clone(), pool);
-    let snap2 = make_snapshot(2);
-    // Note: config_version is now 1 (the panicking apply did CAS-advance before
-    // panicking in load_config).  If the lock row is not cleaned up this would
-    // return LockContested instead of Succeeded.
+    let snap2 = make_snapshot(1);
     let outcome = applier2
-        .apply(&snap2, 1)
+        .apply(&snap2, 0)
         .await
         .expect("second apply must not return Err");
 

@@ -1,17 +1,32 @@
 //! Seam test: snapshots-config-version-cas
 //!
 //! Contracts under test (mirror seams.md):
-//!   - trilithon_core::storage::Storage::cas_advance_config_version
-//!   - trilithon_core::storage::Storage::current_config_version
-//!   - trilithon_core::storage::error::StorageError::OptimisticConflict
+//!   - `trilithon_core::storage::Storage::cas_advance_config_version`
+//!   - `trilithon_core::storage::Storage::current_config_version`
+//!   - `trilithon_core::storage::error::StorageError::OptimisticConflict`
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unimplemented,
+    clippy::disallowed_methods,
+    clippy::assertions_on_constants,
+    clippy::wildcard_enum_match_arm,
+    clippy::ignored_unit_patterns
+)]
+// reason: seam test — panics and assertions are the correct failure mode here
 
 mod snapshots_config_version_cas_seam {
     use trilithon_core::storage::error::StorageError;
 
-    /// Contract: OptimisticConflict carries observed and expected fields.
+    /// Contract: `OptimisticConflict` carries observed and expected fields.
     #[test]
     fn optimistic_conflict_carries_observed_and_expected() {
-        let err = StorageError::OptimisticConflict { observed: 5, expected: 3 };
+        let err = StorageError::OptimisticConflict {
+            observed: 5,
+            expected: 3,
+        };
         match err {
             StorageError::OptimisticConflict { observed, expected } => {
                 assert_eq!(observed, 5);
@@ -21,11 +36,12 @@ mod snapshots_config_version_cas_seam {
         }
     }
 
-    /// Contract: Storage trait is object-safe (can be boxed).
+    /// Contract: `Storage` trait is object-safe (can be boxed).
     #[test]
     fn storage_trait_is_object_safe() {
         // Compile-time check: if Storage is not object-safe this fails to compile.
         fn _assert_object_safe(_: Box<dyn trilithon_core::storage::Storage>) {}
-        assert!(true, "Storage is object-safe — verified at compile time");
+        // Intentional no-op — correctness is enforced at compile time above.
+        let _ = ();
     }
 }

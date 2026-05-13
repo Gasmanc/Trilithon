@@ -1,5 +1,5 @@
 version: 1
-revision: 1
+revision: 2
 phases:
 - id: '8'
   slug: drift-detection
@@ -11,3 +11,13 @@ phases:
   depends_on: []
   reviewers: []
   status_updated_at: '2026-05-09T23:27:41.084063Z'
+- id: '9'
+  slug: http-api
+  todo_path: docs/todo/phase-09-http-api.md
+  finding_slug: phase_9
+  diff_source: commit-grep
+  diff_ref: null
+  status: in_progress
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-13T15:31:22.340164Z'
