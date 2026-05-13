@@ -1,0 +1,13 @@
+version: 1
+revision: 1
+phases:
+- id: '8'
+  slug: drift-detection
+  todo_path: docs/todo/phase-08-drift-detection.md
+  finding_slug: phase_8
+  diff_source: commit-grep
+  diff_ref: null
+  status: in_progress
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-09T23:27:41.084063Z'
