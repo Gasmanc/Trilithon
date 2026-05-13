@@ -35,3 +35,15 @@ File: core/crates/core/src/audit/event.rs
 Lines: ~248
 Description: `AUDIT_KIND_REGEX` is exported as a public constant, but nothing in the diff references it. The storage-side kind validation in `storage_sqlite/audit.rs` implements its own manual pattern matching rather than using this regex string.
 Suggestion: Either reference it from the validation code or remove it until a consumer exists.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Notes |
+|---|--------------|--------|-------|
+| 1 | [HIGH] DEAD_DUAL_TYPE_HIERARCHY_AUDIT_ROW_UNUSED | DEFERRED | F006 - Slice 6.2 type-system refactor |
+| 2 | [WARNING] READ_SIDE_KIND_VALIDATION_BREAKS_ON_ROLLBACK | Fixed | F016 - read-path vocab check removed |
+| 3 | [WARNING] CORRELATION_LAYER_COMMITS_NO_OP_RETURN_TYPE | Fixed | F010 - opaque impl Layer return type |
+| 4 | [WARNING] PHASE_6_FIXED_FILE_HAS_DUPLICATE_FRONTMATTER | Fixed | F017 - consolidated to single F0 block |
+| 5 | [SUGGESTION] AUDIT_KIND_REGEX_DEFINED_BUT_UNUSED | Fixed | F019 - shared in core |

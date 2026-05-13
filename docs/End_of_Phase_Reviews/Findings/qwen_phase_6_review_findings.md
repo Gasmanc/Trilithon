@@ -59,3 +59,19 @@ File: core/crates/adapters/Cargo.toml
 Lines: 24-25
 Description: `http` and `tower` are pulled into the adapters crate for the `correlation_layer()` stub that currently returns `Identity`. These deps are unused until Phase 9.
 Suggestion: Gate behind a `feature = ["tracing-middleware"]` flag or accept as scaffolding debt until Phase 9.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Notes |
+|---|--------------|--------|-------|
+| 1 | [CRITICAL] SILENT_NULL_ON_SERIALIZATION | SUPERSEDED (dde9dc5) | F003 - Serialization variant |
+| 2 | [HIGH] TLS_CORRELATION_ID_NOT_RESTORED | SUPERSEDED (dde9dc5) | F004 - CorrelationGuard |
+| 3 | [HIGH] BYPASS_GUARD_DOES_NOT_COVER_CLI | SUPERSEDED (dde9dc5) | F005 - cli/src/ in scan |
+| 4 | [HIGH] TWO_PARALLEL_AUDITSELECTOR | DEFERRED | F006 - Slice 6.2 refactor |
+| 5 | [WARNING] CORRELATION_LAYER_NO_OP_STUB | Fixed | F010 - opaque return type |
+| 6 | [WARNING] SECRET_FIELD_PATTERNS_FIXED_DEPTH | Fixed | F012 - test pins assumption |
+| 7 | [WARNING] NOTES_AND_TARGET_ID_BYPASS_REDACTION | Fixed | F011/F030 - contract + caps |
+| 8 | [SUGGESTION] AUDIT_KIND_REGEX_UNUSED | Fixed | F019 - shared in core |
+| 9 | [SUGGESTION] UNUSED_HTTP_AND_TOWER_DEPS | Won't Fix | F031 - Phase 9 scaffolding debt accepted |

@@ -53,3 +53,18 @@ File: core/crates/adapters/tests/audit_writer_no_bypass.rs
 Lines: 31-43
 Description: `ALLOWED_CALL_STEMS` lists specific test file stems. This is a static allowlist updated manually, fragile to naming drift. If a new test file is added without adding its stem, the guard fires.
 Suggestion: Consider expressing the allowlist in terms of directories (`tests/` vs `src/`) rather than file-name stem matching.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Fix commit | Notes |
+|---|--------------|--------|------------|-------|
+| 1 | [CRITICAL] DIFF_REDACTION_BYPASS_FOR_PHASE8_SHAPE | SUPERSEDED | dde9dc5 | F002 - redact_diff() already used |
+| 2 | [HIGH] IMMUTABILITY_MIGRATION_FALLBACK_SCHEMA_MISMATCH | Fixed | pending | F001 - fallback CREATE TABLE removed |
+| 3 | [WARNING] IN_MEMORY_CURSOR_PAGINATION_ORDER_DRIFT | Fixed | pending | F024 - sort by id DESC |
+| 4 | [WARNING] AUDIT_KIND_VOCAB_CARDINALITY_NOT_ASSERTED | Fixed | pending | F025 - cardinality test added |
+| 5 | [WARNING] AUDIT_KIND_REGEX_DUPLICATED_IN_ADAPTER | Fixed | pending | F019 - shared validate_audit_kind_pattern |
+| 6 | [WARNING] CORRELATION_ID_NOT_CROSS_REFERENCED | Fixed | pending | F026 - from_current_span helper |
+| 7 | [SUGGESTION] SILENT_NULL_FALLBACK_ON_SERIALIZATION | SUPERSEDED | dde9dc5 | F003 - Serialization variant |
+| 8 | [SUGGESTION] BYPASS_GUARD_MATCHES_ON_FILE_STEM_ONLY | Fixed | pending | F032 - directory-based is_test_path |

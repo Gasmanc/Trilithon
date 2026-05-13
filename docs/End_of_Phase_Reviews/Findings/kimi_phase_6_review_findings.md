@@ -29,3 +29,14 @@ File: core/crates/adapters/src/audit_writer.rs
 Lines: 130
 Description: `AuditWriter::record` hardcodes `caddy_instance_id: "local".to_owned()` in every audit row. In a multi-instance deployment there is no way to distinguish which instance produced an event.
 Suggestion: Accept `caddy_instance_id` as a constructor parameter or read it from a config source so deployments can set a meaningful instance identifier.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Notes |
+|---|--------------|--------|-------|
+| 1 | [HIGH] TLS_CORRELATION_ID_NOT_RESTORED_ON_PANIC | SUPERSEDED (dde9dc5) | F004 - CorrelationGuard RAII shipped |
+| 2 | [HIGH] RFC6901_JSON_POINTER_DECODE_ORDER_INCORRECT | Won't Fix | F008 - reviewer incorrect: existing order is RFC 6901-compliant |
+| 3 | [WARNING] PHASE_6_ARTEFACT_FILES_HAVE_MULTIPLE_FRONTMATTER_BLOCKS | Fixed | F017 - frontmatter consolidated |
+| 4 | [SUGGESTION] CADDY_INSTANCE_ID_HARDCODED_TO_LOCAL | Fixed | F027 - new_with_instance constructor |

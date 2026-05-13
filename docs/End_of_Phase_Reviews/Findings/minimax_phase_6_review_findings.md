@@ -17,3 +17,12 @@ File: core/crates/adapters/tests/audit_writer_no_bypass.rs
 Lines: 31-43
 Description: `ALLOWED_CALL_STEMS` lists specific test file stems that may call `record_audit_event` directly. This static allowlist is updated manually. If a new test file is added without its stem, the guard fires — but a production file with a similar stem could be incorrectly allowed.
 Suggestion: Express the allowlist in terms of directories (`tests/` vs `src/`) rather than file-name stem matching to make the invariant more robust.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Notes |
+|---|--------------|--------|-------|
+| 1 | [WARNING] SILENT_FALLBACK_ON_REDACTED_DIFF_SERIALIZATION | SUPERSEDED (dde9dc5) | F003 - Serialization variant shipped |
+| 2 | [WARNING] BYPASS_GUARD_ALLOWLIST_FRAGILE | Fixed | F032 - directory-based predicate |

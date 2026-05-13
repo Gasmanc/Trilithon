@@ -77,3 +77,17 @@ Notes:
 - The compound engineering onboarding commits (xtask crate, seams.md, contract-roots.toml, zero-debt.yaml cross_phase block, web/.prettierrc, review finding frontmatter migrations) are confirmed as intentional per the prompt and are not flagged as scope creep.
 - All 7 slices have corresponding code changes; no slice is entirely absent.
 - The HIGH findings concern the `AuditEventRow` type split — the spec types exist but are not wired into the production path the spec designates them for. The adapter layer continues operating on the pre-Phase-6 `storage::types::AuditEventRow` rather than the newly delivered `audit::row::AuditEventRow`.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Notes |
+|---|--------------|--------|-------|
+| 1 | [HIGH] DUPLICATE AuditEventRow - NEW TYPE NOT WIRED | DEFERRED | F006 - Slice 6.2 type refactor |
+| 2 | [HIGH] AuditWriter ActorRef REDEFINED IN ADAPTERS | DEFERRED | F006 - same root cause |
+| 3 | [WARNING] MIGRATION FILE NAMED 0006 BUT TODO SPECIFIES 0003 | Fixed | F018 - TODO updated to 0006 |
+| 4 | [WARNING] AUDIT_KIND_REGEX CONSTANT NOT USED | Fixed | F019 - shared validator in core |
+| 5 | [WARNING] AuditEvent ENUM CONTAINS VARIANTS BEYOND TIER 1 | Won't Fix | F020 - Phase 7+ already emits these |
+| 6 | [WARNING] SLICE 6.7 EXIT - correlation_layer NOT REGISTERED | DEFERRED | F021 - per-loop wrapping deferred |
+| 7 | [WARNING] PHASE EXIT - core/README.md NOT UPDATED | Fixed | F022 - Audit log section added |

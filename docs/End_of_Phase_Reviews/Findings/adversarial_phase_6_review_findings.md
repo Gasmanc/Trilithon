@@ -130,3 +130,20 @@ Suggestion: Add a comment to the `BEGIN IMMEDIATE` block explicitly stating the 
 
 No findings:
 - None — all four techniques produced findings for this diff.
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 — do not edit content above this line -->
+
+| # | Finding title | Status | Fix commit | PR | Resolved date | Notes |
+|---|--------------|--------|------------|----|---------------|-------|
+| 1 | [CRITICAL] Migration 0006 schema strips required columns | OK Fixed | pending | - | 2026-05-13 | F001 - fallback CREATE TABLE removed |
+| 2 | [HIGH] actor_kind / outcome canonical JSON uses Debug repr | OK Fixed | pending | - | 2026-05-13 | F007 - shared as_audit_str |
+| 3 | [HIGH] Bypass guard does not cover CLI or core crates | SUPERSEDED | dde9dc5 | - | 2026-05-09 | F005 - cli/src/ in scan path |
+| 4 | [HIGH] TLS correlation_id not restored on panic | SUPERSEDED | dde9dc5 | - | 2026-05-09 | F004 - CorrelationGuard RAII |
+| 5 | [HIGH] Two parallel AuditSelector types | DEFERRED | - | - | - | F006 - Slice 6.2 type-system refactor |
+| 6 | [WARNING] correlation_layer returns Identity stub | OK Fixed | pending | - | 2026-05-13 | F010 - opaque impl Layer return type |
+| 7 | [WARNING] serde_json serialization failure stores "null" | SUPERSEDED | dde9dc5 | - | 2026-05-09 | F003 - Serialization variant |
+| 8 | [WARNING] Redactor secret-field patterns are fixed-depth only | OK Fixed | pending | - | 2026-05-13 | F012 - fixed-depth assumption test |
+| 9 | [WARNING] Notes and target_id fields bypass redaction | OK Fixed | pending | - | 2026-05-13 | F011/F030 - contract + length caps |
+| 10 | [SUGGESTION] Hash chain rollback under concurrent write | OK Fixed | pending | - | 2026-05-13 | F028 - BEGIN IMMEDIATE invariant comment |

@@ -20,7 +20,7 @@
 | 6.1 | `AuditEvent` enum and Display-to-wire mapping in `core` | `core/crates/core/src/audit/event.rs` | 4 | Phase 5 complete |
 | 6.2 | `AuditEventRow` record, `AuditSelector`, `AuditOutcome`, `ActorRef` types | `core/crates/core/src/audit/row.rs` | 3 | 6.1 |
 | 6.3 | `SecretsRedactor` over `serde_json::Value` plus diff redaction | `core/crates/core/src/audit/redactor.rs` | 6 | 6.2 |
-| 6.4 | Migration `0003_audit_immutable.sql` plus storage-side kind validation | `core/crates/adapters/migrations/0003_audit_immutable.sql`, `core/crates/adapters/src/storage_sqlite/audit.rs` | 5 | 6.2 |
+| 6.4 | Migration `0006_audit_immutable.sql` plus storage-side kind validation | `core/crates/adapters/migrations/0006_audit_immutable.sql`, `core/crates/adapters/src/storage_sqlite/audit.rs` | 5 | 6.2 |
 | 6.5 | `AuditWriter::record` adapter wired to `Storage::record_audit_event` | `core/crates/adapters/src/audit_writer.rs` | 5 | 6.3, 6.4 |
 | 6.6 | Audit query API with paginated filters | `core/crates/adapters/src/storage_sqlite/audit.rs` | 4 | 6.4 |
 | 6.7 | Tracing layer that injects and propagates `correlation_id` | `core/crates/adapters/src/tracing_correlation.rs` | 4 | 6.5 |
@@ -408,7 +408,7 @@ None.
 
 ---
 
-## Slice 6.4 [cross-cutting] — Migration `0003_audit_immutable.sql` plus storage-side kind validation
+## Slice 6.4 [cross-cutting] — Migration `0006_audit_immutable.sql` plus storage-side kind validation
 
 ### Goal
 
@@ -421,14 +421,14 @@ Land the SQLite migration that creates the `audit_log` table per architecture §
 
 ### Files to create or modify
 
-- `core/crates/adapters/migrations/0003_audit_immutable.sql` — DDL plus triggers.
+- `core/crates/adapters/migrations/0006_audit_immutable.sql` — DDL plus triggers.
 - `core/crates/adapters/src/storage_sqlite/audit.rs` — insert-path validation.
 - `core/crates/adapters/src/storage_sqlite/mod.rs` — register the new module.
 
 ### Signatures and shapes
 
 ```sql
--- core/crates/adapters/migrations/0003_audit_immutable.sql
+-- core/crates/adapters/migrations/0006_audit_immutable.sql
 
 -- The audit_log table (if Phase 2 did not already create it).
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -491,7 +491,7 @@ fn validate_kind(event: &AuditEvent) -> Result<(), StorageError> {
 
 ### Algorithm
 
-1. The migration runner detects schema version 2 and applies `0003_audit_immutable.sql`.
+1. The migration runner detects schema version 2 and applies `0006_audit_immutable.sql`.
 2. The runner records `(version=3, applied_at, description, checksum)` in `schema_migrations` per architecture §14.
 3. `insert_audit_row` validates `row.event.kind_str()` against `AUDIT_KIND_REGEX` once; a miss returns `StorageError::AuditKindUnknown`.
 4. Any direct `UPDATE audit_log` or `DELETE FROM audit_log` aborts with the SQLite trigger message; the adapter MUST translate the abort into `StorageError::Integrity`.

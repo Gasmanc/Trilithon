@@ -1,55 +1,26 @@
 ---
-id: duplicate:src/audit/event.rs::unknown:legacy-uncategorized
-category: duplicate
-kind: structural
-location:
-  file: src/audit/event.rs
-  symbol: unknown
-  multi: false
-finding_kind: legacy-uncategorized
-phase_introduced: unknown
-status: open
-created_at: migration
-created_by: legacy-migration
-last_verified_at: 0a795583ea9c4266e7d9b0ae0f56fd47d2ecf574
-severity: medium
-do_not_autofix: false
----
-
----
-id: duplicate:src/audit/event.rs::unknown:legacy-uncategorized
-category: duplicate
-kind: structural
-location:
-  file: src/audit/event.rs
-  symbol: unknown
-  multi: false
-finding_kind: legacy-uncategorized
-phase_introduced: unknown
-status: open
-created_at: migration
-created_by: legacy-migration
-last_verified_at: 0a795583ea9c4266e7d9b0ae0f56fd47d2ecf574
-severity: medium
-do_not_autofix: false
----
-
----
-id: duplicate:area::phase-6-fixed:legacy-uncategorized
-category: duplicate
-kind: process
+id: fixed:phase-6:slice-cleanups:legacy-rollup
+category: process
+kind: documentation
 location:
   area: phase-6-fixed
-  multi: false
-finding_kind: legacy-uncategorized
-phase_introduced: unknown
-status: open
-created_at: migration
-created_by: legacy-migration
+  multi: true
+finding_kind: legacy-rollup
+phase_introduced: 6
+status: fixed
+created_at: 2026-05-08
+created_by: phase-6-simplify
 last_verified_at: 0a795583ea9c4266e7d9b0ae0f56fd47d2ecf574
-severity: medium
+severity: low
 do_not_autofix: false
 ---
+
+# Phase 6 — In-flight simplify findings (rollup)
+
+Per-slice quality, reuse, and efficiency fixes landed during Phase 6's
+simplify passes.  This file is a single F0-compliant rollup; individual
+findings were originally split across three separate frontmatter blocks and
+have been consolidated to satisfy the one-finding-per-file rule.
 
 | Unit | Title | Type | Date | Commit |
 |------|-------|------|------|--------|

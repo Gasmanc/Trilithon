@@ -85,3 +85,18 @@ Suggestion: Add length caps (e.g., 4 KB for `notes`, 256 bytes for `target_id`) 
 ---
 
 Security verdict: findings present — see above
+
+---
+## Resolution Log
+<!-- appended by review-remediate on 2026-05-13 -->
+
+| # | Finding title | Status | Notes |
+|---|--------------|--------|-------|
+| 1 | [HIGH] NO PRODUCTION CiphertextHasher | SUPERSEDED (dde9dc5) | F009 - Sha256AuditHasher in adapters |
+| 2 | [HIGH] SILENT NULL FALLBACK ON REDACTED DIFF | SUPERSEDED (dde9dc5) | F003 - Serialization variant |
+| 3 | [WARNING] INCOMPLETE SECRET FIELD COVERAGE | Fixed | F023 - TLS private_key, bearer/token added |
+| 4 | [WARNING] HASH PREFIX ORACLE - 48 BIT LEAK | Fixed | F013 - HMAC recommendation on CiphertextHasher |
+| 5 | [WARNING] X-CORRELATION-ID UNTRUSTED HEADER | Fixed | F014 - trust boundary documented |
+| 6 | [WARNING] IMMUTABILITY TRIGGERS BYPASSABLE | Fixed | F015 - verify_audit_chain added |
+| 7 | [SUGGESTION] REDACT_DIFF NO DEPTH GUARD | Fixed | F029 - MAX_REDACTOR_DEPTH + DepthExceeded |
+| 8 | [SUGGESTION] NOTES AND TARGET_ID NO LENGTH BOUNDS | Fixed | F030 - 4KiB/256B caps + FieldTooLong |
