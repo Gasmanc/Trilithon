@@ -97,19 +97,21 @@ impl Drop for AcquiredLock {
     fn drop(&mut self) {
         // This Drop is a **panic fallback only**. In normal operation `apply()`
         // calls `AcquiredLock::release().await` which uses `mem::forget` to
-        // skip this path.  If we reach Drop it means the apply body panicked;
-        // we do a best-effort fire-and-forget DELETE so the lock row does not
-        // become permanently stale.
+        // skip this path.  If we reach Drop it means the apply body panicked.
+        //
+        // We use `block_in_place` so the DELETE completes synchronously before
+        // this Drop returns. This matters because the in-process Mutex guard
+        // (`_process_guard`) drops after `advisory_lock` — if we returned from
+        // Drop before the DELETE committed, a new caller could acquire the
+        // Mutex and see the stale lock row, producing a spurious AlreadyHeld.
         let pool = self.pool.clone();
         let instance_id = self.instance_id.clone();
         let holder_pid = self.holder_pid;
-        drop(task::spawn_blocking(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build();
-            match rt {
-                Ok(rt) => {
-                    rt.block_on(async {
+        task::block_in_place(|| {
+            let handle = tokio::runtime::Handle::try_current();
+            match handle {
+                Ok(handle) => {
+                    handle.block_on(async {
                         let _ = sqlx::query(
                             "DELETE FROM apply_locks WHERE instance_id = ? AND holder_pid = ?",
                         )
@@ -119,15 +121,16 @@ impl Drop for AcquiredLock {
                         .await;
                     });
                 }
-                Err(e) => {
+                Err(_) => {
+                    // No Tokio runtime available (e.g. called from a test
+                    // context without a runtime). Best-effort only.
                     tracing::warn!(
-                        error = %e,
                         instance_id = %instance_id,
-                        "apply_lock.drop: failed to build runtime for lock release"
+                        "apply_lock.drop: no tokio runtime; lock row may be stale"
                     );
                 }
             }
-        }));
+        });
     }
 }
 

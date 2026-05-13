@@ -204,5 +204,27 @@ path = "tests/drift_skip_when_apply_in_flight.rs"
 name = "drift_interval_overridable"
 path = "tests/drift_interval_overridable.rs"
 
+# ── Cross-phase seam tests (Phase 7) ─────────────────────────────────────────
+
+[[test]]
+name = "cross_phase_applier_caddy_admin"
+path = "tests/cross_phase/applier_caddy_admin.rs"
+
+[[test]]
+name = "cross_phase_applier_audit_writer"
+path = "tests/cross_phase/applier_audit_writer.rs"
+
+[[test]]
+name = "cross_phase_snapshots_config_version_cas"
+path = "tests/cross_phase/snapshots_config_version_cas.rs"
+
+[[test]]
+name = "cross_phase_apply_lock_coordination"
+path = "tests/cross_phase/apply_lock_coordination.rs"
+
+[[test]]
+name = "cross_phase_apply_audit_notes_format"
+path = "tests/cross_phase/apply_audit_notes_format.rs"
+
 [lints]
 workspace = true

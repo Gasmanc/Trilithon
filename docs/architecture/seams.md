@@ -28,20 +28,59 @@ seams:
 ## Seams
 
 ```yaml
-seams: []
-# Example:
-# seams:
-#   - id: auth-storage
-#     name: "Auth ↔ Storage"
-#     contracts:
-#       - my_app::auth::Session
-#       - my_app::storage::SessionStore
-#       - my_app::storage::SessionStore::insert
-#       - my_app::storage::SessionStore::lookup
-#     test_file: tests/cross_phase/auth_storage.rs
-#     introduced_in_phase: 6
-#     status: active
-#     notes: "Session lifecycle from auth handler through storage."
+seams:
+  - id: applier-caddy-admin
+    name: "Applier ↔ Caddy Admin API"
+    contracts:
+      - trilithon_adapters::applier_caddy::CaddyApplier
+      - trilithon_core::reconciler::Applier
+      - trilithon_core::caddy::CaddyClient
+    test_file: core/crates/adapters/tests/cross_phase/applier_caddy_admin.rs
+    introduced_in_phase: 7
+    status: active
+    notes: "CaddyApplier drives POST /load and GET /config via CaddyClient; Applier trait is the adapter boundary."
+
+  - id: applier-audit-writer
+    name: "Applier ↔ Audit Writer"
+    contracts:
+      - trilithon_core::reconciler::ApplyOutcome
+      - trilithon_core::reconciler::ApplyAuditNotes
+      - trilithon_core::audit::AuditEvent
+    test_file: core/crates/adapters/tests/cross_phase/applier_audit_writer.rs
+    introduced_in_phase: 7
+    status: active
+    notes: "Every apply outcome (success, failure, conflict) must emit a typed audit row; ApplyAuditNotes is the wire format."
+
+  - id: snapshots-config-version-cas
+    name: "Snapshot Store ↔ CAS Version Gate"
+    contracts:
+      - trilithon_core::storage::Storage::cas_advance_config_version
+      - trilithon_core::storage::Storage::current_config_version
+      - trilithon_core::storage::error::StorageError::OptimisticConflict
+    test_file: core/crates/adapters/tests/cross_phase/snapshots_config_version_cas.rs
+    introduced_in_phase: 7
+    status: active
+    notes: "applied_config_version advances only after Caddy confirms the new config; CAS is the atomic gate."
+
+  - id: apply-lock-coordination
+    name: "Apply Lock ↔ Process Coordination"
+    contracts:
+      - trilithon_adapters::storage_sqlite::locks::AcquiredLock
+      - trilithon_adapters::storage_sqlite::locks::LockError
+    test_file: core/crates/adapters/tests/cross_phase/apply_lock_coordination.rs
+    introduced_in_phase: 7
+    status: active
+    notes: "In-process Mutex + SQLite advisory lock together serialise apply() across goroutines and processes."
+
+  - id: apply-audit-notes-format
+    name: "Apply Notes ↔ Audit Row Format"
+    contracts:
+      - trilithon_core::reconciler::ApplyAuditNotes
+      - trilithon_adapters::audit_notes::notes_to_string
+    test_file: core/crates/adapters/tests/cross_phase/apply_audit_notes_format.rs
+    introduced_in_phase: 7
+    status: active
+    notes: "ApplyAuditNotes is serialised via notes_to_string for all audit rows; the format is the contract."
 ```
 
 ## Test File Template
