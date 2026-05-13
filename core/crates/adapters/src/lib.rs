@@ -31,6 +31,7 @@ pub mod sqlite_storage;
 pub mod storage_sqlite;
 pub mod tls_observer;
 pub use tls_observer::TlsIssuanceObserver;
+pub mod auth;
 pub mod http_axum;
 pub mod rng;
 

@@ -35,6 +35,8 @@ time = { workspace = true }
 ulid = { workspace = true }
 uuid = { workspace = true }
 nix = { version = "0.27", features = ["signal"] }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["rand_core"] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -248,6 +250,22 @@ path = "tests/http_remote_bind_warns_with_flag.rs"
 [[test]]
 name = "http_openapi_placeholder"
 path = "tests/http_openapi_placeholder.rs"
+
+[[test]]
+name = "argon2_parameters"
+path = "tests/argon2_parameters.rs"
+
+[[test]]
+name = "argon2_distinct_passwords_distinct_hashes"
+path = "tests/argon2_distinct_passwords_distinct_hashes.rs"
+
+[[test]]
+name = "users_create_and_verify"
+path = "tests/users_create_and_verify.rs"
+
+[[test]]
+name = "users_wrong_password_fails"
+path = "tests/users_wrong_password_fails.rs"
 
 [lints]
 workspace = true
