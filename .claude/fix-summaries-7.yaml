@@ -1,0 +1,29 @@
+- finding_id: F001
+  fix_diff_summary: "Moved cas_advance_config_version call from Step 0 to after verify_equivalence; replaced early CAS with non-advancing current_config_version read for fast conflict detection"
+  generalizable: true
+  one_sentence_lesson: "When a DB pointer must stay consistent with an external system (Caddy), advance the pointer only after the external system confirms success — not optimistically before I/O"
+
+- finding_id: F004
+  fix_diff_summary: "Populated seams.md with 5 Phase 7 seams, added 5 stub cross-phase integration tests with real assert macros, wired them into adapters Cargo.toml as [[test]] entries"
+  generalizable: true
+  one_sentence_lesson: "Cross-cutting phases must register their architectural seams (and stub tests) in the same merge window — catch-up seam ratification compounds coherence debt exponentially with each subsequent phase"
+
+- finding_id: F005
+  fix_diff_summary: "Extracted Exact and Wildcard hostnames from all enabled routes in desired_state and passed the Vec<String> to observer.observe(); observer spawn is now skipped only when the derived set is truly empty"
+  generalizable: true
+  one_sentence_lesson: "After wiring a feature behind a boolean guard (is_empty check), always trace back through the call chain to verify the data that populates the collection is actually being produced"
+
+- finding_id: F007
+  fix_diff_summary: "rollback() now reads current_config_version from storage as the CAS expected value instead of snapshot.config_version; this allows rolling back to any ancestor version, not just the immediately preceding one"
+  generalizable: true
+  one_sentence_lesson: "Rollback operations must use the current state as the CAS expected value, not the target state's version — the invariant is 'I own the current slot', not 'I own the target slot'"
+
+- finding_id: F009
+  fix_diff_summary: "Extended snapshot existence query to also check config_version = expected_version+1, preventing a snapshot with a matching ID but mismatched version from silently advancing the applied pointer"
+  generalizable: true
+  one_sentence_lesson: "Existence-only queries in CAS gates are insufficient — always assert the full identity (ID + version) of the new state to prevent phantom version advances from ID collisions"
+
+- finding_id: F012
+  fix_diff_summary: "Replaced nested Tokio runtime construction in AcquiredLock::drop with block_in_place so the advisory lock DELETE completes synchronously before the mutex guard drops"
+  generalizable: true
+  one_sentence_lesson: "When a Drop impl releases a resource that guards a subsequent lock, the release must complete synchronously before Drop returns — fire-and-forget background tasks create a window where the next holder sees a spurious conflict"
