@@ -102,6 +102,16 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     let (controller, signal) = ShutdownController::new();
 
     // Collect all background task handles so they can be drained on shutdown.
+    //
+    // Correlation-span wrapping (Slice 6.7 / Phase 6 review F021): each
+    // background loop is responsible for opening
+    // `with_correlation_span(Ulid::new(), "system", <component>, fut)` once
+    // per iteration so individual audit rows can be traced back to a single
+    // tick of work.  The wrapping lives inside each loop's own function (e.g.
+    // `integrity_check::run_integrity_loop`, `reconnect::reconnect_loop`,
+    // drift-detector `run`), not here, because the outer wrapper would tag
+    // every iteration with the same id — the opposite of what audit-trail
+    // forensics needs.  The HTTP middleware (Phase 9) wraps inbound requests.
     let mut tasks: JoinSet<()> = JoinSet::new();
 
     // Spawn the periodic integrity-check background task.

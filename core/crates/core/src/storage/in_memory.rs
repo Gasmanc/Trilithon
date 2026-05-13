@@ -203,7 +203,7 @@ impl Storage for InMemoryStorage {
     ) -> Result<Vec<AuditEventRow>, StorageError> {
         let audit = self.audit.lock().await;
 
-        let result: Vec<AuditEventRow> = audit
+        let mut filtered: Vec<AuditEventRow> = audit
             .iter()
             .filter(|row| {
                 if let Some(ref kind_glob) = selector.kind_glob {
@@ -249,11 +249,15 @@ impl Storage for InMemoryStorage {
                 true
             })
             .cloned()
-            .rev()
-            .take(limit as usize)
             .collect();
 
-        Ok(result)
+        // Sort by id DESC to match `SqliteStorage::tail_audit_log` semantics.
+        // Insertion order is NOT reliable when ULIDs are generated under clock
+        // skew or concurrent writes; the canonical order is ULID descending.
+        filtered.sort_by(|a, b| b.id.0.cmp(&a.id.0));
+        filtered.truncate(limit as usize);
+
+        Ok(filtered)
     }
 
     async fn record_drift_event(&self, event: DriftEventRow) -> Result<DriftRowId, StorageError> {

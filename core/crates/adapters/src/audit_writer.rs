@@ -49,6 +49,16 @@ pub enum AuditWriteError {
     /// propagated as an error rather than silently stored as `"null"`.
     #[error("serialization failed: {0}")]
     Serialization(String),
+    /// A length-bounded text field exceeded its cap.
+    #[error("audit field {field} exceeded {limit}-byte cap (was {actual} bytes)")]
+    FieldTooLong {
+        /// The offending field name (`notes` or `target_id`).
+        field: &'static str,
+        /// The byte length of the supplied value.
+        actual: usize,
+        /// The configured cap.
+        limit: usize,
+    },
 }
 
 // ── ActorRef ──────────────────────────────────────────────────────────────────
@@ -96,6 +106,15 @@ impl ActorRef {
 ///
 /// The `diff` field carries un-redacted content; the writer applies the
 /// redactor before the value reaches storage.
+///
+/// # Secret-handling contract for `notes` and `target_id`
+///
+/// `notes` and `target_id` are stored **verbatim** and are NOT passed through
+/// the redactor.  Callers MUST NOT place secret material in these fields — no
+/// bearer tokens, no PEM-encoded keys, no API keys, no Basic-auth strings.
+/// Both fields are length-bounded by [`NOTES_MAX_LEN`] and [`TARGET_ID_MAX_LEN`]
+/// to bound row size; values exceeding the cap are rejected with
+/// [`AuditWriteError::FieldTooLong`].
 #[derive(Clone, Debug)]
 pub struct AuditAppend {
     /// Correlation identifier tying this event to a request or operation.
@@ -107,6 +126,8 @@ pub struct AuditAppend {
     /// Kind of entity that was the target, if applicable (e.g. `"route"`).
     pub target_kind: Option<String>,
     /// Identity of the target entity, if applicable.
+    ///
+    /// MUST NOT contain secret material (see struct-level contract).
     pub target_id: Option<String>,
     /// Associated snapshot, if the event produced one.
     pub snapshot_id: Option<SnapshotId>,
@@ -118,7 +139,46 @@ pub struct AuditAppend {
     /// Machine-readable error kind, populated on error or denial.
     pub error_kind: Option<String>,
     /// Free-text notes for operator review.
+    ///
+    /// MUST NOT contain secret material (see struct-level contract).
     pub notes: Option<String>,
+}
+
+/// Maximum length of `AuditAppend::notes` in bytes (4 KiB).
+pub const NOTES_MAX_LEN: usize = 4 * 1024;
+
+/// Maximum length of `AuditAppend::target_id` in bytes (256 B).
+pub const TARGET_ID_MAX_LEN: usize = 256;
+
+impl AuditAppend {
+    /// Construct an `AuditAppend` whose `correlation_id` is populated from the
+    /// current tracing span via
+    /// [`crate::tracing_correlation::current_correlation_id`].
+    ///
+    /// Use this helper from request handlers and background tasks to avoid
+    /// the silent-divergence trap where a caller passes a `correlation_id`
+    /// different from the one stamped on the active span.  Callers needing to
+    /// override (e.g. resuming a saga with a stored id) construct `AuditAppend`
+    /// directly.
+    #[must_use]
+    pub fn from_current_span(
+        actor: ActorRef,
+        event: trilithon_core::audit::AuditEvent,
+        outcome: AuditOutcome,
+    ) -> Self {
+        Self {
+            correlation_id: crate::tracing_correlation::current_correlation_id(),
+            actor,
+            event,
+            target_kind: None,
+            target_id: None,
+            snapshot_id: None,
+            diff: None,
+            outcome,
+            error_kind: None,
+            notes: None,
+        }
+    }
 }
 
 // ── AuditWriter ───────────────────────────────────────────────────────────────
@@ -131,7 +191,11 @@ pub struct AuditWriter {
     storage: Arc<dyn Storage>,
     redactor: RedactorFn,
     clock: Arc<dyn Clock>,
+    caddy_instance_id: String,
 }
+
+/// Default `caddy_instance_id` when none is provided (single-instance deployment).
+pub const DEFAULT_CADDY_INSTANCE_ID: &str = "local";
 
 impl AuditWriter {
     /// Construct a new `AuditWriter`.
@@ -148,6 +212,26 @@ impl AuditWriter {
         storage: Arc<dyn Storage>,
         clock: Arc<dyn Clock>,
         redactor: SecretsRedactor<'static>,
+    ) -> Self {
+        Self::new_with_instance(
+            storage,
+            clock,
+            redactor,
+            DEFAULT_CADDY_INSTANCE_ID.to_owned(),
+        )
+    }
+
+    /// Construct an `AuditWriter` with an explicit `caddy_instance_id`.
+    ///
+    /// Use this in multi-instance deployments where each daemon must stamp its
+    /// audit rows with a distinguishable identifier.  Single-instance
+    /// deployments should use [`AuditWriter::new`], which defaults to
+    /// [`DEFAULT_CADDY_INSTANCE_ID`].
+    pub fn new_with_instance(
+        storage: Arc<dyn Storage>,
+        clock: Arc<dyn Clock>,
+        redactor: SecretsRedactor<'static>,
+        caddy_instance_id: String,
     ) -> Self {
         // Wrap the redactor in a closure so `AuditWriter` is `'static`.
         //
@@ -168,6 +252,7 @@ impl AuditWriter {
             storage,
             redactor: redactor_fn,
             clock,
+            caddy_instance_id,
         }
     }
 
@@ -180,6 +265,23 @@ impl AuditWriter {
         clock: Arc<dyn Clock>,
         registry: Arc<SchemaRegistry>,
         hasher: Arc<dyn CiphertextHasher>,
+    ) -> Self {
+        Self::new_with_arcs_and_instance(
+            storage,
+            clock,
+            registry,
+            hasher,
+            DEFAULT_CADDY_INSTANCE_ID.to_owned(),
+        )
+    }
+
+    /// As [`AuditWriter::new_with_arcs`], but with an explicit `caddy_instance_id`.
+    pub fn new_with_arcs_and_instance(
+        storage: Arc<dyn Storage>,
+        clock: Arc<dyn Clock>,
+        registry: Arc<SchemaRegistry>,
+        hasher: Arc<dyn CiphertextHasher>,
+        caddy_instance_id: String,
     ) -> Self {
         let redactor_fn = Arc::new(
             move |value: &Value| -> Result<(Value, u32), AuditWriteError> {
@@ -194,6 +296,7 @@ impl AuditWriter {
             storage,
             redactor: redactor_fn,
             clock,
+            caddy_instance_id,
         }
     }
 
@@ -225,6 +328,26 @@ impl AuditWriter {
     /// - [`AuditWriteError::Redaction`] if the redactor rejects the diff.
     /// - [`AuditWriteError::Storage`] if the storage layer returns an error.
     pub async fn record(&self, append: AuditAppend) -> Result<AuditRowId, AuditWriteError> {
+        // Enforce length caps on free-text fields to bound row size.
+        if let Some(ref notes) = append.notes {
+            if notes.len() > NOTES_MAX_LEN {
+                return Err(AuditWriteError::FieldTooLong {
+                    field: "notes",
+                    actual: notes.len(),
+                    limit: NOTES_MAX_LEN,
+                });
+            }
+        }
+        if let Some(ref target_id) = append.target_id {
+            if target_id.len() > TARGET_ID_MAX_LEN {
+                return Err(AuditWriteError::FieldTooLong {
+                    field: "target_id",
+                    actual: target_id.len(),
+                    limit: TARGET_ID_MAX_LEN,
+                });
+            }
+        }
+
         let row_id = AuditRowId(Ulid::new().to_string());
         let now_ms = self.clock.now_unix_ms();
 
@@ -242,7 +365,7 @@ impl AuditWriter {
             id: row_id,
             // prev_hash is overwritten by storage to maintain the ADR-0009 hash chain.
             prev_hash: audit_prev_hash_seed().to_owned(),
-            caddy_instance_id: "local".to_owned(),
+            caddy_instance_id: self.caddy_instance_id.clone(),
             correlation_id: append.correlation_id.to_string(),
             occurred_at: now_ms / 1_000,
             occurred_at_ms: now_ms,

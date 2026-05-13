@@ -131,6 +131,20 @@ pub enum ActorKind {
     System,
 }
 
+impl ActorKind {
+    /// Canonical lowercase string used in SQL storage AND in
+    /// `canonical_json_for_audit_hash` (ADR-0009).  The two MUST agree byte-for-byte
+    /// or the hash chain breaks silently when a new variant is added.
+    #[must_use]
+    pub const fn as_audit_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Token => "token",
+            Self::System => "system",
+        }
+    }
+}
+
 /// A single audit log row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEventRow {
@@ -180,6 +194,20 @@ pub enum AuditOutcome {
     Error,
     /// The operation was rejected by a policy check.
     Denied,
+}
+
+impl AuditOutcome {
+    /// Canonical lowercase string used in SQL storage AND in
+    /// `canonical_json_for_audit_hash` (ADR-0009).  The two MUST agree byte-for-byte
+    /// or the hash chain breaks silently when a new variant is added.
+    #[must_use]
+    pub const fn as_audit_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Error => "error",
+            Self::Denied => "denied",
+        }
+    }
 }
 
 /// Filter predicate for `Storage::tail_audit_log`.

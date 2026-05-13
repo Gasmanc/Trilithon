@@ -109,3 +109,48 @@ Each snapshot row carries a `parent_id` foreign key that references the precedin
 The `snapshots` table is made append-only at the database layer by `BEFORE UPDATE` and `BEFORE DELETE` triggers introduced in migration `0004`. Any attempt to mutate or remove an existing row — whether from application code or a direct SQL client — is rejected immediately with an error. This guarantee holds regardless of the calling process, so audit trails built on the snapshot chain cannot be silently tampered with.
 
 See also: [ADR-0009](../docs/adr/0009-immutable-content-addressed-snapshots-and-audit-log.md)
+
+## Audit log
+
+Every significant operation — auth, config apply, drift detection, secret
+reveal — produces an immutable row in the `audit_log` table.
+
+### Single write path: `AuditWriter`
+
+The crate-level invariant is that **only `AuditWriter::record` writes to
+`audit_log`**.  No adapter, CLI handler, or background task may call
+`Storage::record_audit_event` directly.  A bypass-guard integration test scans
+the source tree to enforce this; production code that needs to record an event
+constructs an `AuditAppend` and calls `AuditWriter::record`.
+
+### Redactor invariant
+
+Every `AuditAppend.diff` value is run through `SecretsRedactor` before it
+reaches storage.  The redactor walks the JSON tree, replaces secret-marked
+leaves with `***<hash-prefix>`, and performs a self-check that errors out if
+any plaintext survived.  The fields in scope are enumerated in
+`core::schema::secret_fields::TIER_1_SECRET_FIELDS`; any new schema element
+that can carry secret material MUST be registered there in the same PR that
+introduces it.  `notes` and `target_id` are **not** redacted and MUST NOT
+contain secret material (length-bounded by `NOTES_MAX_LEN` /
+`TARGET_ID_MAX_LEN`).
+
+### Hash chain
+
+Each audit row carries `prev_hash` — the SHA-256 of the prior row's canonical
+JSON, anchored at the seed defined by `audit_prev_hash_seed`.  Insert ordering
+is serialised by `BEGIN IMMEDIATE` so concurrent writers cannot fork the
+chain.  Operators can verify the chain end-to-end with
+`storage::helpers::verify_audit_chain`; a `Broken` verdict signals tampering
+or corruption (the SQLite immutability triggers below are application-layer
+guards, not a security boundary against filesystem-level edits).
+
+### Immutability triggers
+
+Migration `0006_audit_immutable.sql` installs `BEFORE UPDATE` and
+`BEFORE DELETE` triggers on `audit_log` that abort any mutation attempt.
+These triggers fire for normal SQL but can be bypassed by writers that use
+`PRAGMA writable_schema = ON` or manipulate the WAL directly — that is why
+`verify_audit_chain` exists.
+
+See also: [ADR-0009](../docs/adr/0009-immutable-content-addressed-snapshots-and-audit-log.md)

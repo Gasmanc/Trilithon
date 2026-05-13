@@ -5,30 +5,20 @@
 //! dotted-kind pattern so that a future vocabulary entry whose string does not
 //! conform to the pattern is caught before touching the database.
 
-use trilithon_core::storage::{
-    audit_vocab::AUDIT_KINDS, error::StorageError, types::AuditEventRow,
+use trilithon_core::{
+    audit::event::validate_audit_kind_pattern,
+    storage::{audit_vocab::AUDIT_KINDS, error::StorageError, types::AuditEventRow},
 };
 
 /// Validate that `kind` matches the §6.6 dotted-kind pattern.
 ///
-/// Pattern: one or more dot-separated segments, each starting with `[a-z]`
-/// and consisting of `[a-z0-9-]*`.  At least two segments are required.
+/// Delegates to [`trilithon_core::audit::event::validate_audit_kind_pattern`]
+/// so the regex contract is defined exactly once in `core`.
 ///
 /// Returns `Ok(())` when `kind` is valid, or
 /// `Err(StorageError::AuditKindUnknown)` otherwise.
 fn validate_kind_pattern(kind: &str) -> Result<(), StorageError> {
-    // Manual match — avoids a `regex` dependency in adapters.
-    let is_valid = kind.contains('.')
-        && kind.split('.').all(|seg| {
-            let mut chars = seg.chars();
-            let Some(first) = chars.next() else {
-                return false;
-            };
-            first.is_ascii_lowercase()
-                && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-        });
-
-    if is_valid {
+    if validate_audit_kind_pattern(kind) {
         Ok(())
     } else {
         Err(StorageError::AuditKindUnknown {

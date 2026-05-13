@@ -435,12 +435,11 @@ impl SqliteStorage {
 // ---------------------------------------------------------------------------
 
 /// Convert [`ActorKind`] to its lowercase SQL string.
+///
+/// Delegates to `ActorKind::as_audit_str` so the SQL representation and the
+/// canonical-JSON representation used for hash chaining stay in sync.
 const fn actor_kind_str(k: ActorKind) -> &'static str {
-    match k {
-        ActorKind::User => "user",
-        ActorKind::Token => "token",
-        ActorKind::System => "system",
-    }
+    k.as_audit_str()
 }
 
 /// Parse a lowercase SQL string back to [`ActorKind`].
@@ -456,12 +455,11 @@ fn parse_actor_kind(s: &str) -> Result<ActorKind, StorageError> {
 }
 
 /// Convert [`AuditOutcome`] to its lowercase SQL string.
+///
+/// Delegates to `AuditOutcome::as_audit_str` so the SQL representation and the
+/// canonical-JSON representation used for hash chaining stay in sync.
 const fn outcome_str(o: AuditOutcome) -> &'static str {
-    match o {
-        AuditOutcome::Ok => "ok",
-        AuditOutcome::Error => "error",
-        AuditOutcome::Denied => "denied",
-    }
+    o.as_audit_str()
 }
 
 /// Parse a lowercase SQL string back to [`AuditOutcome`].
@@ -532,12 +530,10 @@ fn audit_row_from_sqlite(row: &sqlx::sqlite::SqliteRow) -> Result<AuditEventRow,
     let redaction_sites_raw: i64 = row.try_get("redaction_sites").map_err(sqlx_err)?;
     let kind: String = row.try_get("kind").map_err(sqlx_err)?;
 
-    // §6.6 vocabulary is closed; an unknown kind in the table is corruption.
-    if !trilithon_core::storage::audit_vocab::AUDIT_KINDS.contains(&kind.as_str()) {
-        return Err(StorageError::Integrity {
-            detail: format!("unknown audit kind in row {kind:?}"),
-        });
-    }
+    // No kind-vocabulary validation on the read path: insert-time `validate_kind`
+    // is the gate, and the audit log is durable-immutable across rollbacks.  A
+    // newer binary may have written a kind that this binary does not know; the
+    // row must still be readable for audit-trail continuity.
 
     Ok(AuditEventRow {
         id: AuditRowId(row.try_get("id").map_err(sqlx_err)?),
@@ -763,6 +759,17 @@ impl Storage for SqliteStorage {
         // Acquire a single connection and use BEGIN IMMEDIATE so the SELECT +
         // INSERT is atomic under a write lock.  prev_hash is always derived
         // from the true last row (tiebreak by id to handle same-ms rows).
+        //
+        // ── Isolation contract (ADR-0009) ──
+        // Hash-chain correctness depends on SQLite serialising writers under
+        // `BEGIN IMMEDIATE`: while we hold the immediate lock, no other writer
+        // can commit a row between our SELECT (line ~779) and our INSERT
+        // (below).  If this codebase ever switches to a WAL-with-multiple-writers
+        // configuration, a non-serialising isolation mode, or a connection pool
+        // that does not honour the immediate lock, this invariant breaks and
+        // two concurrent writers can produce rows whose `prev_hash` points to
+        // the same predecessor — a chain fork.  Any change to pool/journal
+        // configuration must re-verify this property explicitly.
         let mut conn = self
             .pool
             .acquire()

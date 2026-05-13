@@ -262,7 +262,31 @@ impl<'de> Deserialize<'de> for AuditEvent {
 }
 
 /// Compile-time regex of the §6.6 dotted form. Every `kind_str()` MUST match.
+///
+/// Held as a documentation constant only — the adapter avoids a `regex`
+/// dependency and uses [`validate_audit_kind_pattern`] (below), which
+/// implements the same semantics by hand.  The unit tests on
+/// `validate_audit_kind_pattern` are the contract between the two.
 pub const AUDIT_KIND_REGEX: &str = r"^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$";
+
+/// Validate that `kind` matches the §6.6 dotted-kind pattern
+/// ([`AUDIT_KIND_REGEX`]).
+///
+/// Pattern: two or more dot-separated segments, each starting with `[a-z]`
+/// and consisting of `[a-z0-9-]*`.  Used by both the audit-event Display path
+/// and the storage-side insert gate to enforce a single source of truth.
+#[must_use]
+pub fn validate_audit_kind_pattern(kind: &str) -> bool {
+    kind.contains('.')
+        && kind.split('.').all(|seg| {
+            let mut chars = seg.chars();
+            let Some(first) = chars.next() else {
+                return false;
+            };
+            first.is_ascii_lowercase()
+                && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        })
+}
 
 /// Canonical audit event kind vocabulary (§6.6).
 ///
@@ -482,6 +506,21 @@ mod tests {
             unique.len(),
             variant_count,
             "duplicate Display strings detected among AuditEvent variants"
+        );
+    }
+
+    /// The enum and the `AUDIT_KIND_VOCAB` list must have identical cardinality.
+    /// If a variant is added without a vocab entry (or vice-versa), this test
+    /// catches the divergence before it causes a silent storage failure.
+    #[test]
+    fn enum_and_vocab_have_matching_cardinality() {
+        let variants = all_variants();
+        assert_eq!(
+            variants.len(),
+            AUDIT_KIND_VOCAB.len(),
+            "AuditEvent variant count ({}) does not match AUDIT_KIND_VOCAB length ({})",
+            variants.len(),
+            AUDIT_KIND_VOCAB.len()
         );
     }
 }

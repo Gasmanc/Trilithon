@@ -127,4 +127,45 @@ mod tests {
         let reg = SchemaRegistry::with_tier1_secrets();
         assert!(!reg.secret_field_paths().is_empty());
     }
+
+    /// `segments_match` requires `pattern.len() == path.len()`.  This test
+    /// pins the fixed-depth assumption: a nested variant of a known secret
+    /// path (one level deeper than registered) MUST NOT match.  Adding such
+    /// a nested form to the Caddy schema requires explicitly registering the
+    /// deeper pattern — otherwise plaintext would pass through the redactor.
+    ///
+    /// If this test fails because the matcher gained recursive `/**` support,
+    /// drop this test and update the secret-field registry accordingly.
+    #[test]
+    fn secret_match_is_fixed_depth_only() {
+        let reg = SchemaRegistry::with_tier1_secrets();
+        // Real Tier 1 path that should match.
+        let registered = JsonPointer::root().push("forward_auth").push("secret");
+        assert!(reg.is_secret_field(&registered));
+
+        // The same field one level deeper (e.g. nested under a handler array)
+        // must NOT match the same pattern.
+        let nested = JsonPointer::root()
+            .push("handle")
+            .push("0")
+            .push("forward_auth")
+            .push("secret");
+        assert!(
+            !reg.is_secret_field(&nested),
+            "secret_fields matcher is fixed-depth only; if this test fails the matcher gained recursive support — re-audit the secret registry"
+        );
+
+        let deep_password = JsonPointer::root()
+            .push("handle")
+            .push("0")
+            .push("auth")
+            .push("basic")
+            .push("users")
+            .push("0")
+            .push("password");
+        assert!(
+            !reg.is_secret_field(&deep_password),
+            "secret_fields matcher is fixed-depth only; if this test fails the matcher gained recursive support — re-audit the secret registry"
+        );
+    }
 }

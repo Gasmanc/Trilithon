@@ -13,7 +13,10 @@ pub mod event;
 pub mod redactor;
 pub mod row;
 
-pub use event::{AUDIT_KIND_REGEX, AUDIT_KIND_VOCAB, AuditEvent, AuditEventParseError};
+pub use event::{
+    AUDIT_KIND_REGEX, AUDIT_KIND_VOCAB, AuditEvent, AuditEventParseError,
+    validate_audit_kind_pattern,
+};
 pub use row::{
     AUDIT_QUERY_DEFAULT_LIMIT, AUDIT_QUERY_MAX_LIMIT, ActorRef, AuditEventRow, AuditOutcome,
     AuditRowId, AuditSelector, NormalisedAuditSelector,

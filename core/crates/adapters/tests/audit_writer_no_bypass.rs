@@ -29,28 +29,19 @@ const CALL_PATTERN: &str = ".record_audit_event(";
 
 /// Source file stems that are permitted to contain the call pattern.
 ///
+/// Production callers: the writer itself only.  Test files are blanket-allowed
+/// by directory (see [`is_test_path`] below); stems remain for the writer file
+/// and for legacy compatibility with prior fixed-list reviewers.
+///
 /// - `audit_writer` — the writer itself; only legitimate production caller.
-/// - `audit_writer_no_bypass` — this test file.
-/// - `audit_kind_validation`, `sqlite_storage` — pre-existing low-level
-///   storage contract tests that bypass the writer intentionally to verify
-///   that the storage layer enforces its own invariants (kind validation,
-///   immutability triggers, etc.).  These do not violate the guard's intent
-///   because they are testing storage internals, not production write paths.
-/// - `audit_query_*` — Slice 6.6 query tests that seed rows directly to
-///   exercise the `tail_audit_log` storage method; inserting via the writer
-///   would couple these tests to `AuditWriter` internals unnecessarily.
-const ALLOWED_CALL_STEMS: &[&str] = &[
-    "audit_writer",
-    "audit_writer_no_bypass",
-    "audit_kind_validation",
-    "sqlite_storage",
-    "audit_query_pagination",
-    "audit_query_correlation_filter",
-    "audit_query_time_range",
-    "audit_query_event_filter",
-    "audit_query_actor_filter",
-    "audit_query_cursor_descending",
-];
+const ALLOWED_CALL_STEMS: &[&str] = &["audit_writer"];
+
+/// Whether `path` lives under a `tests/` directory anywhere in its ancestry
+/// (or is itself a `tests` subtree).  Used as the structural allowlist
+/// predicate so adding a new test file does not require touching this guard.
+fn is_test_path(path: &Path) -> bool {
+    path.components().any(|c| c.as_os_str() == "tests")
+}
 
 fn collect_rs_files(root: &Path) -> Vec<std::path::PathBuf> {
     let mut result = Vec::new();
@@ -85,7 +76,13 @@ fn no_direct_record_audit_event_outside_audit_writer() {
         for path in collect_rs_files(dir) {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
-            // Permitted call sites.
+            // Test files anywhere under a `tests/` directory may call
+            // `record_audit_event` directly — they are not production paths.
+            if is_test_path(&path) {
+                continue;
+            }
+
+            // Explicitly-allowed production stems (currently only the writer).
             if ALLOWED_CALL_STEMS.contains(&stem) {
                 continue;
             }

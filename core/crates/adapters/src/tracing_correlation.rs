@@ -149,6 +149,18 @@ impl<F: Future> Future for CorrelationSpan<F> {
 ///
 /// Used by the HTTP middleware (Phase 9) when building the correlation span
 /// for each inbound request.
+///
+/// # Trust boundary (security)
+///
+/// **Only trust this header from internal callers.**  An external client can
+/// set `X-Correlation-Id` to any valid ULID — including one previously
+/// observed in an audit log — chaining their request to a legitimate prior
+/// event and confusing forensic reconstruction.  Phase 9 wiring MUST gate
+/// header acceptance on a trust signal (mTLS, internal bearer token, or
+/// loopback-only listener); for untrusted callers, ignore the header value
+/// and generate a fresh ULID server-side, optionally echoing the client's
+/// value in a separate `X-External-Correlation-Id` field for cross-system
+/// tracing without poisoning the internal audit trail.
 pub fn correlation_id_from_header(header: Option<&http::HeaderValue>) -> (Ulid, bool) {
     header.map_or_else(
         || (Ulid::new(), false),
@@ -172,10 +184,13 @@ pub fn correlation_id_from_header(header: Option<&http::HeaderValue>) -> (Ulid, 
 ///
 /// # Return type
 ///
-/// Returns [`tower::layer::util::Identity`] as a placeholder — the real
-/// layer type is defined in this module but this function is the hook Phase 9
-/// will replace with the concrete `CorrelationIdLayer`.
-pub const fn correlation_layer() -> tower::layer::util::Identity {
+/// Currently returns an `Identity` layer (no-op) under an `impl Layer` opaque
+/// return type so Phase 9 can swap in the concrete `CorrelationIdLayer`
+/// implementation without breaking callers that named the type.  This is a
+/// scaffolding stub — Phase 9 wires the real middleware and must replace this
+/// body before any HTTP handler relies on `current_correlation_id()` returning
+/// the inbound header value.
+pub fn correlation_layer<S>() -> impl tower::Layer<S, Service = S> + Clone {
     tower::layer::util::Identity::new()
 }
 

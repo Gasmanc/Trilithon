@@ -16,11 +16,35 @@ pub const REDACTION_PREFIX: &str = "***";
 /// Length of the truncated lowercase-hex hash prefix appended to the marker.
 pub const HASH_PREFIX_LEN: usize = 12;
 
+/// Maximum allowed depth for the redactor walk and self-check.
+///
+/// A diff payload nested deeper than this is rejected with
+/// [`RedactorError::DepthExceeded`] to prevent stack overflow on the audit-writing
+/// task.  64 levels is comfortably deeper than any legitimate Caddy config tree.
+pub const MAX_REDACTOR_DEPTH: usize = 64;
+
 // ── Traits ────────────────────────────────────────────────────────────────────
 
 /// Produces a stable lowercase-hex SHA-256 prefix for an arbitrary plaintext.
 ///
 /// Implementations MUST return identical output for byte-identical inputs.
+///
+/// # Security caveats
+///
+/// The redaction marker stores [`HASH_PREFIX_LEN`] = 12 hex characters = 48 bits
+/// of the digest.  For **low-entropy secrets** (PINs, short numeric API keys,
+/// fixed-format tokens with a small keyspace) this prefix is sufficient for an
+/// attacker with read access to the audit log to brute-force the original
+/// value offline by hashing every candidate and comparing the first 48 bits.
+/// A bare SHA-256 has no work factor and no salt.
+///
+/// For deployments where the audit log may be read by less-trusted parties
+/// (backups, read-only DB users, external exporters), use an HMAC-based
+/// implementation with a deployment-specific server-side key — that preserves
+/// the deterministic-correlation property (same plaintext → same redaction
+/// marker) without exposing an offline brute-force oracle.  See
+/// `Sha256AuditHasher` for the current implementation; consider an HMAC
+/// variant before exposing the audit log to such consumers.
 pub trait CiphertextHasher: Send + Sync {
     /// Return a lowercase-hex SHA-256 digest prefix of at least
     /// [`HASH_PREFIX_LEN`] characters derived from `plaintext`.
@@ -46,6 +70,12 @@ pub enum RedactorError {
     #[error("redactor would emit plaintext at {path}")]
     PlaintextDetected {
         /// The JSON Pointer path of the leaking field.
+        path: String,
+    },
+    /// The diff tree was nested deeper than [`MAX_REDACTOR_DEPTH`].
+    #[error("redactor depth limit exceeded at {path}")]
+    DepthExceeded {
+        /// The JSON Pointer path of the deepest node reached.
         path: String,
     },
 }
@@ -79,8 +109,8 @@ impl<'a> SecretsRedactor<'a> {
     pub fn redact(&self, value: &Value) -> Result<RedactionResult, RedactorError> {
         let root = JsonPointer::root();
         let mut sites: u32 = 0;
-        let redacted = self.walk(value, &root, &mut sites);
-        self.self_check(&redacted, &root)?;
+        let redacted = self.walk(value, &root, &mut sites, 0)?;
+        self.self_check(&redacted, &root, 0)?;
         Ok(RedactionResult {
             value: redacted,
             sites,
@@ -120,11 +150,27 @@ impl<'a> SecretsRedactor<'a> {
 
     /// Recursively walk `node` at `path`, returning a new `Value` with secret
     /// leaves replaced.
-    fn walk(&self, node: &Value, path: &JsonPointer, sites: &mut u32) -> Value {
+    ///
+    /// `depth` is the current recursion depth; exceeding [`MAX_REDACTOR_DEPTH`]
+    /// returns `Err(RedactorError::DepthExceeded)` rather than risking a stack
+    /// overflow.
+    fn walk(
+        &self,
+        node: &Value,
+        path: &JsonPointer,
+        sites: &mut u32,
+        depth: usize,
+    ) -> Result<Value, RedactorError> {
+        if depth > MAX_REDACTOR_DEPTH {
+            return Err(RedactorError::DepthExceeded {
+                path: path.to_string(),
+            });
+        }
+
         if self.registry.is_secret_field(path) {
             // Replace the entire subtree, regardless of its type.
             *sites = sites.saturating_add(1);
-            return self.redact_leaf(node);
+            return Ok(self.redact_leaf(node));
         }
 
         match node {
@@ -132,23 +178,20 @@ impl<'a> SecretsRedactor<'a> {
                 let mut out = Map::with_capacity(map.len());
                 for (key, val) in map {
                     let child_path = path.push(key);
-                    out.insert(key.clone(), self.walk(val, &child_path, sites));
+                    out.insert(key.clone(), self.walk(val, &child_path, sites, depth + 1)?);
                 }
-                Value::Object(out)
+                Ok(Value::Object(out))
             }
             Value::Array(arr) => {
-                let out = arr
-                    .iter()
-                    .enumerate()
-                    .map(|(i, val)| {
-                        let child_path = path.push(&i.to_string());
-                        self.walk(val, &child_path, sites)
-                    })
-                    .collect();
-                Value::Array(out)
+                let mut out = Vec::with_capacity(arr.len());
+                for (i, val) in arr.iter().enumerate() {
+                    let child_path = path.push(&i.to_string());
+                    out.push(self.walk(val, &child_path, sites, depth + 1)?);
+                }
+                Ok(Value::Array(out))
             }
             // Scalar leaves that are not secret — pass through unchanged.
-            other => other.clone(),
+            other => Ok(other.clone()),
         }
     }
 
@@ -169,7 +212,18 @@ impl<'a> SecretsRedactor<'a> {
 
     /// Self-check: re-walk `node` and return an error if any secret leaf does
     /// not start with [`REDACTION_PREFIX`].
-    fn self_check(&self, node: &Value, path: &JsonPointer) -> Result<(), RedactorError> {
+    fn self_check(
+        &self,
+        node: &Value,
+        path: &JsonPointer,
+        depth: usize,
+    ) -> Result<(), RedactorError> {
+        if depth > MAX_REDACTOR_DEPTH {
+            return Err(RedactorError::DepthExceeded {
+                path: path.to_string(),
+            });
+        }
+
         if self.registry.is_secret_field(path) {
             // The leaf must start with the redaction prefix.
             let ok = match node {
@@ -188,14 +242,14 @@ impl<'a> SecretsRedactor<'a> {
             Value::Object(map) => {
                 for (key, val) in map {
                     let child_path = path.push(key);
-                    self.self_check(val, &child_path)?;
+                    self.self_check(val, &child_path, depth + 1)?;
                 }
                 Ok(())
             }
             Value::Array(arr) => {
                 for (i, val) in arr.iter().enumerate() {
                     let child_path = path.push(&i.to_string());
-                    self.self_check(val, &child_path)?;
+                    self.self_check(val, &child_path, depth + 1)?;
                 }
                 Ok(())
             }
