@@ -1,0 +1,9 @@
+- finding_id: F001
+  fix_diff_summary: "Removed fallback CREATE TABLE IF NOT EXISTS audit_log block from migration 0006 — the triggers now fail loudly if migration 0001 was not applied, instead of silently creating a divergent (missing prev_hash / caddy_instance_id) schema that would break record_audit_event at runtime."
+  generalizable: true
+  one_sentence_lesson: "A migration's defensive 'CREATE TABLE IF NOT EXISTS' fallback that diverges from the canonical schema is more dangerous than a missing table — remove the fallback entirely so any missing prerequisite fails loudly at migration time, not silently at first INSERT."
+
+- finding_id: F007
+  fix_diff_summary: "Added `ActorKind::as_audit_str` / `AuditOutcome::as_audit_str` const helpers in core::storage::types and routed both the SQL adapter (`actor_kind_str`/`outcome_str`) and the canonical-JSON builder (`canonical_json_for_audit_hash`) through them, replacing format!(\"{:?}\")-then-lowercase with a single typed source of truth."
+  generalizable: true
+  one_sentence_lesson: "Whenever two code paths must agree byte-for-byte on the string form of an enum (here: SQL storage and the canonical-JSON used for hash chaining), define a single `as_*_str` method on the enum and call it from both sites — never rely on `format!(\"{:?}\")` matching the SQL string, because the first multi-word variant silently breaks the invariant."
