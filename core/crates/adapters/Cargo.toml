@@ -37,6 +37,8 @@ uuid = { workspace = true }
 nix = { version = "0.27", features = ["signal"] }
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["rand_core"] }
+base64 = "0.22"
+dashmap = "6"
 
 [dev-dependencies]
 tempfile = "3"
@@ -266,6 +268,26 @@ path = "tests/users_create_and_verify.rs"
 [[test]]
 name = "users_wrong_password_fails"
 path = "tests/users_wrong_password_fails.rs"
+
+[[test]]
+name = "sessions_round_trip"
+path = "tests/sessions_round_trip.rs"
+
+[[test]]
+name = "sessions_expiry_honoured"
+path = "tests/sessions_expiry_honoured.rs"
+
+[[test]]
+name = "cookie_codec_round_trip"
+path = "tests/cookie_codec_round_trip.rs"
+
+[[test]]
+name = "rate_limit_admits_first_five_failures"
+path = "tests/rate_limit_admits_first_five_failures.rs"
+
+[[test]]
+name = "rate_limit_backoff_caps_at_60s"
+path = "tests/rate_limit_backoff_caps_at_60s.rs"
 
 [lints]
 workspace = true
