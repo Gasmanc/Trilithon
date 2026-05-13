@@ -17,25 +17,21 @@
 # Use "::*" to include all `pub` items re-exported from a module.
 
 [roots]
-# Example entries — replace with your project's actual contracts.
-#
-# my_app_core = [
-#   "my_app_core::lib::*",
-#   "my_app_core::api::handlers::*",
-#   "my_app_core::auth::Session",
-#   "my_app_core::auth::verify_token",
-# ]
-#
-# my_app_storage = [
-#   "my_app_storage::lib::SessionStore",
-#   "my_app_storage::lib::TransactionLog",
-# ]
+# Phase 7 — apply-path contracts (ratified 2026-05-13 via review-remediate F027)
+trilithon_core = [
+  "trilithon_core::reconciler::Applier",
+  "trilithon_core::reconciler::ApplyOutcome",
+  "trilithon_core::reconciler::ApplyAuditNotes",
+  "trilithon_core::reconciler::ApplyError",
+  "trilithon_core::reconciler::AppliedState",
+  "trilithon_core::reconciler::ReloadKind",
+]
 
 [meta]
 # When this file was last reviewed by a human. /coherence-audit warns if
 # stale relative to phase activity.
-last_reviewed = "1970-01-01"
-last_reviewed_by = "unset"
+last_reviewed = "2026-05-13"
+last_reviewed_by = "gasmanc"
 
 # Schema version. Bump when the format changes.
 schema_version = 1

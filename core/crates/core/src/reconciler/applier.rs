@@ -248,8 +248,9 @@ pub enum AppliedStateTag {
 /// apply audit row (`config.applied`, `config.apply-failed`,
 /// `mutation.conflicted`).
 ///
-/// Serialised via `trilithon_core::canonical_json::to_canonical_bytes` before
-/// storage so that the JSON is deterministic and content-addressable.
+/// Serialised via `trilithon_adapters::audit_notes::notes_to_string`, which
+/// produces a key-sorted JSON object. This is NOT `canonical_json::to_canonical_bytes`
+/// (that function accepts `&DesiredState`, not `&ApplyAuditNotes`).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ApplyAuditNotes {
     /// How Caddy was asked to reload the configuration.
@@ -265,6 +266,10 @@ pub struct ApplyAuditNotes {
     pub error_detail: Option<String>,
     /// HTTP status returned by Caddy on 4xx rejection; `None` on success.
     pub caddy_status: Option<u16>,
+    /// Applied version at conflict time; populated only on `mutation.conflicted` rows.
+    pub stale_version: Option<i64>,
+    /// Observed current version at conflict time; populated only on `mutation.conflicted` rows.
+    pub current_version: Option<i64>,
 }
 
 // ---------------------------------------------------------------------------

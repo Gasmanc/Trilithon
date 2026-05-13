@@ -76,8 +76,8 @@ fn bounded_excerpt(s: &str) -> String {
     if s.len() <= EXCERPT_MAX_BYTES {
         s.to_owned()
     } else {
-        // Find the last valid UTF-8 boundary at or before EXCERPT_MAX_BYTES.
-        let mut end = EXCERPT_MAX_BYTES;
+        // "…" is 3 bytes (U+2026); reserve space so total length stays ≤ EXCERPT_MAX_BYTES.
+        let mut end = EXCERPT_MAX_BYTES - 3;
         while !s.is_char_boundary(end) {
             end -= 1;
         }
@@ -166,6 +166,8 @@ impl CaddyApplier {
             error_kind: Some("CaddyUnreachable".to_owned()),
             error_detail: Some(detail.to_owned()),
             caddy_status: None,
+            stale_version: None,
+            current_version: None,
         };
         let _ = self
             .audit
@@ -274,6 +276,8 @@ impl CaddyApplier {
                     error_kind: Some("CaddyServerError".to_owned()),
                     error_detail: Some(excerpt.clone()),
                     caddy_status: Some(status),
+            stale_version: None,
+            current_version: None,
                 };
                 let _ = self
                     .audit
@@ -311,13 +315,21 @@ impl CaddyApplier {
 
     /// Fetch the running config from Caddy and assert structural equivalence.
     async fn verify_equivalence(&self, desired_state: &DesiredState) -> Result<(), ApplyError> {
-        let observed =
-            self.client
-                .get_running_config()
-                .await
-                .map_err(|e| ApplyError::Unreachable {
-                    detail: e.to_string(),
-                })?;
+        use trilithon_core::caddy::CaddyError;
+        let observed = self
+            .client
+            .get_running_config()
+            .await
+            .map_err(|e| match e {
+                CaddyError::Unreachable { .. } | CaddyError::Timeout { .. } => {
+                    ApplyError::Unreachable { detail: e.to_string() }
+                }
+                CaddyError::BadStatus { .. }
+                | CaddyError::ProtocolViolation { .. }
+                | CaddyError::InvalidEndpoint { .. } => {
+                    ApplyError::CaddyRejected { detail: e.to_string() }
+                }
+            })?;
 
         let diffs = self
             .diff_engine
@@ -362,9 +374,16 @@ impl CaddyApplier {
                 diff: None,
                 outcome: AuditOutcome::Error,
                 error_kind: Some("OptimisticConflict".to_owned()),
-                notes: Some(format!(
-                    r#"{{"current_version":{current_version},"stale_version":{stale_version}}}"#
-                )),
+                notes: Some(notes_to_string(&ApplyAuditNotes {
+                    reload_kind: ReloadKind::Graceful { drain_window_ms: None },
+                    applied_state: AppliedStateTag::Applied,
+                    drain_window_ms: None,
+                    error_kind: Some("OptimisticConflict".to_owned()),
+                    error_detail: None,
+                    caddy_status: None,
+                    stale_version: Some(stale_version),
+                    current_version: Some(current_version),
+                })),
             })
             .await;
         tracing::warn!(
@@ -393,6 +412,8 @@ impl CaddyApplier {
             error_kind: None,
             error_detail: None,
             caddy_status: None,
+            stale_version: None,
+            current_version: None,
         };
         let _ = self
             .audit
@@ -435,7 +456,18 @@ impl Applier for CaddyApplier {
         let correlation_id: Ulid = snapshot
             .correlation_id
             .parse()
-            .unwrap_or_else(|_| Ulid::new());
+            .unwrap_or_else(|_| {
+                let fallback = Ulid::new();
+                tracing::warn!(
+                    event = "apply.correlation_id.parse_failed",
+                    raw_correlation_id = %snapshot.correlation_id,
+                    snapshot.id = %snapshot.snapshot_id.0,
+                    fallback_id = %fallback,
+                    "snapshot correlation_id is not a valid ULID; \
+                     audit rows will carry a different ID than the mutation pipeline"
+                );
+                fallback
+            });
 
         // Step -1 (Slice 7.6): acquire in-process mutex first, then the
         // SQLite advisory lock.  Together these guarantee at most one apply
@@ -595,7 +627,13 @@ impl Applier for CaddyApplier {
     }
 
     async fn validate(&self, _snapshot: &Snapshot) -> Result<ValidationReport, ApplyError> {
-        // Phase 12 placeholder.
+        // Phase 12 placeholder — intentionally returns Ok(empty report).
+        // Returning Ok means callers treat the snapshot as valid (no pre-flight
+        // failures). This is the correct placeholder behaviour because validate()
+        // is advisory: callers are expected to check whether the report is empty
+        // rather than whether the call succeeded. A PreflightFailed error would
+        // break callers that invoke validate() and proceed on Ok.
+        // Phase 12 will populate ValidationReport with real pre-flight checks.
         Ok(ValidationReport::default())
     }
 

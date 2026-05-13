@@ -129,6 +129,8 @@ impl TlsIssuanceObserver {
             error_kind: None,
             error_detail: None,
             caddy_status: None,
+            stale_version: None,
+            current_version: None,
         };
         let _ = self
             .audit
@@ -168,6 +170,8 @@ impl TlsIssuanceObserver {
                 "TLS certificate issuance did not complete within timeout".to_owned(),
             ),
             caddy_status: None,
+            stale_version: None,
+            current_version: None,
         };
         let _ = self
             .audit

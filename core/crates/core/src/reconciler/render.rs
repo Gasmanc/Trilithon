@@ -69,6 +69,16 @@ pub enum RenderError {
         /// The colliding JSON Pointer.
         pointer: String,
     },
+    /// A preset's `body_json` field is not valid JSON.
+    #[error("preset {preset}@{version} has invalid body_json: {detail}")]
+    InvalidPresetBody {
+        /// Preset identifier.
+        preset: String,
+        /// Preset version.
+        version: u32,
+        /// Parse error detail.
+        detail: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -322,9 +332,16 @@ fn build_handler(
                 version,
             })?;
         // Embed the preset body as an opaque JSON value under "policy".
-        if let Ok(body) = serde_json::from_str::<Value>(&preset.body_json) {
-            h.insert("policy".to_owned(), body);
-        }
+        // A parse failure is a render error — silently omitting a policy body
+        // would produce a valid-looking config missing a security policy.
+        let body = serde_json::from_str::<Value>(&preset.body_json).map_err(|e| {
+            RenderError::InvalidPresetBody {
+                preset: preset_id.to_owned(),
+                version,
+                detail: e.to_string(),
+            }
+        })?;
+        h.insert("policy".to_owned(), body);
     }
 
     Ok(Value::Object(h))
@@ -357,8 +374,31 @@ fn resolve_upstream_dial(
                 Ok(format!("{host}:{port}"))
             }
         }
-        UpstreamDestination::UnixSocket { path } => Ok(format!("unix/{path}")),
+        UpstreamDestination::UnixSocket { path } => {
+            if !std::path::Path::new(path.as_str()).is_absolute()
+                || path.contains("..")
+                || path.contains('\0')
+            {
+                return Err(RenderError::InvalidUpstream {
+                    target: path.clone(),
+                    path: format!("{path_prefix}/upstreams/{idx}/path"),
+                });
+            }
+            Ok(format!("unix/{path}"))
+        }
         UpstreamDestination::DockerContainer { container_id, port } => {
+            // container_id must match [a-zA-Z0-9_.\-]{1,128}
+            let valid = !container_id.is_empty()
+                && container_id.len() <= 128
+                && container_id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-');
+            if !valid {
+                return Err(RenderError::InvalidUpstream {
+                    target: container_id.clone(),
+                    path: format!("{path_prefix}/upstreams/{idx}/container_id"),
+                });
+            }
             Ok(format!("{container_id}:{port}"))
         }
     }
