@@ -1,6 +1,6 @@
 # Design Decision — Phase 9
 
-**Date:** 2026-05-08
+**Date:** 2026-05-13
 **Rounds:** 8
 **Final approach:** axum HTTP server in `crates/adapters/` with session-cookie auth (browser) and bearer-token auth (non-browser), Argon2id password hashing with RFC 9106 first-recommendation parameters, dual-keyed SQLite-persisted sliding-window rate limiting, optimistic concurrency via `config_version`, and a fully audited bootstrap-account flow with atomic rotation and crash-recovery guarantees.
 
