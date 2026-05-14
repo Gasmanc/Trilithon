@@ -77,3 +77,23 @@ No over-abstraction or dead code found. The implementation is tightly scoped wit
 
 ### Items Left Unfixed
 None.
+
+## Slice 9.6
+**Status:** complete
+**Date:** 2026-05-14
+**Commits:** d03de12 (main impl), 70792e6 (manifest update)
+
+### Summary
+Implemented Tower auth middleware (`auth_layer`) that resolves authentication from either a session cookie or an `Authorization: Bearer` header. Path classification (Public / MustChangePassword / Protected) enforces that unauthenticated protected requests return 401 with `{"code":"unauthenticated"}` and sessions with `must_change_pw=true` return 403 with `{"code":"must-change-password"}` on non-change-password routes. Added `tokens` table migration, `AuthContext` enum, `AuthenticatedSession` extractor, and replaced the prior stub extractor in `auth_routes.rs`. Updated all 9.5 tests to use real cookie auth.
+
+### Simplify Findings
+- Replaced redundant `match` blocks with `let...else` patterns as required by clippy.
+- Added `Unauthenticated` and `Forbidden` variants to `ApiError` to distinguish middleware-level vs handler-level rejections.
+
+### Items Fixed Inline
+- Spec said 403 for `must_change_pw` blocked routes; initial implementation used 409 (`Conflict`). Corrected to add `ApiError::Forbidden` returning 403.
+- Clippy `use-self` lint in `FromRequestParts`: replaced `.get::<AuthenticatedSession>()` with `.get::<Self>()`.
+- Multiple `or_fun_call`, `manual_let_else`, and `doc_markdown` lints fixed per clippy guidance.
+
+### Items Left Unfixed
+None.
