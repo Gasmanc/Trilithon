@@ -68,8 +68,11 @@ impl LoginRateLimiter {
     pub fn record_failure(&self, addr: IpAddr, now_unix: i64) {
         let mut bucket = self.buckets.entry(addr).or_default();
         bucket.failure_count += 1;
-        if bucket.failure_count > 5 {
-            let exponent = bucket.failure_count - 5;
+        // After the 5th consecutive failure the address enters back-off.
+        // Setting next_allowed_at_unix here means check() will reject the *next*
+        // (6th and beyond) attempt before any handler logic runs.
+        if bucket.failure_count >= 5 {
+            let exponent = bucket.failure_count - 4;
             let backoff = 2_i64.saturating_pow(exponent).min(60);
             bucket.next_allowed_at_unix = now_unix + backoff;
         }

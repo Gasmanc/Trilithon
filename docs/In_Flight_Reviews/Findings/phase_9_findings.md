@@ -43,3 +43,22 @@ Items fixed inline during implementation:
 
 ### Items Left Unfixed
 None — all findings were fixed inline.
+
+## Slice 9.4
+**Status:** complete
+**Date:** 2026-05-14
+**Commit:** 1100cb5
+**Summary:** Implemented `bootstrap_if_empty` in `auth/bootstrap.rs`. Generates a 24-char Crockford base32 password from 18 random bytes, writes `bootstrap-credentials.txt` with mode 0600, emits `auth.bootstrap-credentials-created` audit row with no password in diff. Four integration tests (file mode, must_change_pw, password not in logs, skips when users exist) all pass. The `run_with_shutdown` function was refactored via `setup_caddy` helper to stay under the 100-line clippy limit.
+
+### Simplify Findings
+- Extracted `setup_caddy` helper from `run_with_shutdown` to reduce function length from ~150 to ~90 lines (required by `clippy::too_many_lines`).
+- Changed `encode_password` to build a `String` directly using `char::from(u8)` instead of collecting bytes and calling `.expect()` (required by `clippy::expect_used`).
+
+### Items Fixed Inline
+- `clippy::expect_used` on `String::from_utf8(out).expect(...)` in `encode_password` — replaced with `char::from` push approach.
+- Unused import `std::fmt::Write as _` inside `on_event` in `bootstrap_password_not_in_logs.rs` test.
+- `clippy::too_many_lines` on `run_with_shutdown` (101 lines) — extracted `setup_caddy` helper.
+- `pub use sqlx::sqlite::SqlitePool` added to `sqlite_storage.rs` so `cli` can reference the pool type without a direct `sqlx` dependency.
+
+### Items Left Unfixed
+None.

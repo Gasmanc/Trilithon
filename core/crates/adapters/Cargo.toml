@@ -305,5 +305,31 @@ path = "tests/bootstrap_password_not_in_logs.rs"
 name = "bootstrap_must_change_pw_set"
 path = "tests/bootstrap_must_change_pw_set.rs"
 
+# ── Slice 9.5 — Auth endpoints ────────────────────────────────────────────────
+
+[[test]]
+name = "auth_login_happy"
+path = "tests/auth_login_happy.rs"
+
+[[test]]
+name = "auth_login_wrong_password_401"
+path = "tests/auth_login_wrong_password_401.rs"
+
+[[test]]
+name = "auth_login_bootstrap_step_up"
+path = "tests/auth_login_bootstrap_step_up.rs"
+
+[[test]]
+name = "auth_login_rate_limited"
+path = "tests/auth_login_rate_limited.rs"
+
+[[test]]
+name = "auth_logout_revokes_session"
+path = "tests/auth_logout_revokes_session.rs"
+
+[[test]]
+name = "auth_change_password_clears_flag"
+path = "tests/auth_change_password_clears_flag.rs"
+
 [lints]
 workspace = true

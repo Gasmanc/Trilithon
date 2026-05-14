@@ -4,6 +4,9 @@
 //! `allow_remote_binding = true` and emits a stark warning at startup
 //! (ADR-0011, architecture §8.1).
 
+pub mod auth_routes;
+pub mod stubs;
+
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -14,12 +17,15 @@ use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, post};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use tokio::net::TcpListener;
 use trilithon_core::config::types::ServerConfig;
 use trilithon_core::http::{HttpServer, HttpServerError, ShutdownSignal};
+
+use crate::audit_writer::AuditWriter;
+use crate::auth::{LoginRateLimiter, SessionStore, UserStore};
 
 // ── AppState ──────────────────────────────────────────────────────────────────
 
@@ -30,6 +36,18 @@ pub struct AppState {
     pub apply_in_flight: Arc<AtomicBool>,
     /// Unix timestamp (ms) at which the daemon became ready; 0 = starting.
     pub ready_since_unix_ms: Arc<AtomicU64>,
+    /// Login rate limiter keyed by source IP.
+    pub rate_limiter: Arc<LoginRateLimiter>,
+    /// Session persistence store.
+    pub session_store: Arc<dyn SessionStore>,
+    /// User persistence store.
+    pub user_store: Arc<dyn UserStore>,
+    /// Audit event writer.
+    pub audit_writer: Arc<AuditWriter>,
+    /// Cookie name for the session token.
+    pub session_cookie_name: String,
+    /// Session lifetime in seconds.
+    pub session_ttl_seconds: u64,
 }
 
 // ── Health handler ────────────────────────────────────────────────────────────
@@ -114,6 +132,12 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/v1/health", get(health_handler))
         .route("/api/v1/openapi.json", get(openapi_placeholder))
+        .route("/api/v1/auth/login", post(auth_routes::login))
+        .route("/api/v1/auth/logout", post(auth_routes::logout))
+        .route(
+            "/api/v1/auth/change-password",
+            post(auth_routes::change_password),
+        )
         .with_state(state)
 }
 
@@ -223,12 +247,15 @@ impl HttpServer for AxumServer {
 
         let app = router(self.state);
 
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown)
-            .await
-            .map_err(|e| HttpServerError::Crashed {
-                detail: e.to_string(),
-            })
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown)
+        .await
+        .map_err(|e| HttpServerError::Crashed {
+            detail: e.to_string(),
+        })
     }
 
     async fn shutdown(&self) -> Result<(), HttpServerError> {

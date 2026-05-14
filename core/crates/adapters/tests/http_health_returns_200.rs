@@ -13,15 +13,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::Duration;
 
-use trilithon_adapters::http_axum::{AppState, AxumServer, AxumServerConfig, mark_ready};
+use trilithon_adapters::http_axum::{AxumServer, AxumServerConfig, mark_ready, stubs};
 use trilithon_core::config::types::ServerConfig;
 use trilithon_core::http::HttpServer;
 
-fn make_state() -> Arc<AppState> {
-    Arc::new(AppState {
-        apply_in_flight: Arc::new(AtomicBool::new(false)),
-        ready_since_unix_ms: Arc::new(AtomicU64::new(0)),
-    })
+fn make_state() -> Arc<trilithon_adapters::http_axum::AppState> {
+    stubs::make_test_app_state(
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(AtomicU64::new(0)),
+    )
 }
 
 #[tokio::test]

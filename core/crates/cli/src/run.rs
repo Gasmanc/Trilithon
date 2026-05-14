@@ -332,10 +332,11 @@ async fn bind_and_spawn_http(
 
     let apply_in_flight_flag = Arc::new(AtomicBool::new(false));
     let ready_since_ms = Arc::new(AtomicU64::new(0));
-    let http_state = Arc::new(trilithon_adapters::http_axum::AppState {
-        apply_in_flight: Arc::clone(&apply_in_flight_flag),
-        ready_since_unix_ms: Arc::clone(&ready_since_ms),
-    });
+    // Slice 9.6 will wire real user/session stores once bootstrap is initialised.
+    let http_state = trilithon_adapters::http_axum::stubs::make_test_app_state(
+        Arc::clone(&apply_in_flight_flag),
+        Arc::clone(&ready_since_ms),
+    );
     let http_server_cfg = trilithon_adapters::http_axum::AxumServerConfig {
         bind_host: config.server.bind.ip().to_string(),
         bind_port: config.server.bind.port(),

@@ -124,6 +124,16 @@ pub trait UserStore: Send + Sync + 'static {
     /// Returns [`UserStoreError`] on database failure.
     async fn set_must_change_pw(&self, user_id: &str, value: bool) -> Result<(), UserStoreError>;
 
+    /// Look up a user by their id; returns the row and its stored password hash.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UserStoreError`] on database or row-mapping failure.
+    async fn find_user_by_id(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<(User, String)>, UserStoreError>;
+
     /// Return the total number of user rows in the store.
     ///
     /// # Errors
@@ -173,6 +183,25 @@ fn row_to_user_and_hash(row: &sqlx::sqlite::SqliteRow) -> Result<(User, String),
 
 #[async_trait]
 impl UserStore for SqliteUserStore {
+    async fn find_user_by_id(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<(User, String)>, UserStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, username, role, created_at, must_change_pw, disabled_at, password_hash
+            FROM users
+            WHERE id = ?
+            ",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(UserStoreError::Database)?;
+
+        row.map_or_else(|| Ok(None), |r| row_to_user_and_hash(&r).map(Some))
+    }
+
     async fn find_by_username(
         &self,
         username: &str,
