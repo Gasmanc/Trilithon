@@ -8,6 +8,7 @@ use crate::audit_writer::{ActorRef, AuditAppend, AuditWriteError};
 use crate::auth::users::UserRole;
 use crate::auth::{build_cookie, verify_password};
 use crate::http_axum::AppState;
+use crate::http_axum::auth_middleware::AuthenticatedSession;
 use axum::Json;
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -48,63 +49,20 @@ pub struct ChangePasswordRequest {
     pub new_password: String,
 }
 
-// ── Stub session type (filled in by Slice 9.6) ────────────────────────────────
-
-/// Placeholder for the authenticated-session extractor introduced in Slice 9.6.
-///
-/// Handlers that require an authenticated session accept this type.  Slice 9.6
-/// replaces this with a real `FromRequestParts` impl that validates the session
-/// cookie against the session store.
-///
-/// This stub reads the session from `X-Session-Id` + `X-User-Id` request
-/// headers.  It exists only to make the handlers compile; the real
-/// implementation will use cookie-based lookup.
-#[derive(Clone, Debug)]
-pub struct AuthenticatedSession {
-    /// The session token extracted from the cookie.
-    pub session_id: String,
-    /// The authenticated user id.
-    pub user_id: String,
-}
-
-impl<S> axum::extract::FromRequestParts<S> for AuthenticatedSession
-where
-    S: Send + Sync,
-{
-    type Rejection = ApiError;
-
-    async fn from_request_parts(
-        parts: &mut axum::http::request::Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
-        let session_id = parts
-            .headers
-            .get("x-session-id")
-            .and_then(|v| v.to_str().ok())
-            .map(ToOwned::to_owned)
-            .ok_or(ApiError::Unauthorized)?;
-
-        let user_id = parts
-            .headers
-            .get("x-user-id")
-            .and_then(|v| v.to_str().ok())
-            .map(ToOwned::to_owned)
-            .ok_or(ApiError::Unauthorized)?;
-
-        Ok(Self {
-            session_id,
-            user_id,
-        })
-    }
-}
-
 // ── ApiError ──────────────────────────────────────────────────────────────────
 
 /// HTTP API error type — maps to a status code and a JSON body.
 #[derive(Debug)]
 pub enum ApiError {
-    /// 401 Unauthorized.
+    /// 401 from the auth middleware — `{"code":"unauthenticated"}`.
+    Unauthenticated,
+    /// 401 Unauthorized from a handler — `{"error":"unauthorized"}`.
     Unauthorized,
+    /// 403 Forbidden — `{"code": <code>}`. Used for `must-change-password`.
+    Forbidden {
+        /// Machine-readable error code returned in the response body.
+        code: &'static str,
+    },
     /// 409 Conflict with a machine-readable code.
     Conflict {
         /// Machine-readable error code returned in the response body.
@@ -130,11 +88,19 @@ fn error_body(key: &str, value: &str) -> serde_json::Value {
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         match self {
+            Self::Unauthenticated => (
+                StatusCode::UNAUTHORIZED,
+                Json(error_body("code", "unauthenticated")),
+            )
+                .into_response(),
             Self::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
                 Json(error_body("error", "unauthorized")),
             )
                 .into_response(),
+            Self::Forbidden { code } => {
+                (StatusCode::FORBIDDEN, Json(error_body("code", code))).into_response()
+            }
             Self::Conflict { code } => {
                 (StatusCode::CONFLICT, Json(error_body("code", code))).into_response()
             }
@@ -331,18 +297,22 @@ pub async fn logout(
     State(state): State<Arc<AppState>>,
     session: AuthenticatedSession,
 ) -> Result<(StatusCode, HeaderMap), ApiError> {
+    let session_id = session
+        .session_id()
+        .ok_or(ApiError::Unauthorized)?
+        .to_owned();
+    let user_id = session.user_id().ok_or(ApiError::Unauthorized)?.to_owned();
+
     state
         .session_store
-        .revoke(&session.session_id)
+        .revoke(&session_id)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     state
         .audit_writer
         .record(AuditAppend::from_current_span(
-            ActorRef::User {
-                id: session.user_id,
-            },
+            ActorRef::User { id: user_id },
             AuditEvent::AuthLogout,
             AuditOutcome::Ok,
         ))
@@ -369,12 +339,10 @@ pub async fn change_password(
     Json(req): Json<ChangePasswordRequest>,
 ) -> Result<StatusCode, ApiError> {
     // 1. Look up current hash.
-    // We need the hash to verify the old password; we find by user_id indirectly
-    // by searching all users — but UserStore only exposes find_by_username.
-    // Use a helper that fetches by user_id via the session's user_id.
+    let uid = session.user_id().ok_or(ApiError::Unauthorized)?.to_owned();
     let (user, current_hash) = state
         .user_store
-        .find_user_by_id(&session.user_id)
+        .find_user_by_id(&uid)
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or(ApiError::Unauthorized)?;

@@ -67,6 +67,7 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
+        token_pool: None,
     });
 
     let cfg = AxumServerConfig {

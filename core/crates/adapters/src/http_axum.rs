@@ -4,6 +4,7 @@
 //! `allow_remote_binding = true` and emits a stark warning at startup
 //! (ADR-0011, architecture §8.1).
 
+pub mod auth_middleware;
 pub mod auth_routes;
 pub mod stubs;
 
@@ -17,6 +18,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::routing::{get, post};
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -26,6 +28,7 @@ use trilithon_core::http::{HttpServer, HttpServerError, ShutdownSignal};
 
 use crate::audit_writer::AuditWriter;
 use crate::auth::{LoginRateLimiter, SessionStore, UserStore};
+pub use auth_middleware::AuthenticatedSession;
 
 // ── AppState ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +51,8 @@ pub struct AppState {
     pub session_cookie_name: String,
     /// Session lifetime in seconds.
     pub session_ttl_seconds: u64,
+    /// `SQLite` pool for token lookups. `None` means token auth is disabled.
+    pub token_pool: Option<sqlx::SqlitePool>,
 }
 
 // ── Health handler ────────────────────────────────────────────────────────────
@@ -138,6 +143,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/v1/auth/change-password",
             post(auth_routes::change_password),
         )
+        .layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            auth_middleware::auth_layer,
+        ))
         .with_state(state)
 }
 

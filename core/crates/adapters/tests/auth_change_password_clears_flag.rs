@@ -77,6 +77,7 @@ async fn setup() -> (
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
+        token_pool: None,
     });
 
     let cfg = AxumServerConfig {
@@ -131,12 +132,11 @@ async fn auth_change_password_clears_flag() {
         .expect("user exists");
     assert!(before.must_change_pw, "must_change_pw must be true before");
 
-    // Call change-password with stub headers.
+    // Call change-password with a real session cookie.
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/v1/auth/change-password"))
-        .header("x-session-id", &s1.id)
-        .header("x-user-id", &user.id)
+        .header("Cookie", format!("trilithon_session={}", s1.id))
         .json(&serde_json::json!({
             "old_password": "OldPassword12345",
             "new_password": "NewPassword67890!"

@@ -1,4 +1,4 @@
-//! `POST /api/v1/auth/login` — wrong password returns 401 and writes `auth.login-failed`.
+//! Valid session cookie → middleware lets the request through (logout returns 204).
 
 #![allow(
     clippy::unwrap_used,
@@ -16,25 +16,26 @@ use std::time::Duration;
 use tempfile::TempDir;
 use trilithon_adapters::{
     AuditWriter, Sha256AuditHasher,
-    auth::{LoginRateLimiter, SqliteSessionStore, SqliteUserStore, UserRole, UserStore as _},
+    auth::{
+        LoginRateLimiter, SessionStore as _, SqliteSessionStore, SqliteUserStore, UserRole,
+        UserStore as _,
+    },
     http_axum::{AppState, AxumServer, AxumServerConfig},
     migrate::apply_migrations,
     rng::ThreadRng,
     sqlite_storage::SqliteStorage,
 };
 use trilithon_core::{
-    clock::SystemClock,
-    config::types::ServerConfig,
-    http::HttpServer,
-    schema::SchemaRegistry,
-    storage::{Storage, types::AuditSelector},
+    clock::SystemClock, config::types::ServerConfig, http::HttpServer, schema::SchemaRegistry,
+    storage::trait_def::Storage,
 };
 
 async fn setup() -> (
     TempDir,
     SocketAddr,
     tokio::sync::oneshot::Sender<()>,
-    Arc<dyn Storage>,
+    Arc<SqliteSessionStore>,
+    Arc<SqliteUserStore>,
 ) {
     let dir = TempDir::new().unwrap();
     let storage = SqliteStorage::open(dir.path())
@@ -47,24 +48,27 @@ async fn setup() -> (
     let session_store = Arc::new(SqliteSessionStore::new(pool.clone(), Arc::new(ThreadRng)));
 
     user_store
-        .create_user("bob", "correct-battery-horse", UserRole::Owner)
+        .create_user("session_user", "SessionPassword123", UserRole::Owner)
         .await
         .expect("create user");
 
     let storage_arc: Arc<dyn Storage> = Arc::new(storage);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
-        Arc::clone(&storage_arc),
+        storage_arc,
         Arc::new(SystemClock),
         Arc::new(SchemaRegistry::with_tier1_secrets()),
         Arc::new(Sha256AuditHasher),
     ));
 
+    let us_clone = Arc::clone(&user_store);
+    let ss_clone = Arc::clone(&session_store);
+
     let state = Arc::new(AppState {
         apply_in_flight: Arc::new(AtomicBool::new(false)),
         ready_since_unix_ms: Arc::new(AtomicU64::new(1)),
         rate_limiter: Arc::new(LoginRateLimiter::new()),
-        session_store,
-        user_store,
+        session_store: session_store as Arc<dyn trilithon_adapters::auth::SessionStore>,
+        user_store: user_store as Arc<dyn trilithon_adapters::auth::UserStore>,
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
@@ -91,37 +95,37 @@ async fn setup() -> (
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    (dir, addr, tx, storage_arc)
+    (dir, addr, tx, ss_clone, us_clone)
 }
 
 #[tokio::test]
-async fn auth_login_wrong_password_401() {
-    let (_dir, addr, tx, storage) = setup().await;
+async fn auth_middleware_session_admits() {
+    let (_dir, addr, tx, session_store, user_store) = setup().await;
 
+    let (user, _) = user_store
+        .find_by_username("session_user")
+        .await
+        .expect("find user")
+        .expect("user exists");
+
+    let session = session_store
+        .create(&user.id, 3600, None, None)
+        .await
+        .expect("create session");
+
+    // Logout with a real session cookie — expect 204 (handler reached).
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{addr}/api/v1/auth/login"))
-        .json(&serde_json::json!({"username": "bob", "password": "wrong-password-xyz"}))
+        .post(format!("http://{addr}/api/v1/auth/logout"))
+        .header("Cookie", format!("trilithon_session={}", session.id))
         .send()
         .await
         .expect("request");
 
-    assert_eq!(resp.status(), 401, "wrong password must return 401");
-
-    // Verify that an auth.login-failed audit row was written.
-    let rows = storage
-        .tail_audit_log(
-            AuditSelector {
-                kind_glob: Some("auth.login-failed".to_owned()),
-                ..Default::default()
-            },
-            10,
-        )
-        .await
-        .expect("tail_audit_log");
-    assert!(
-        !rows.is_empty(),
-        "auth.login-failed audit row must be written on wrong password"
+    assert_eq!(
+        resp.status(),
+        204,
+        "valid session cookie must be admitted (204)"
     );
 
     let _ = tx.send(());

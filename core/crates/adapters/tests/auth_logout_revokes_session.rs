@@ -72,6 +72,7 @@ async fn setup() -> (
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
+        token_pool: None,
     });
 
     let cfg = AxumServerConfig {
@@ -118,12 +119,11 @@ async fn auth_logout_revokes_session() {
     let live = session_store.touch(&session.id).await.expect("touch");
     assert!(live.is_some(), "session must be live before logout");
 
-    // Call logout with stub headers.
+    // Call logout with a real session cookie.
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/v1/auth/logout"))
-        .header("x-session-id", &session.id)
-        .header("x-user-id", &user.id)
+        .header("Cookie", format!("trilithon_session={}", session.id))
         .send()
         .await
         .expect("request");

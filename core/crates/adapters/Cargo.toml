@@ -331,5 +331,27 @@ path = "tests/auth_logout_revokes_session.rs"
 name = "auth_change_password_clears_flag"
 path = "tests/auth_change_password_clears_flag.rs"
 
+# ── Slice 9.6 — Auth middleware ───────────────────────────────────────────────
+
+[[test]]
+name = "auth_middleware_unauthenticated_mutation_401"
+path = "tests/auth_middleware_unauthenticated_mutation_401.rs"
+
+[[test]]
+name = "auth_middleware_session_admits"
+path = "tests/auth_middleware_session_admits.rs"
+
+[[test]]
+name = "auth_middleware_token_admits"
+path = "tests/auth_middleware_token_admits.rs"
+
+[[test]]
+name = "auth_middleware_invalid_token_401"
+path = "tests/auth_middleware_invalid_token_401.rs"
+
+[[test]]
+name = "auth_middleware_must_change_password_blocks"
+path = "tests/auth_middleware_must_change_password_blocks.rs"
+
 [lints]
 workspace = true

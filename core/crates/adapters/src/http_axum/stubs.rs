@@ -223,5 +223,6 @@ pub fn make_test_app_state(
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 12 * 3600,
+        token_pool: None,
     })
 }

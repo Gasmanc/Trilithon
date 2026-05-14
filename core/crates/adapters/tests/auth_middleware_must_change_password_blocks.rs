@@ -1,4 +1,6 @@
-//! `POST /api/v1/auth/login` — happy path: returns 200 and a session cookie.
+//! Session with `must_change_pw = true`:
+//!   * public route (`GET /api/v1/health`) → passes through (200 or 503).
+//!   * protected route (`POST /api/v1/auth/logout`) → 403 `{"code":"must-change-password"}`.
 
 #![allow(
     clippy::unwrap_used,
@@ -6,7 +8,7 @@
     clippy::panic,
     clippy::disallowed_methods
 )]
-// reason: integration test — panics are the correct failure mode
+// reason: integration test
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -16,7 +18,10 @@ use std::time::Duration;
 use tempfile::TempDir;
 use trilithon_adapters::{
     AuditWriter, Sha256AuditHasher,
-    auth::{LoginRateLimiter, SqliteSessionStore, SqliteUserStore, UserRole, UserStore as _},
+    auth::{
+        LoginRateLimiter, SessionStore as _, SqliteSessionStore, SqliteUserStore, UserRole,
+        UserStore as _,
+    },
     http_axum::{AppState, AxumServer, AxumServerConfig},
     migrate::apply_migrations,
     rng::ThreadRng,
@@ -27,7 +32,13 @@ use trilithon_core::{
     storage::trait_def::Storage,
 };
 
-async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
+async fn setup() -> (
+    TempDir,
+    SocketAddr,
+    tokio::sync::oneshot::Sender<()>,
+    Arc<SqliteSessionStore>,
+    Arc<SqliteUserStore>,
+) {
     let dir = TempDir::new().unwrap();
     let storage = SqliteStorage::open(dir.path())
         .await
@@ -38,10 +49,14 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
     let user_store = Arc::new(SqliteUserStore::new(pool.clone()));
     let session_store = Arc::new(SqliteSessionStore::new(pool.clone(), Arc::new(ThreadRng)));
 
-    user_store
-        .create_user("alice", "correct-horse-battery", UserRole::Owner)
+    let user = user_store
+        .create_user("force_change", "ForceChange123!", UserRole::Owner)
         .await
         .expect("create user");
+    user_store
+        .set_must_change_pw(&user.id, true)
+        .await
+        .expect("set must_change_pw");
 
     let storage_arc: Arc<dyn Storage> = Arc::new(storage);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
@@ -51,12 +66,15 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         Arc::new(Sha256AuditHasher),
     ));
 
+    let us_clone = Arc::clone(&user_store);
+    let ss_clone = Arc::clone(&session_store);
+
     let state = Arc::new(AppState {
         apply_in_flight: Arc::new(AtomicBool::new(false)),
         ready_since_unix_ms: Arc::new(AtomicU64::new(1)),
         rate_limiter: Arc::new(LoginRateLimiter::new()),
-        session_store,
-        user_store,
+        session_store: session_store as Arc<dyn trilithon_adapters::auth::SessionStore>,
+        user_store: user_store as Arc<dyn trilithon_adapters::auth::UserStore>,
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
@@ -83,35 +101,58 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    (dir, addr, tx)
+    (dir, addr, tx, ss_clone, us_clone)
 }
 
 #[tokio::test]
-async fn auth_login_happy() {
-    let (_dir, addr, tx) = setup().await;
+async fn auth_middleware_must_change_password_blocks() {
+    let (_dir, addr, tx, session_store, user_store) = setup().await;
+
+    let (user, _) = user_store
+        .find_by_username("force_change")
+        .await
+        .expect("find user")
+        .expect("user exists");
+
+    let session = session_store
+        .create(&user.id, 3600, None, None)
+        .await
+        .expect("create session");
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("http://{addr}/api/v1/auth/login"))
-        .json(&serde_json::json!({"username": "alice", "password": "correct-horse-battery"}))
+    let cookie = format!("trilithon_session={}", session.id);
+
+    // Public route must pass through regardless.
+    let health = client
+        .get(format!("http://{addr}/api/v1/health"))
         .send()
         .await
-        .expect("request");
-
-    assert_eq!(resp.status(), 200, "expected 200 OK");
-
-    // Must set a session cookie.
-    let cookies: Vec<_> = resp.headers().get_all("set-cookie").iter().collect();
-    assert!(!cookies.is_empty(), "login must return a Set-Cookie header");
-    let cookie_str = cookies[0].to_str().unwrap();
+        .expect("health request");
     assert!(
-        cookie_str.contains("trilithon_session="),
-        "cookie must contain the session name"
+        health.status().is_success() || health.status().as_u16() == 503,
+        "public route must not be blocked by must_change_pw (got {})",
+        health.status()
     );
 
+    // Protected route must be blocked with 403.
+    let resp = client
+        .post(format!("http://{addr}/api/v1/auth/logout"))
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .expect("logout request");
+
+    assert_eq!(
+        resp.status(),
+        403,
+        "must_change_pw session must be blocked with 403 on protected routes"
+    );
     let body: serde_json::Value = resp.json().await.expect("JSON body");
-    assert_eq!(body["must_change_pw"], false);
-    assert!(body["user_id"].is_string());
+    assert_eq!(
+        body.get("code").and_then(|v| v.as_str()),
+        Some("must-change-password"),
+        "body must carry must-change-password code"
+    );
 
     let _ = tx.send(());
 }
