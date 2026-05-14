@@ -4,6 +4,7 @@
 //! `allow_remote_binding = true` and emits a stark warning at startup
 //! (ADR-0011, architecture §8.1).
 
+pub mod audit_routes;
 pub mod auth_middleware;
 pub mod auth_routes;
 pub mod mutations;
@@ -168,6 +169,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/v1/snapshots/{a}/diff/{b}",
             get(snapshots::diff_snapshots),
         )
+        .route("/api/v1/audit", get(audit_routes::list_audit))
         .route("/api/v1/routes", get(routes::list_routes))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
