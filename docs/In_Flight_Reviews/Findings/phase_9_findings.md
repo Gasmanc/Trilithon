@@ -138,3 +138,19 @@ Items fixed inline during implementation:
 
 ### Items Left Unfixed
 None.
+
+---
+
+## Slice 9.9 — GET /api/v1/audit with paginated filters
+**Status:** complete
+**Date:** 2026-05-15
+**Commit:** 4dacf24
+
+### Findings
+- No lint or compile errors. Gate passed cleanly after clearing a stale test lock file from a prior run.
+- 5 integration tests added covering: default limit, max-limit clamp, event-type filter, correlation-id filter, and unknown event-type 400.
+- `audit_routes.rs` extracted as a dedicated sub-module under `http_axum/`, keeping router file small.
+- Pagination implemented via `offset`/`limit` query params; limit clamped to 500 server-side.
+
+### Items Left Unfixed
+None.
