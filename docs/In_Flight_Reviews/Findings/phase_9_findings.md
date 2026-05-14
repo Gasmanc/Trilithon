@@ -97,3 +97,44 @@ Implemented Tower auth middleware (`auth_layer`) that resolves authentication fr
 
 ### Items Left Unfixed
 None.
+
+## Slice 9.8 — Snapshot and Route Read Endpoints
+**Status:** complete
+**Date:** 2026-05-15
+**Commit:** 4fc5f3a
+
+### Implementation Summary
+Added four authenticated read endpoints:
+
+- `GET /api/v1/snapshots` — paginated list (limit clamped to 200, default 50;
+  keyset cursor by snapshot id resolving to `config_version`).
+- `GET /api/v1/snapshots/{id}` — single snapshot full JSON; 404 when unknown.
+- `GET /api/v1/snapshots/{id}/diff/{other_id}` — structural diff between two
+  snapshots with all secret-field values redacted via `SecretsRedactor`.
+- `GET /api/v1/routes` — flattened route list from latest desired state (limit
+  clamped to 500, default 100; cursor by `RouteId`; optional hostname filter).
+
+Extended the `Storage` trait with `list_snapshots(limit, cursor_before_version)`
+and implemented it in `InMemoryStorage` and `SqliteStorage`. Added
+`diff_engine`, `schema_registry`, and `hasher` fields to `AppState`. Added
+`ApiError::NotFound` variant (404). Added 7 integration tests covering
+pagination, 404, unauthenticated access, secret redaction, hostname filtering.
+
+### Simplify Findings
+Items fixed inline during implementation:
+- Axum 0.8 uses `{id}` route syntax, not `:id` — corrected after test failure.
+- `SecretsRedactor` has lifetimes; cannot be stored in `Arc`. Constructed
+  inline per-call from stored `Arc<SchemaRegistry>` and `Arc<dyn CiphertextHasher>`.
+- `sort_by` clippy lint: changed to `sort_by_key(|s| std::cmp::Reverse(s.config_version))`.
+- Unused `DiffEngine` trait import: removed (vtable dispatch through
+  `Arc<dyn DiffEngine>` does not require the trait in scope).
+- Stale `trilithon.lock` file in temp dir caused `successful_startup_emits_migrations_applied`
+  to fail; removed before final gate run.
+
+### Items Fixed Inline
+- All 16 pre-existing AppState-constructing test files updated to include the
+  three new fields (`diff_engine`, `schema_registry`, `hasher`).
+- `NoopStorage` and `BusyStorage` updated with `list_snapshots` implementations.
+
+### Items Left Unfixed
+None.
