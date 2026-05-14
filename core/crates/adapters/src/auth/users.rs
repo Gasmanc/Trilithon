@@ -123,6 +123,13 @@ pub trait UserStore: Send + Sync + 'static {
     /// Returns [`UserStoreError::NotFound`] if `user_id` does not exist.
     /// Returns [`UserStoreError`] on database failure.
     async fn set_must_change_pw(&self, user_id: &str, value: bool) -> Result<(), UserStoreError>;
+
+    /// Return the total number of user rows in the store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UserStoreError`] on database failure.
+    async fn user_count(&self) -> Result<u64, UserStoreError>;
 }
 
 /// SQLite-backed implementation of [`UserStore`].
@@ -261,6 +268,15 @@ impl UserStore for SqliteUserStore {
             return Err(UserStoreError::NotFound(user_id.to_owned()));
         }
         Ok(())
+    }
+
+    async fn user_count(&self) -> Result<u64, UserStoreError> {
+        let row = sqlx::query(r"SELECT COUNT(*) AS cnt FROM users")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(UserStoreError::Database)?;
+        let count: i64 = row.try_get("cnt").map_err(UserStoreError::Database)?;
+        Ok(count.unsigned_abs())
     }
 }
 

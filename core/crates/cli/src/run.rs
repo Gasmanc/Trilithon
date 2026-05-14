@@ -99,7 +99,6 @@ async fn check_sentinel(
 pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::Result<ExitCode> {
     let storage = open_and_migrate_storage(&config).await?;
     let pool = storage.pool().clone();
-
     let (controller, signal) = ShutdownController::new();
 
     // Collect all background task handles so they can be drained on shutdown.
@@ -122,70 +121,26 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         Box::new(signal.clone()) as Box<dyn trilithon_core::lifecycle::ShutdownObserver>,
     ));
 
-    // Build the Caddy HTTP client.
-    let caddy_client = Arc::new(
-        trilithon_adapters::caddy::hyper_client::HyperCaddyClient::from_config(
-            &config.caddy.admin_endpoint,
-            std::time::Duration::from_secs(config.caddy.connect_timeout_seconds.into()),
-            std::time::Duration::from_secs(config.caddy.apply_timeout_seconds.into()),
-        )
-        .map_err(|e| {
-            tracing::error!(error = %e, "caddy.client.build-failed");
-            anyhow::anyhow!("failed to build Caddy client: {e}")
-        })?,
-    );
+    // Build the Caddy client, probe Caddy, assert the ownership sentinel,
+    // and spawn the background reconnect loop.  Returns `Err(ExitCode)` on
+    // any fatal startup condition so the outer function can return early.
+    let (caddy_client, apply_mutex) =
+        match setup_caddy(&config, &pool, &mut tasks, signal.clone(), takeover).await {
+            Ok(pair) => pair,
+            Err(code) => return Ok(code),
+        };
 
-    let cap_cache = Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default());
-    let cap_store = trilithon_adapters::caddy::capability_store::CapabilityStore::new(pool.clone());
+    // Wrap storage in Arc<dyn Storage> for shared use (bootstrap + drift detector).
+    let storage_arc: Arc<dyn trilithon_core::storage::Storage> = Arc::new(storage);
 
-    // Run the initial capability probe.
-    if let Err(e) = trilithon_adapters::caddy::probe::run_initial_probe(
-        &*caddy_client,
-        cap_cache.clone(),
-        &cap_store,
-        CADDY_INSTANCE_ID,
-    )
-    .await
+    // Bootstrap admin account on first startup (Slice 9.4).
     {
-        tracing::error!(error = %e, "caddy.unreachable");
-        return Ok(caddy_startup_exit_code());
+        let user_store = trilithon_adapters::auth::users::SqliteUserStore::new(pool.clone());
+        run_bootstrap(&config, &user_store, Arc::clone(&storage_arc)).await?;
     }
-
-    // Read or create the persistent installation id.
-    // `read_or_create` does synchronous filesystem I/O; run it off the async
-    // executor to avoid blocking the Tokio thread pool.
-    let installation_id = tokio::task::spawn_blocking({
-        let data_dir = config.storage.data_dir.clone();
-        move || trilithon_adapters::caddy::installation_id::read_or_create(&data_dir)
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("installation-id task panicked: {e}"))?
-    .map_err(|e| {
-        tracing::error!(error = %e, "installation-id.read-failed");
-        anyhow::anyhow!("failed to read/create installation id: {e}")
-    })?;
-
-    // Ensure the ownership sentinel.
-    if let Err(exit_code) = check_sentinel(&*caddy_client, &installation_id, takeover).await {
-        return Ok(exit_code);
-    }
-
-    // Spawn the background reconnect loop.
-    tasks.spawn(trilithon_adapters::caddy::reconnect::reconnect_loop(
-        caddy_client.clone(),
-        cap_cache.clone(),
-        cap_store,
-        CADDY_INSTANCE_ID.into(),
-        signal.clone(),
-        trilithon_adapters::caddy::reconnect::HEALTH_INTERVAL,
-    ));
-
-    // Shared apply mutex — held during Caddy config writes to prevent the drift
-    // detector from ticking while an apply is in flight (Slice 8.5).
-    let apply_mutex: Arc<tokio::sync::Mutex<()>> = Arc::new(tokio::sync::Mutex::new(()));
 
     // Build and spawn the drift detector (Slice 8.5).
-    let detector = build_drift_detector(storage, caddy_client.clone(), apply_mutex.clone());
+    let detector = build_drift_detector(storage_arc, caddy_client.clone(), apply_mutex);
     if let Err(e) = detector.init_from_storage().await {
         tracing::warn!(error = %e, "drift-detector.init-from-storage-failed");
     }
@@ -203,10 +158,7 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
 
     // Emit daemon.started only after every startup gate has passed.
     tracing::info!("daemon.started");
-
-    // Mark the server ready and record the timestamp.
     trilithon_adapters::http_axum::mark_ready(&ready_since_ms);
-
     tasks.spawn(daemon_loop(signal));
 
     // Wait for a Unix signal.  On error (OS refuses handler install), trigger
@@ -220,22 +172,91 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         }
     };
     match kind {
-        SignalKind::Interrupt => {
-            tracing::info!(reason = "sigint", "daemon.shutting-down");
-        }
-        SignalKind::Terminate => {
-            tracing::info!(reason = "sigterm", "daemon.shutting-down");
-        }
+        SignalKind::Interrupt => tracing::info!(reason = "sigint", "daemon.shutting-down"),
+        SignalKind::Terminate => tracing::info!(reason = "sigterm", "daemon.shutting-down"),
     }
 
     controller.trigger();
     let panicked = drain_tasks(&mut tasks).await;
-
-    if panicked {
-        Ok(ExitCode::RuntimePanic)
+    Ok(if panicked {
+        ExitCode::RuntimePanic
     } else {
-        Ok(ExitCode::CleanShutdown)
+        ExitCode::CleanShutdown
+    })
+}
+
+/// Build the Caddy HTTP client, run the initial capability probe, assert the
+/// ownership sentinel, and spawn the background reconnect loop.
+///
+/// Returns `Ok((caddy_client, apply_mutex))` on success, or
+/// `Err(ExitCode)` when a fatal startup condition is encountered.
+async fn setup_caddy(
+    config: &DaemonConfig,
+    pool: &trilithon_adapters::sqlite_storage::SqlitePool,
+    tasks: &mut JoinSet<()>,
+    signal: crate::shutdown::ShutdownSignal,
+    takeover: bool,
+) -> Result<
+    (
+        Arc<trilithon_adapters::caddy::hyper_client::HyperCaddyClient>,
+        Arc<tokio::sync::Mutex<()>>,
+    ),
+    ExitCode,
+> {
+    let caddy_client = Arc::new(
+        trilithon_adapters::caddy::hyper_client::HyperCaddyClient::from_config(
+            &config.caddy.admin_endpoint,
+            std::time::Duration::from_secs(config.caddy.connect_timeout_seconds.into()),
+            std::time::Duration::from_secs(config.caddy.apply_timeout_seconds.into()),
+        )
+        .map_err(|e| {
+            tracing::error!(error = %e, "caddy.client.build-failed");
+            caddy_startup_exit_code()
+        })?,
+    );
+
+    let cap_cache = Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default());
+    let cap_store = trilithon_adapters::caddy::capability_store::CapabilityStore::new(pool.clone());
+
+    if let Err(e) = trilithon_adapters::caddy::probe::run_initial_probe(
+        &*caddy_client,
+        cap_cache.clone(),
+        &cap_store,
+        CADDY_INSTANCE_ID,
+    )
+    .await
+    {
+        tracing::error!(error = %e, "caddy.unreachable");
+        return Err(caddy_startup_exit_code());
     }
+
+    let installation_id = tokio::task::spawn_blocking({
+        let data_dir = config.storage.data_dir.clone();
+        move || trilithon_adapters::caddy::installation_id::read_or_create(&data_dir)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "installation-id.task-panicked");
+        caddy_startup_exit_code()
+    })?
+    .map_err(|e| {
+        tracing::error!(error = %e, "installation-id.read-failed");
+        caddy_startup_exit_code()
+    })?;
+
+    check_sentinel(&*caddy_client, &installation_id, takeover).await?;
+
+    tasks.spawn(trilithon_adapters::caddy::reconnect::reconnect_loop(
+        caddy_client.clone(),
+        cap_cache,
+        cap_store,
+        CADDY_INSTANCE_ID.into(),
+        signal,
+        trilithon_adapters::caddy::reconnect::HEALTH_INTERVAL,
+    ));
+
+    let apply_mutex: Arc<tokio::sync::Mutex<()>> = Arc::new(tokio::sync::Mutex::new(()));
+    Ok((caddy_client, apply_mutex))
 }
 
 /// Open the `SQLite` store, run migrations, verify `application_id`, and run the
@@ -266,11 +287,11 @@ async fn open_and_migrate_storage(config: &DaemonConfig) -> anyhow::Result<Sqlit
 /// `apply_mutex` must be the same `Arc` passed to `CaddyApplier` so that
 /// `SkippedApplyInFlight` can trigger correctly when a config-write is active.
 fn build_drift_detector(
-    storage: SqliteStorage,
+    storage: Arc<dyn trilithon_core::storage::Storage>,
     caddy_client: Arc<trilithon_adapters::caddy::hyper_client::HyperCaddyClient>,
     apply_mutex: Arc<tokio::sync::Mutex<()>>,
 ) -> Arc<trilithon_adapters::drift::DriftDetector> {
-    let drift_storage: Arc<dyn trilithon_core::storage::Storage> = Arc::new(storage);
+    let drift_storage = storage;
     let drift_clock: Arc<dyn trilithon_core::clock::Clock> =
         Arc::new(trilithon_core::clock::SystemClock);
     let drift_registry = Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets());
@@ -347,6 +368,37 @@ async fn bind_and_spawn_http(
     });
 
     Ok(ready_since_ms)
+}
+
+/// Create the bootstrap admin account on first startup if no users exist.
+///
+/// Delegates to [`trilithon_adapters::auth::bootstrap::bootstrap_if_empty`].
+async fn run_bootstrap(
+    config: &DaemonConfig,
+    user_store: &trilithon_adapters::auth::users::SqliteUserStore,
+    storage: Arc<dyn trilithon_core::storage::Storage>,
+) -> anyhow::Result<()> {
+    let clock: Arc<dyn trilithon_core::clock::Clock> = Arc::new(trilithon_core::clock::SystemClock);
+    let registry = Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets());
+    let hasher: Arc<dyn trilithon_core::audit::redactor::CiphertextHasher> =
+        Arc::new(trilithon_adapters::Sha256AuditHasher);
+    let audit = trilithon_adapters::AuditWriter::new_with_arcs(storage, clock, registry, hasher);
+
+    let rng = trilithon_adapters::rng::ThreadRng;
+
+    trilithon_adapters::auth::bootstrap::bootstrap_if_empty(
+        user_store,
+        &rng,
+        &config.storage.data_dir,
+        &audit,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "bootstrap.failed");
+        anyhow::anyhow!("bootstrap failed: {e}")
+    })?;
+
+    Ok(())
 }
 
 /// Drain all tasks in `set` within [`DRAIN_BUDGET`], then abort any survivors.

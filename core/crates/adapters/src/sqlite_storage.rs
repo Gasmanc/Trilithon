@@ -10,9 +10,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sqlx::Row;
-use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
-};
+pub use sqlx::sqlite::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use trilithon_core::storage::{
     error::{SqliteErrorKind, StorageError},

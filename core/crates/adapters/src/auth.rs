@@ -1,6 +1,7 @@
 //! Authentication adapters: password hashing, user persistence, sessions,
 //! cookie codec, and login rate limiting.
 
+pub mod bootstrap;
 pub mod passwords;
 pub mod rate_limit;
 pub mod sessions;

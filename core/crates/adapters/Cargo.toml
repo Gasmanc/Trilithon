@@ -289,5 +289,21 @@ path = "tests/rate_limit_admits_first_five_failures.rs"
 name = "rate_limit_backoff_caps_at_60s"
 path = "tests/rate_limit_backoff_caps_at_60s.rs"
 
+[[test]]
+name = "bootstrap_creates_file_mode_0600"
+path = "tests/bootstrap_creates_file_mode_0600.rs"
+
+[[test]]
+name = "bootstrap_skips_when_users_exist"
+path = "tests/bootstrap_skips_when_users_exist.rs"
+
+[[test]]
+name = "bootstrap_password_not_in_logs"
+path = "tests/bootstrap_password_not_in_logs.rs"
+
+[[test]]
+name = "bootstrap_must_change_pw_set"
+path = "tests/bootstrap_must_change_pw_set.rs"
+
 [lints]
 workspace = true
