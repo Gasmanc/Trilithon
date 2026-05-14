@@ -62,3 +62,18 @@ None — all findings were fixed inline.
 
 ### Items Left Unfixed
 None.
+
+## Slice 9.5
+**Status:** complete
+**Date:** 2026-05-14
+**Commit:** c2ba104
+**Summary:** Implemented `POST /api/v1/auth/login`, `/logout`, and `/change-password` in `core/crates/adapters/src/http_axum/auth_routes.rs`. Login enforces rate limiting, verifies Argon2id password hash, creates session cookie, emits `auth.login-succeeded` or `auth.login-failed` audit rows, and returns 409 with `must-change-password` code when the flag is set. Logout revokes the session and clears the cookie. Change-password verifies the old hash, validates minimum length and no-reuse, updates the hash, clears `must_change_pw`, and revokes all other sessions. A stub `AuthenticatedSession` extractor (via `X-Session-Id`/`X-User-Id` headers) is provided for slice 9.6 to replace. All 6 acceptance tests pass.
+
+### Simplify Findings
+No over-abstraction or dead code found. The implementation is tightly scoped with no unnecessary layers.
+
+### Items Fixed Inline
+- `rate_limit.rs` threshold bug: `record_failure` set `next_allowed_at_unix` only when `failure_count > 5` (after the 6th failure), meaning `check()` was called before the block was active and the 6th attempt passed through as 401 instead of 429. Fixed to `>= 5` (after the 5th failure) so the 6th attempt is correctly rejected with 429 and a `Retry-After` header.
+
+### Items Left Unfixed
+None.
