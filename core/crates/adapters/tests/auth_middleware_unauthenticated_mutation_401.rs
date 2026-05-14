@@ -39,6 +39,7 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
     let session_store = Arc::new(SqliteSessionStore::new(pool.clone(), Arc::new(ThreadRng)));
 
     let storage_arc: Arc<dyn Storage> = Arc::new(storage);
+    let storage_for_state = Arc::clone(&storage_arc);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
         storage_arc,
         Arc::new(SystemClock),
@@ -56,6 +57,8 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
         token_pool: None,
+        applier: Arc::new(trilithon_adapters::http_axum::stubs::NoopApplier),
+        storage: storage_for_state,
     });
 
     let cfg = AxumServerConfig {

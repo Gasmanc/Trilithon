@@ -1,4 +1,4 @@
-//! `POST /api/v1/auth/login` — wrong password returns 401 and writes `auth.login-failed`.
+//! `POST /api/v1/mutations` without auth → 401.
 
 #![allow(
     clippy::unwrap_used,
@@ -6,7 +6,7 @@
     clippy::panic,
     clippy::disallowed_methods
 )]
-// reason: integration test
+// reason: integration test — panics are the correct failure mode
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -16,26 +16,18 @@ use std::time::Duration;
 use tempfile::TempDir;
 use trilithon_adapters::{
     AuditWriter, Sha256AuditHasher,
-    auth::{LoginRateLimiter, SqliteSessionStore, SqliteUserStore, UserRole, UserStore as _},
-    http_axum::{AppState, AxumServer, AxumServerConfig},
+    auth::{LoginRateLimiter, SqliteSessionStore, SqliteUserStore},
+    http_axum::{AppState, AxumServer, AxumServerConfig, stubs::NoopApplier},
     migrate::apply_migrations,
     rng::ThreadRng,
     sqlite_storage::SqliteStorage,
 };
 use trilithon_core::{
-    clock::SystemClock,
-    config::types::ServerConfig,
-    http::HttpServer,
-    schema::SchemaRegistry,
-    storage::{Storage, types::AuditSelector},
+    clock::SystemClock, config::types::ServerConfig, http::HttpServer, schema::SchemaRegistry,
+    storage::trait_def::Storage,
 };
 
-async fn setup() -> (
-    TempDir,
-    SocketAddr,
-    tokio::sync::oneshot::Sender<()>,
-    Arc<dyn Storage>,
-) {
+async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
     let dir = TempDir::new().unwrap();
     let storage = SqliteStorage::open(dir.path())
         .await
@@ -46,14 +38,10 @@ async fn setup() -> (
     let user_store = Arc::new(SqliteUserStore::new(pool.clone()));
     let session_store = Arc::new(SqliteSessionStore::new(pool.clone(), Arc::new(ThreadRng)));
 
-    user_store
-        .create_user("bob", "correct-battery-horse", UserRole::Owner)
-        .await
-        .expect("create user");
-
     let storage_arc: Arc<dyn Storage> = Arc::new(storage);
+    let storage_for_state = Arc::clone(&storage_arc);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
-        Arc::clone(&storage_arc),
+        storage_arc,
         Arc::new(SystemClock),
         Arc::new(SchemaRegistry::with_tier1_secrets()),
         Arc::new(Sha256AuditHasher),
@@ -69,8 +57,8 @@ async fn setup() -> (
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
         token_pool: None,
-        applier: Arc::new(trilithon_adapters::http_axum::stubs::NoopApplier),
-        storage: Arc::clone(&storage_arc),
+        applier: Arc::new(NoopApplier),
+        storage: storage_for_state,
     });
 
     let cfg = AxumServerConfig {
@@ -93,37 +81,28 @@ async fn setup() -> (
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    (dir, addr, tx, storage_arc)
+    (dir, addr, tx)
 }
 
 #[tokio::test]
-async fn auth_login_wrong_password_401() {
-    let (_dir, addr, tx, storage) = setup().await;
+async fn mutation_unauthenticated_401() {
+    let (_dir, addr, tx) = setup().await;
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{addr}/api/v1/auth/login"))
-        .json(&serde_json::json!({"username": "bob", "password": "wrong-password-xyz"}))
+        .post(format!("http://{addr}/api/v1/mutations"))
+        .json(&serde_json::json!({
+            "expected_version": 0,
+            "body": {"kind": "CreateRoute", "expected_version": 0, "route": {}}
+        }))
         .send()
         .await
         .expect("request");
 
-    assert_eq!(resp.status(), 401, "wrong password must return 401");
-
-    // Verify that an auth.login-failed audit row was written.
-    let rows = storage
-        .tail_audit_log(
-            AuditSelector {
-                kind_glob: Some("auth.login-failed".to_owned()),
-                ..Default::default()
-            },
-            10,
-        )
-        .await
-        .expect("tail_audit_log");
-    assert!(
-        !rows.is_empty(),
-        "auth.login-failed audit row must be written on wrong password"
+    assert_eq!(
+        resp.status(),
+        401,
+        "unauthenticated request must return 401"
     );
 
     let _ = tx.send(());

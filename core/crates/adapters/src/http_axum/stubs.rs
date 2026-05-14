@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 
 use async_trait::async_trait;
+use trilithon_core::reconciler::{Applier, ApplyError, ApplyOutcome, ValidationReport};
 use trilithon_core::storage::{
     StorageError,
     trait_def::Storage,
@@ -102,6 +103,35 @@ impl Storage for NoopStorage {
         Err(StorageError::Integrity {
             detail: "noop".to_owned(),
         })
+    }
+}
+
+// ── NoopApplier ───────────────────────────────────────────────────────────────
+
+/// An [`Applier`] that always returns an error.
+///
+/// Suitable for tests that do not exercise the mutation/apply paths.
+pub struct NoopApplier;
+
+#[async_trait]
+impl Applier for NoopApplier {
+    async fn apply(
+        &self,
+        _snapshot: &trilithon_core::storage::types::Snapshot,
+        _expected_version: i64,
+    ) -> Result<ApplyOutcome, ApplyError> {
+        Err(ApplyError::Storage("noop".to_owned()))
+    }
+
+    async fn validate(
+        &self,
+        _snapshot: &trilithon_core::storage::types::Snapshot,
+    ) -> Result<ValidationReport, ApplyError> {
+        Ok(ValidationReport::default())
+    }
+
+    async fn rollback(&self, _target: &SnapshotId) -> Result<ApplyOutcome, ApplyError> {
+        Err(ApplyError::Storage("noop".to_owned()))
     }
 }
 
@@ -206,9 +236,9 @@ pub fn make_test_app_state(
 
     use crate::sha256_hasher::Sha256AuditHasher;
 
-    let storage = Arc::new(NoopStorage);
+    let storage: Arc<dyn trilithon_core::storage::trait_def::Storage> = Arc::new(NoopStorage);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
-        storage,
+        Arc::clone(&storage),
         Arc::new(SystemClock),
         Arc::new(SchemaRegistry::with_tier1_secrets()),
         Arc::new(Sha256AuditHasher),
@@ -224,5 +254,7 @@ pub fn make_test_app_state(
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 12 * 3600,
         token_pool: None,
+        applier: Arc::new(NoopApplier),
+        storage,
     })
 }

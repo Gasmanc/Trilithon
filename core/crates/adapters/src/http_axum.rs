@@ -6,6 +6,7 @@
 
 pub mod auth_middleware;
 pub mod auth_routes;
+pub mod mutations;
 pub mod stubs;
 
 use std::net::{IpAddr, SocketAddr};
@@ -25,6 +26,8 @@ use serde_json::{Map, Value};
 use tokio::net::TcpListener;
 use trilithon_core::config::types::ServerConfig;
 use trilithon_core::http::{HttpServer, HttpServerError, ShutdownSignal};
+use trilithon_core::reconciler::Applier;
+use trilithon_core::storage::trait_def::Storage;
 
 use crate::audit_writer::AuditWriter;
 use crate::auth::{LoginRateLimiter, SessionStore, UserStore};
@@ -53,6 +56,10 @@ pub struct AppState {
     pub session_ttl_seconds: u64,
     /// `SQLite` pool for token lookups. `None` means token auth is disabled.
     pub token_pool: Option<sqlx::SqlitePool>,
+    /// The applier used to push snapshots to Caddy.
+    pub applier: Arc<dyn Applier>,
+    /// The persistent store for snapshot and audit operations.
+    pub storage: Arc<dyn Storage>,
 }
 
 // ── Health handler ────────────────────────────────────────────────────────────
@@ -143,6 +150,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/v1/auth/change-password",
             post(auth_routes::change_password),
         )
+        .route("/api/v1/mutations", post(mutations::post_mutation))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             auth_middleware::auth_layer,
