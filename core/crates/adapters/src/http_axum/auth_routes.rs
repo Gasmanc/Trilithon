@@ -73,6 +73,8 @@ pub enum ApiError {
         /// Number of seconds the client should wait before retrying.
         retry_after_seconds: u32,
     },
+    /// 404 Not Found.
+    NotFound,
     /// 400 Bad Request with a message.
     BadRequest(String),
     /// 500 Internal Server Error.
@@ -117,6 +119,9 @@ impl axum::response::IntoResponse for ApiError {
                     Json(error_body("error", "rate limited")),
                 )
                     .into_response()
+            }
+            Self::NotFound => {
+                (StatusCode::NOT_FOUND, Json(error_body("code", "not-found"))).into_response()
             }
             Self::BadRequest(msg) => {
                 (StatusCode::BAD_REQUEST, Json(error_body("error", &msg))).into_response()

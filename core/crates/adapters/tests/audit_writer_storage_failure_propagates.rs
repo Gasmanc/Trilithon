@@ -58,6 +58,10 @@ impl Storage for BusyStorage {
         panic!("not needed in this test")
     }
 
+    async fn list_snapshots(&self, _: u32, _: Option<i64>) -> Result<Vec<Snapshot>, StorageError> {
+        panic!("not needed in this test")
+    }
+
     async fn record_audit_event(&self, _: AuditEventRow) -> Result<AuditRowId, StorageError> {
         Err(StorageError::SqliteBusy)
     }

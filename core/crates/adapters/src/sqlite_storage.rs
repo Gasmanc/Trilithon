@@ -659,6 +659,51 @@ impl Storage for SqliteStorage {
         row.map(|r| row_to_snapshot(&r)).transpose()
     }
 
+    async fn list_snapshots(
+        &self,
+        limit: u32,
+        cursor_before_version: Option<i64>,
+    ) -> Result<Vec<Snapshot>, StorageError> {
+        let limit_i64 = i64::from(limit);
+        let rows = if let Some(before) = cursor_before_version {
+            sqlx::query(
+                r"
+                SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                       intent, correlation_id, caddy_version, trilithon_version,
+                       created_at, created_at_ms, config_version, canonical_json_version,
+                       desired_state_json
+                FROM snapshots
+                WHERE config_version < ?
+                ORDER BY config_version DESC
+                LIMIT ?
+                ",
+            )
+            .bind(before)
+            .bind(limit_i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlx_err)?
+        } else {
+            sqlx::query(
+                r"
+                SELECT id, parent_id, caddy_instance_id, actor_kind, actor_id,
+                       intent, correlation_id, caddy_version, trilithon_version,
+                       created_at, created_at_ms, config_version, canonical_json_version,
+                       desired_state_json
+                FROM snapshots
+                ORDER BY config_version DESC
+                LIMIT ?
+                ",
+            )
+            .bind(limit_i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlx_err)?
+        };
+
+        rows.iter().map(row_to_snapshot).collect()
+    }
+
     async fn parent_chain(
         &self,
         leaf: &SnapshotId,

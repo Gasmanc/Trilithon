@@ -49,6 +49,13 @@ impl Storage for NoopStorage {
     async fn latest_desired_state(&self) -> Result<Option<Snapshot>, StorageError> {
         Ok(None)
     }
+    async fn list_snapshots(
+        &self,
+        _limit: u32,
+        _cursor_before_version: Option<i64>,
+    ) -> Result<Vec<Snapshot>, StorageError> {
+        Ok(vec![])
+    }
     async fn record_audit_event(&self, _e: AuditEventRow) -> Result<AuditRowId, StorageError> {
         Err(StorageError::Integrity {
             detail: "noop".to_owned(),
@@ -232,15 +239,16 @@ pub fn make_test_app_state(
     apply_in_flight: Arc<AtomicBool>,
     ready_since_unix_ms: Arc<AtomicU64>,
 ) -> Arc<AppState> {
-    use trilithon_core::{clock::SystemClock, schema::SchemaRegistry};
+    use trilithon_core::{clock::SystemClock, diff::DefaultDiffEngine, schema::SchemaRegistry};
 
     use crate::sha256_hasher::Sha256AuditHasher;
 
     let storage: Arc<dyn trilithon_core::storage::trait_def::Storage> = Arc::new(NoopStorage);
+    let schema_registry = Arc::new(SchemaRegistry::with_tier1_secrets());
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
         Arc::clone(&storage),
         Arc::new(SystemClock),
-        Arc::new(SchemaRegistry::with_tier1_secrets()),
+        Arc::clone(&schema_registry),
         Arc::new(Sha256AuditHasher),
     ));
 
@@ -256,5 +264,8 @@ pub fn make_test_app_state(
         token_pool: None,
         applier: Arc::new(NoopApplier),
         storage,
+        diff_engine: Arc::new(DefaultDiffEngine),
+        schema_registry,
+        hasher: Arc::new(Sha256AuditHasher),
     })
 }

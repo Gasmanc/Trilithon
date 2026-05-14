@@ -32,6 +32,18 @@ pub trait Storage: Send + Sync + 'static {
     /// row; integrity checks fail fast.
     async fn get_snapshot(&self, id: &SnapshotId) -> Result<Option<Snapshot>, StorageError>;
 
+    /// List snapshots in descending `config_version` order.
+    ///
+    /// `limit` controls how many rows to return.  `cursor_before_version` is
+    /// the exclusive upper bound on `config_version` — only rows with
+    /// `config_version < cursor_before_version` are returned, enabling
+    /// keyset-style pagination.  When `None` all versions are eligible.
+    async fn list_snapshots(
+        &self,
+        limit: u32,
+        cursor_before_version: Option<i64>,
+    ) -> Result<Vec<Snapshot>, StorageError>;
+
     /// Walk the parent chain of a snapshot, oldest first.
     ///
     /// Terminates at the genesis snapshot or at a missing parent pointer,

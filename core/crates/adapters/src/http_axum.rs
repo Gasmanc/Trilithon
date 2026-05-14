@@ -7,6 +7,8 @@
 pub mod auth_middleware;
 pub mod auth_routes;
 pub mod mutations;
+pub mod routes;
+pub mod snapshots;
 pub mod stubs;
 
 use std::net::{IpAddr, SocketAddr};
@@ -24,9 +26,12 @@ use axum::routing::{get, post};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use tokio::net::TcpListener;
+use trilithon_core::audit::redactor::CiphertextHasher;
 use trilithon_core::config::types::ServerConfig;
+use trilithon_core::diff::DiffEngine;
 use trilithon_core::http::{HttpServer, HttpServerError, ShutdownSignal};
 use trilithon_core::reconciler::Applier;
+use trilithon_core::schema::SchemaRegistry;
 use trilithon_core::storage::trait_def::Storage;
 
 use crate::audit_writer::AuditWriter;
@@ -60,6 +65,12 @@ pub struct AppState {
     pub applier: Arc<dyn Applier>,
     /// The persistent store for snapshot and audit operations.
     pub storage: Arc<dyn Storage>,
+    /// Structural diff engine for comparing two desired states.
+    pub diff_engine: Arc<dyn DiffEngine>,
+    /// Schema registry for secret-field redaction.
+    pub schema_registry: Arc<SchemaRegistry>,
+    /// Hasher for stable redaction markers.
+    pub hasher: Arc<dyn CiphertextHasher>,
 }
 
 // ── Health handler ────────────────────────────────────────────────────────────
@@ -151,6 +162,13 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(auth_routes::change_password),
         )
         .route("/api/v1/mutations", post(mutations::post_mutation))
+        .route("/api/v1/snapshots", get(snapshots::list_snapshots))
+        .route("/api/v1/snapshots/{id}", get(snapshots::get_snapshot))
+        .route(
+            "/api/v1/snapshots/{a}/diff/{b}",
+            get(snapshots::diff_snapshots),
+        )
+        .route("/api/v1/routes", get(routes::list_routes))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             auth_middleware::auth_layer,

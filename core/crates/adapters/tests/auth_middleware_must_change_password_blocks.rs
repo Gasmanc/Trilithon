@@ -82,6 +82,9 @@ async fn setup() -> (
         token_pool: None,
         applier: Arc::new(trilithon_adapters::http_axum::stubs::NoopApplier),
         storage: storage_for_state,
+        diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
+        schema_registry: Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets()),
+        hasher: Arc::new(trilithon_adapters::Sha256AuditHasher),
     });
 
     let cfg = AxumServerConfig {

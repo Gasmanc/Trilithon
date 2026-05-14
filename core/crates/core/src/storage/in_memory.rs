@@ -114,6 +114,23 @@ impl Storage for InMemoryStorage {
         Ok(snapshots.get(id).cloned())
     }
 
+    async fn list_snapshots(
+        &self,
+        limit: u32,
+        cursor_before_version: Option<i64>,
+    ) -> Result<Vec<Snapshot>, StorageError> {
+        let snapshots = self.snapshots.lock().await;
+        let mut rows: Vec<Snapshot> = snapshots
+            .values()
+            .filter(|s| cursor_before_version.is_none_or(|before| s.config_version < before))
+            .cloned()
+            .collect();
+        // Descending config_version order, then take the limit.
+        rows.sort_by_key(|s| std::cmp::Reverse(s.config_version));
+        rows.truncate(limit as usize);
+        Ok(rows)
+    }
+
     async fn parent_chain(
         &self,
         leaf: &SnapshotId,
