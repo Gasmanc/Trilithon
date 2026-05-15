@@ -133,6 +133,18 @@ impl IntoResponse for MutationHandlerError {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 /// Handler for `POST /api/v1/mutations`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/mutations",
+    responses(
+        (status = 200, description = "Mutation applied"),
+        (status = 400, description = "Missing expected_version"),
+        (status = 401, description = "Unauthenticated"),
+        (status = 409, description = "Version conflict"),
+        (status = 422, description = "Invalid mutation body"),
+        (status = 503, description = "Apply lock contested"),
+    )
+)]
 ///
 /// Accepts any [`Mutation`] variant wrapped in a [`MutationEnvelope`] with an
 /// `expected_version` field. Authenticates, deserialises, applies, and persists

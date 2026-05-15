@@ -71,6 +71,14 @@ pub struct SnapshotDiffResponse {
 ///
 /// Returns `ApiError::Internal` on storage failure.
 /// Returns `ApiError::NotFound` when the cursor snapshot id is unknown.
+#[utoipa::path(
+    get,
+    path = "/api/v1/snapshots",
+    responses(
+        (status = 200, description = "Paginated snapshot list"),
+        (status = 401, description = "Unauthenticated"),
+    )
+)]
 pub async fn list_snapshots(
     State(state): State<Arc<AppState>>,
     _session: AuthenticatedSession,
@@ -122,6 +130,16 @@ pub async fn list_snapshots(
 ///
 /// Returns `ApiError::NotFound` when the id is unknown.
 /// Returns `ApiError::Internal` on storage failure.
+#[utoipa::path(
+    get,
+    path = "/api/v1/snapshots/{id}",
+    params(("id" = String, Path, description = "Snapshot id")),
+    responses(
+        (status = 200, description = "Snapshot"),
+        (status = 401, description = "Unauthenticated"),
+        (status = 404, description = "Not found"),
+    )
+)]
 pub async fn get_snapshot(
     State(state): State<Arc<AppState>>,
     _session: AuthenticatedSession,
@@ -147,6 +165,19 @@ pub async fn get_snapshot(
 ///
 /// Returns `ApiError::NotFound` when either snapshot is unknown.
 /// Returns `ApiError::Internal` on storage, diff, or redaction failure.
+#[utoipa::path(
+    get,
+    path = "/api/v1/snapshots/{a}/diff/{b}",
+    params(
+        ("a" = String, Path, description = "Before snapshot id"),
+        ("b" = String, Path, description = "After snapshot id"),
+    ),
+    responses(
+        (status = 200, description = "Redacted diff"),
+        (status = 401, description = "Unauthenticated"),
+        (status = 404, description = "One or both snapshots not found"),
+    )
+)]
 pub async fn diff_snapshots(
     State(state): State<Arc<AppState>>,
     _session: AuthenticatedSession,

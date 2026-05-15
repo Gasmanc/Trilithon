@@ -61,6 +61,14 @@ pub struct RouteListQuery {
 /// # Errors
 ///
 /// Returns `ApiError::Internal` on storage or deserialisation failure.
+#[utoipa::path(
+    get,
+    path = "/api/v1/routes",
+    responses(
+        (status = 200, description = "Route list"),
+        (status = 401, description = "Unauthenticated"),
+    )
+)]
 pub async fn list_routes(
     State(state): State<Arc<AppState>>,
     _session: AuthenticatedSession,

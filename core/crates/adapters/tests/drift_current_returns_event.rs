@@ -1,4 +1,4 @@
-//! `GET /api/v1/audit` — default page size is 100 even with 250 rows in the log.
+//! `GET /api/v1/drift/current` — with an unresolved drift event → 200 + event body.
 
 #![allow(
     clippy::unwrap_used,
@@ -16,11 +16,8 @@ use std::time::Duration;
 use tempfile::TempDir;
 use trilithon_adapters::{
     AuditWriter, Sha256AuditHasher,
-    auth::{
-        LoginRateLimiter, SessionStore as _, SqliteSessionStore, SqliteUserStore, UserRole,
-        UserStore as _,
-    },
-    http_axum::{AppState, AxumServer, AxumServerConfig},
+    auth::{LoginRateLimiter, SqliteSessionStore, SqliteUserStore, UserRole, UserStore as _},
+    http_axum::{AppState, AxumServer, AxumServerConfig, stubs},
     migrate::apply_migrations,
     rng::ThreadRng,
     sqlite_storage::SqliteStorage,
@@ -31,19 +28,16 @@ use trilithon_core::{
     http::HttpServer,
     schema::SchemaRegistry,
     storage::{
-        helpers::audit_prev_hash_seed,
         trait_def::Storage,
-        types::{ActorKind, AuditEventRow, AuditOutcome, AuditRowId},
+        types::{DriftEventRow, DriftRowId, SnapshotId},
     },
 };
 
-#[allow(clippy::too_many_lines)]
-// reason: integration test setup is inherently verbose; no logic duplication
 async fn setup() -> (
     TempDir,
+    Arc<dyn Storage>,
     SocketAddr,
     tokio::sync::oneshot::Sender<()>,
-    String,
 ) {
     let dir = TempDir::new().unwrap();
     let storage = SqliteStorage::open(dir.path())
@@ -56,12 +50,11 @@ async fn setup() -> (
     let session_store = Arc::new(SqliteSessionStore::new(pool.clone(), Arc::new(ThreadRng)));
 
     user_store
-        .create_user("alice", "correct-horse-battery-staple", UserRole::Owner)
+        .create_user("alice", "correct-horse-battery", UserRole::Owner)
         .await
         .expect("create user");
 
     let storage_arc: Arc<dyn Storage> = Arc::new(storage);
-    let storage_for_state = Arc::clone(&storage_arc);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
         Arc::clone(&storage_arc),
         Arc::new(SystemClock),
@@ -69,61 +62,22 @@ async fn setup() -> (
         Arc::new(Sha256AuditHasher),
     ));
 
-    // Insert 250 audit rows directly.
-    for i in 0u32..250 {
-        let row = AuditEventRow {
-            id: AuditRowId(ulid::Ulid::new().to_string()),
-            prev_hash: audit_prev_hash_seed().to_owned(),
-            caddy_instance_id: "local".to_owned(),
-            correlation_id: ulid::Ulid::new().to_string(),
-            occurred_at: 1_700_000_000 + i64::from(i),
-            occurred_at_ms: (1_700_000_000 + i64::from(i)) * 1000,
-            actor_kind: ActorKind::System,
-            actor_id: "test".to_owned(),
-            kind: "config.applied".to_owned(),
-            target_kind: None,
-            target_id: None,
-            snapshot_id: None,
-            redacted_diff_json: None,
-            redaction_sites: 0,
-            outcome: AuditOutcome::Ok,
-            error_kind: None,
-            notes: None,
-        };
-        storage_arc
-            .record_audit_event(row)
-            .await
-            .expect("record_audit_event");
-    }
-
-    let (user, _) = user_store
-        .find_by_username("alice")
-        .await
-        .expect("find user")
-        .expect("user exists");
-    let session = session_store
-        .create(&user.id, 3600, None, None)
-        .await
-        .expect("create session");
-
     let state = Arc::new(AppState {
         apply_in_flight: Arc::new(AtomicBool::new(false)),
         ready_since_unix_ms: Arc::new(AtomicU64::new(1)),
         rate_limiter: Arc::new(LoginRateLimiter::new()),
-        session_store: session_store as Arc<dyn trilithon_adapters::auth::SessionStore>,
-        user_store: user_store as Arc<dyn trilithon_adapters::auth::UserStore>,
+        session_store,
+        user_store,
         audit_writer,
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
         token_pool: None,
-        applier: Arc::new(trilithon_adapters::http_axum::stubs::NoopApplier),
-        storage: Arc::clone(&storage_for_state),
+        applier: Arc::new(stubs::NoopApplier),
+        storage: Arc::clone(&storage_arc),
         diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
         schema_registry: Arc::new(SchemaRegistry::with_tier1_secrets()),
-        hasher: Arc::new(trilithon_adapters::Sha256AuditHasher),
-        drift_detector: trilithon_adapters::http_axum::stubs::make_stub_drift_detector(Arc::clone(
-            &storage_for_state,
-        )),
+        hasher: Arc::new(Sha256AuditHasher),
+        drift_detector: stubs::make_stub_drift_detector(Arc::clone(&storage_arc)),
         capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
     });
 
@@ -147,31 +101,77 @@ async fn setup() -> (
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    (dir, addr, tx, session.id)
+    (dir, storage_arc, addr, tx)
+}
+
+async fn login(addr: SocketAddr) -> String {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/api/v1/auth/login"))
+        .json(&serde_json::json!({"username": "alice", "password": "correct-horse-battery"}))
+        .send()
+        .await
+        .expect("login request");
+    assert_eq!(resp.status(), 200, "login should succeed");
+    resp.headers()
+        .get("set-cookie")
+        .expect("set-cookie header")
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .trim()
+        .to_owned()
 }
 
 #[tokio::test]
-async fn audit_list_default_limit() {
-    let (_dir, addr, tx, session_id) = setup().await;
+async fn drift_current_returns_event() {
+    let (_dir, storage, addr, tx) = setup().await;
 
+    // Insert a drift event row directly so we can assert it comes back.
+    let row_id = DriftRowId("01JDRIFTROW000000000000001".to_owned());
+    let correlation_id = "01JCORRELATION0000000000AA".to_owned();
+    let drift_row = DriftEventRow {
+        id: row_id.clone(),
+        correlation_id: correlation_id.clone(),
+        detected_at: 1_700_000_000,
+        snapshot_id: SnapshotId("deadbeef".to_owned()),
+        diff_json: r#"{"entries":[]}"#.to_owned(),
+        running_state_hash: "abc123".to_owned(),
+        resolution: None,
+        resolved_at: None,
+    };
+    storage
+        .record_drift_event(drift_row)
+        .await
+        .expect("record drift event");
+
+    let cookie = login(addr).await;
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/api/v1/audit"))
-        .header("Cookie", format!("trilithon_session={session_id}"))
+        .get(format!("http://{addr}/api/v1/drift/current"))
+        .header("cookie", &cookie)
         .send()
         .await
-        .expect("request");
+        .expect("GET /api/v1/drift/current");
 
-    assert_eq!(resp.status(), 200, "expected 200 OK");
+    assert_eq!(
+        resp.status(),
+        200,
+        "expected 200 OK when drift event exists"
+    );
 
     let body: serde_json::Value = resp.json().await.expect("JSON body");
-    let rows = body.as_array().expect("response must be a JSON array");
     assert_eq!(
-        rows.len(),
-        100,
-        "default page size must be 100 but got {}",
-        rows.len()
+        body["event_id"], row_id.0,
+        "event_id should match the inserted row"
     );
+    assert_eq!(
+        body["correlation_id"], correlation_id,
+        "correlation_id should match"
+    );
+    assert_eq!(body["running_state_hash"], "abc123");
 
     let _ = tx.send(());
 }

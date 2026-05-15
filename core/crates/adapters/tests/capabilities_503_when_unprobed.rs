@@ -1,4 +1,4 @@
-//! Snapshot endpoints require authentication — unauthenticated requests return 401.
+//! `GET /api/v1/capabilities` — empty cache → 503.
 
 #![allow(
     clippy::unwrap_used,
@@ -17,7 +17,8 @@ use tempfile::TempDir;
 use trilithon_adapters::{
     AuditWriter, Sha256AuditHasher,
     auth::{LoginRateLimiter, SqliteSessionStore, SqliteUserStore, UserRole, UserStore as _},
-    http_axum::{AppState, AxumServer, AxumServerConfig},
+    caddy::cache::CapabilityCache,
+    http_axum::{AppState, AxumServer, AxumServerConfig, stubs},
     migrate::apply_migrations,
     rng::ThreadRng,
     sqlite_storage::SqliteStorage,
@@ -44,9 +45,8 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         .expect("create user");
 
     let storage_arc: Arc<dyn Storage> = Arc::new(storage);
-    let storage_for_state = Arc::clone(&storage_arc);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
-        storage_arc,
+        Arc::clone(&storage_arc),
         Arc::new(SystemClock),
         Arc::new(SchemaRegistry::with_tier1_secrets()),
         Arc::new(Sha256AuditHasher),
@@ -62,15 +62,13 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         session_cookie_name: "trilithon_session".to_owned(),
         session_ttl_seconds: 3600,
         token_pool: None,
-        applier: Arc::new(trilithon_adapters::http_axum::stubs::NoopApplier),
-        storage: Arc::clone(&storage_for_state),
+        applier: Arc::new(stubs::NoopApplier),
+        storage: Arc::clone(&storage_arc),
         diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
         schema_registry: Arc::new(SchemaRegistry::with_tier1_secrets()),
         hasher: Arc::new(Sha256AuditHasher),
-        drift_detector: trilithon_adapters::http_axum::stubs::make_stub_drift_detector(Arc::clone(
-            &storage_for_state,
-        )),
-        capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
+        drift_detector: stubs::make_stub_drift_detector(Arc::clone(&storage_arc)),
+        capability_cache: Arc::new(CapabilityCache::default()), // intentionally empty
     });
 
     let cfg = AxumServerConfig {
@@ -96,26 +94,45 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
     (dir, addr, tx)
 }
 
-#[tokio::test]
-async fn snapshots_list_unauthenticated_401() {
-    let (_dir, addr, tx) = setup().await;
-
-    let resp = reqwest::get(format!("http://{addr}/api/v1/snapshots"))
+async fn login(addr: SocketAddr) -> String {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/api/v1/auth/login"))
+        .json(&serde_json::json!({"username": "alice", "password": "correct-horse-battery"}))
+        .send()
         .await
-        .expect("request");
-
-    assert_eq!(resp.status(), 401);
-    let _ = tx.send(());
+        .expect("login request");
+    assert_eq!(resp.status(), 200);
+    let cookie = resp
+        .headers()
+        .get("set-cookie")
+        .expect("set-cookie header")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    cookie.split(';').next().unwrap().trim().to_owned()
 }
 
 #[tokio::test]
-async fn snapshots_get_unauthenticated_401() {
+async fn capabilities_503_when_unprobed() {
     let (_dir, addr, tx) = setup().await;
+    let cookie = login(addr).await;
 
-    let resp = reqwest::get(format!("http://{addr}/api/v1/snapshots/{}", "a".repeat(64)))
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("http://{addr}/api/v1/capabilities"))
+        .header("cookie", &cookie)
+        .send()
         .await
-        .expect("request");
+        .expect("GET /api/v1/capabilities");
 
-    assert_eq!(resp.status(), 401);
+    assert_eq!(
+        resp.status(),
+        503,
+        "expected 503 when capability cache is empty"
+    );
+    let body: serde_json::Value = resp.json().await.expect("parse body");
+    assert_eq!(body["code"], "capability-probe-pending");
+
     let _ = tx.send(());
 }

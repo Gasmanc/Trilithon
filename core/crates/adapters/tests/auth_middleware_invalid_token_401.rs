@@ -59,10 +59,14 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         // Provide the pool so the middleware actually queries it and finds nothing.
         token_pool: Some(pool),
         applier: Arc::new(trilithon_adapters::http_axum::stubs::NoopApplier),
-        storage: storage_for_state,
+        storage: Arc::clone(&storage_for_state),
         diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
         schema_registry: Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets()),
         hasher: Arc::new(trilithon_adapters::Sha256AuditHasher),
+        drift_detector: trilithon_adapters::http_axum::stubs::make_stub_drift_detector(Arc::clone(
+            &storage_for_state,
+        )),
+        capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
     });
 
     let cfg = AxumServerConfig {

@@ -74,6 +74,10 @@ async fn setup() -> (
         diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
         schema_registry: Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets()),
         hasher: Arc::new(trilithon_adapters::Sha256AuditHasher),
+        drift_detector: trilithon_adapters::http_axum::stubs::make_stub_drift_detector(Arc::clone(
+            &storage_arc,
+        )),
+        capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
     });
 
     let cfg = AxumServerConfig {

@@ -81,6 +81,15 @@ pub struct AuditRowResponse {
 ///
 /// Returns `ApiError::BadRequest` for an unknown event kind, or
 /// `ApiError::Internal` on storage failure.
+#[utoipa::path(
+    get,
+    path = "/api/v1/audit",
+    responses(
+        (status = 200, description = "Audit log entries"),
+        (status = 400, description = "Unknown event kind"),
+        (status = 401, description = "Unauthenticated"),
+    )
+)]
 pub async fn list_audit(
     State(state): State<Arc<AppState>>,
     _session: AuthenticatedSession,

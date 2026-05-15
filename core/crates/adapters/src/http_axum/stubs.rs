@@ -142,11 +142,83 @@ impl Applier for NoopApplier {
     }
 }
 
+use async_trait::async_trait as _async_trait;
+use trilithon_core::caddy::{
+    client::CaddyClient,
+    error::CaddyError,
+    types::{
+        CaddyConfig, CaddyJsonPointer, HealthState, JsonPatch, LoadedModules, TlsCertificate,
+        UpstreamHealth,
+    },
+};
+
 use crate::audit_writer::AuditWriter;
 use crate::auth::rate_limit::LoginRateLimiter;
 use crate::auth::sessions::{Session, SessionError, SessionStore};
 use crate::auth::users::{User, UserRole, UserStore, UserStoreError};
+use crate::caddy::cache::CapabilityCache;
+use crate::drift::{DriftDetector, DriftDetectorConfig};
 use crate::http_axum::AppState;
+
+// ── NoopCaddyClient ───────────────────────────────────────────────────────────
+
+/// A [`CaddyClient`] that always returns errors.
+///
+/// Used to build a stub [`DriftDetector`] for tests that don't exercise
+/// drift-detection tick logic.
+pub struct NoopCaddyClient;
+
+#[_async_trait]
+impl CaddyClient for NoopCaddyClient {
+    async fn load_config(&self, _body: CaddyConfig) -> Result<(), CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn patch_config(
+        &self,
+        _path: CaddyJsonPointer,
+        _patch: JsonPatch,
+    ) -> Result<(), CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn put_config(
+        &self,
+        _path: CaddyJsonPointer,
+        _value: serde_json::Value,
+    ) -> Result<(), CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn get_running_config(&self) -> Result<CaddyConfig, CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn get_loaded_modules(&self) -> Result<LoadedModules, CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn get_upstream_health(&self) -> Result<Vec<UpstreamHealth>, CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn get_certificates(&self) -> Result<Vec<TlsCertificate>, CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+    async fn health_check(&self) -> Result<HealthState, CaddyError> {
+        Err(CaddyError::Unreachable {
+            detail: "noop".to_owned(),
+        })
+    }
+}
 
 // ── NoopSessionStore ──────────────────────────────────────────────────────────
 
@@ -231,6 +303,41 @@ impl UserStore for NoopUserStore {
 
 // ── Convenience constructor ───────────────────────────────────────────────────
 
+/// Build a stub [`DriftDetector`] backed by [`NoopStorage`] and [`NoopCaddyClient`].
+///
+/// Suitable for any test that constructs an [`AppState`] but does not exercise
+/// drift-detection ticks.
+pub fn make_stub_drift_detector(
+    storage: Arc<dyn trilithon_core::storage::trait_def::Storage>,
+) -> Arc<DriftDetector> {
+    use trilithon_core::{
+        clock::SystemClock, reconciler::DefaultCaddyJsonRenderer, schema::SchemaRegistry,
+    };
+
+    use crate::sha256_hasher::Sha256AuditHasher;
+
+    let clock: Arc<dyn trilithon_core::clock::Clock> = Arc::new(SystemClock);
+    let hasher: Arc<dyn trilithon_core::audit::redactor::CiphertextHasher> =
+        Arc::new(Sha256AuditHasher);
+    let schema_registry = Arc::new(SchemaRegistry::with_tier1_secrets());
+    let audit_writer = Arc::new(AuditWriter::new_with_arcs(
+        Arc::clone(&storage),
+        Arc::clone(&clock),
+        schema_registry,
+        hasher,
+    ));
+    Arc::new(DriftDetector {
+        config: DriftDetectorConfig::default(),
+        client: Arc::new(NoopCaddyClient),
+        renderer: Arc::new(DefaultCaddyJsonRenderer),
+        storage,
+        audit: audit_writer,
+        clock,
+        apply_mutex: Arc::new(tokio::sync::Mutex::new(())),
+        last_running_hash: tokio::sync::Mutex::new(None),
+    })
+}
+
 /// Build an [`AppState`] suitable for tests that only exercise non-auth routes.
 ///
 /// The session store, user store, and audit writer are noop/in-memory stubs.
@@ -239,18 +346,35 @@ pub fn make_test_app_state(
     apply_in_flight: Arc<AtomicBool>,
     ready_since_unix_ms: Arc<AtomicU64>,
 ) -> Arc<AppState> {
-    use trilithon_core::{clock::SystemClock, diff::DefaultDiffEngine, schema::SchemaRegistry};
+    use trilithon_core::{
+        clock::SystemClock, diff::DefaultDiffEngine, reconciler::DefaultCaddyJsonRenderer,
+        schema::SchemaRegistry,
+    };
 
     use crate::sha256_hasher::Sha256AuditHasher;
 
     let storage: Arc<dyn trilithon_core::storage::trait_def::Storage> = Arc::new(NoopStorage);
     let schema_registry = Arc::new(SchemaRegistry::with_tier1_secrets());
+    let clock: Arc<dyn trilithon_core::clock::Clock> = Arc::new(SystemClock);
+    let hasher: Arc<dyn trilithon_core::audit::redactor::CiphertextHasher> =
+        Arc::new(Sha256AuditHasher);
     let audit_writer = Arc::new(AuditWriter::new_with_arcs(
         Arc::clone(&storage),
-        Arc::new(SystemClock),
+        Arc::clone(&clock),
         Arc::clone(&schema_registry),
-        Arc::new(Sha256AuditHasher),
+        Arc::clone(&hasher),
     ));
+    let apply_mutex = Arc::new(tokio::sync::Mutex::new(()));
+    let drift_detector = Arc::new(DriftDetector {
+        config: DriftDetectorConfig::default(),
+        client: Arc::new(NoopCaddyClient),
+        renderer: Arc::new(DefaultCaddyJsonRenderer),
+        storage: Arc::clone(&storage),
+        audit: Arc::clone(&audit_writer),
+        clock: Arc::clone(&clock),
+        apply_mutex,
+        last_running_hash: tokio::sync::Mutex::new(None),
+    });
 
     Arc::new(AppState {
         apply_in_flight,
@@ -266,6 +390,8 @@ pub fn make_test_app_state(
         storage,
         diff_engine: Arc::new(DefaultDiffEngine),
         schema_registry,
-        hasher: Arc::new(Sha256AuditHasher),
+        hasher,
+        drift_detector,
+        capability_cache: Arc::new(CapabilityCache::default()),
     })
 }

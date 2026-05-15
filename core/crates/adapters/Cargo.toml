@@ -39,6 +39,7 @@ argon2 = "0.5"
 password-hash = { version = "0.5", features = ["rand_core"] }
 base64 = "0.22"
 dashmap = "6"
+utoipa = { version = "5" }
 
 [dev-dependencies]
 tempfile = "3"
@@ -352,6 +353,28 @@ path = "tests/auth_middleware_invalid_token_401.rs"
 [[test]]
 name = "auth_middleware_must_change_password_blocks"
 path = "tests/auth_middleware_must_change_password_blocks.rs"
+
+# ── Slice 9.11 — Capabilities, OpenAPI, error envelope ───────────────────────
+
+[[test]]
+name = "capabilities_returns_cached"
+path = "tests/capabilities_returns_cached.rs"
+
+[[test]]
+name = "capabilities_503_when_unprobed"
+path = "tests/capabilities_503_when_unprobed.rs"
+
+[[test]]
+name = "openapi_validates_against_3_1_schema"
+path = "tests/openapi_validates_against_3_1_schema.rs"
+
+[[test]]
+name = "openapi_documents_every_handler"
+path = "tests/openapi_documents_every_handler.rs"
+
+[[test]]
+name = "error_envelope_round_trip"
+path = "tests/error_envelope_round_trip.rs"
 
 [lints]
 workspace = true

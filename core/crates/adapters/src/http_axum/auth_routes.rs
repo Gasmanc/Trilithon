@@ -171,6 +171,16 @@ fn clear_cookie_header(state: &AppState) -> HeaderValue {
 /// `POST /api/v1/auth/login`
 ///
 /// Returns `200 OK` with a session cookie and [`LoginResponse`] on success.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/login",
+    responses(
+        (status = 200, description = "Login successful"),
+        (status = 401, description = "Invalid credentials"),
+        (status = 409, description = "Must change password"),
+        (status = 429, description = "Rate limited"),
+    )
+)]
 /// Returns `409 Conflict` with `{"code":"must-change-password"}` when the
 /// user's `must_change_pw` flag is set (session cookie is still issued so the
 /// client can call change-password).
@@ -298,6 +308,14 @@ pub async fn login(
 /// # Errors
 ///
 /// Returns [`ApiError`] if session revocation or the audit write fails.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/logout",
+    responses(
+        (status = 204, description = "Logged out"),
+        (status = 401, description = "Unauthenticated"),
+    )
+)]
 pub async fn logout(
     State(state): State<Arc<AppState>>,
     session: AuthenticatedSession,
@@ -338,6 +356,15 @@ pub async fn logout(
 ///
 /// Returns [`ApiError`] on wrong old password, validation failure, storage
 /// errors, or audit-write failure.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/change-password",
+    responses(
+        (status = 204, description = "Password changed"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthenticated or wrong old password"),
+    )
+)]
 pub async fn change_password(
     State(state): State<Arc<AppState>>,
     session: AuthenticatedSession,
