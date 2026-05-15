@@ -154,3 +154,39 @@ None.
 
 ### Items Left Unfixed
 None.
+
+---
+
+## Slice 9.10
+**Status:** complete
+**Date:** 2026-05-15
+**Commit:** f09eab0
+
+### Summary
+Implemented four drift HTTP endpoints in `drift_routes.rs`: `GET /api/v1/drift/current` returns 204 when clean or 200 with `DriftCurrentResponse` when an unresolved drift event exists; `POST adopt/reapply/defer` each call `DriftDetector::mark_resolved` which writes exactly one `config.drift-resolved` audit row. AppState already had the `drift_detector` field and routes were already wired from prior slices. Five integration tests cover 204-when-clean, 200-with-event, adopt/reapply/defer resolution row assertions. Gate passed cleanly.
+
+### Simplify Findings
+The `build_snapshot_from_desired` helper (line 341 of `drift_routes.rs`) is dead code kept for potential future use, annotated `#[allow(dead_code)]` with an inline reason. Could be removed; the annotation is correctly justified.
+
+### Items Fixed Inline
+None — the implementation compiled and passed tests on first attempt.
+
+### Items Left Unfixed
+None.
+
+## Slice 9.11
+**Status:** complete
+**Date:** 2026-05-15
+**Commit:** f1764cc
+**Summary:** Added `GET /api/v1/capabilities` that reads `Arc<CapabilityCache>` from `AppState` and returns 200 with `caddy_version`, `probed_at`, `modules`, `has_rate_limit`, `has_waf`, or 503 if no probe has completed yet. Replaced the OpenAPI placeholder with a full `utoipa`-generated OpenAPI 3.1 document listing all 15 handlers across slices 9.1–9.11. Added `capability_cache: Arc<CapabilityCache>` to `AppState` and updated all 37 existing test files and the `make_test_app_state` stub. Added `docs/api/README.md` describing the OpenAPI endpoint, auth methods, loopback default, bootstrap flow, and error envelope.
+
+### Simplify Findings
+No over-abstraction identified. The `CapabilityCache` was already an optimal in-memory `RwLock` pattern.
+
+### Items Fixed Inline
+- Removed `axum_extras` from `utoipa` features — it caused `ToSchema` bound errors on extractor types that do not implement `utoipa::ToSchema`.
+- Added `#[allow(clippy::disallowed_methods)]` around `serde_json::json!` in the capabilities handler (macro contains `unwrap` internally).
+- Fixed rustfmt formatting and `doc_markdown` clippy lint in new test files.
+
+### Items Left Unfixed
+None.
