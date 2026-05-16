@@ -145,12 +145,24 @@ pub async fn get_snapshot(
     _session: AuthenticatedSession,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let snap = state
+    let mut snap = state
         .storage
         .get_snapshot(&SnapshotId(id))
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or(ApiError::NotFound)?;
+
+    // Redact secret fields from desired_state_json before returning (F013).
+    // The diff and audit endpoints already redact; get_snapshot was an oversight.
+    let desired: DesiredState = serde_json::from_str(&snap.desired_state_json)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let redactor = SecretsRedactor::new(&state.schema_registry, state.hasher.as_ref());
+    let redacted_value =
+        serde_json::to_value(&desired).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let redaction_result = redactor
+        .redact_diff(&redacted_value)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    snap.desired_state_json = redaction_result.value.to_string();
 
     let value = serde_json::to_value(&snap).map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(Json(value))

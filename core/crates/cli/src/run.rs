@@ -124,9 +124,9 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     // Build the Caddy client, probe Caddy, assert the ownership sentinel,
     // and spawn the background reconnect loop.  Returns `Err(ExitCode)` on
     // any fatal startup condition so the outer function can return early.
-    let (caddy_client, apply_mutex) =
+    let (caddy_client, apply_mutex, cap_cache) =
         match setup_caddy(&config, &pool, &mut tasks, signal.clone(), takeover).await {
-            Ok(pair) => pair,
+            Ok(triple) => triple,
             Err(code) => return Ok(code),
         };
 
@@ -140,7 +140,11 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
     }
 
     // Build and spawn the drift detector (Slice 8.5).
-    let detector = build_drift_detector(storage_arc, caddy_client.clone(), apply_mutex);
+    let detector = build_drift_detector(
+        Arc::clone(&storage_arc),
+        caddy_client.clone(),
+        Arc::clone(&apply_mutex),
+    );
     if let Err(e) = detector.init_from_storage().await {
         tracing::warn!(error = %e, "drift-detector.init-from-storage-failed");
     }
@@ -150,8 +154,47 @@ pub async fn run_with_shutdown(config: DaemonConfig, takeover: bool) -> anyhow::
         detector_task.run(shutdown_rx).await;
     });
 
+    // Build the production CaddyApplier wired to real storage and the Caddy client.
+    let applier = {
+        let clock: Arc<dyn trilithon_core::clock::Clock> =
+            Arc::new(trilithon_core::clock::SystemClock);
+        let registry = Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets());
+        let hasher: Arc<dyn trilithon_core::audit::redactor::CiphertextHasher> =
+            Arc::new(trilithon_adapters::Sha256AuditHasher);
+        let audit = Arc::new(trilithon_adapters::AuditWriter::new_with_arcs(
+            Arc::clone(&storage_arc),
+            Arc::clone(&clock),
+            Arc::clone(&registry),
+            Arc::clone(&hasher),
+        ));
+        Arc::new(trilithon_adapters::CaddyApplier {
+            client: Arc::clone(&caddy_client) as Arc<dyn trilithon_core::caddy::CaddyClient>,
+            renderer: Arc::new(trilithon_core::reconciler::DefaultCaddyJsonRenderer),
+            diff_engine: Arc::new(trilithon_core::diff::NoOpDiffEngine),
+            capabilities: Arc::clone(&cap_cache),
+            audit,
+            storage: Arc::clone(&storage_arc),
+            instance_id: CADDY_INSTANCE_ID.to_owned(),
+            clock,
+            instance_mutex: Arc::clone(&apply_mutex),
+            lock_pool: pool.clone(),
+            tls_observer: None,
+        })
+    };
+
     // Build and spawn the HTTP server (Slice 9.1).
-    let ready_since_ms = match bind_and_spawn_http(&config, &mut tasks, signal.clone()).await {
+    let ready_since_ms = match bind_and_spawn_http(
+        &config,
+        &mut tasks,
+        signal.clone(),
+        Arc::clone(&storage_arc),
+        Arc::clone(&detector),
+        Arc::clone(&cap_cache),
+        applier,
+        pool.clone(),
+    )
+    .await
+    {
         Ok(r) => r,
         Err(code) => return Ok(code),
     };
@@ -200,6 +243,7 @@ async fn setup_caddy(
     (
         Arc<trilithon_adapters::caddy::hyper_client::HyperCaddyClient>,
         Arc<tokio::sync::Mutex<()>>,
+        Arc<trilithon_adapters::caddy::cache::CapabilityCache>,
     ),
     ExitCode,
 > {
@@ -248,7 +292,7 @@ async fn setup_caddy(
 
     tasks.spawn(trilithon_adapters::caddy::reconnect::reconnect_loop(
         caddy_client.clone(),
-        cap_cache,
+        cap_cache.clone(),
         cap_store,
         CADDY_INSTANCE_ID.into(),
         signal,
@@ -256,7 +300,7 @@ async fn setup_caddy(
     ));
 
     let apply_mutex: Arc<tokio::sync::Mutex<()>> = Arc::new(tokio::sync::Mutex::new(()));
-    Ok((caddy_client, apply_mutex))
+    Ok((caddy_client, apply_mutex, cap_cache))
 }
 
 /// Open the `SQLite` store, run migrations, verify `application_id`, and run the
@@ -323,20 +367,62 @@ fn build_drift_detector(
 /// `ready_since_unix_ms` atomic so the caller can mark the daemon ready.
 ///
 /// Returns `Err(ExitCode)` if the bind fails.
+#[allow(clippy::too_many_arguments)]
 async fn bind_and_spawn_http(
     config: &DaemonConfig,
     tasks: &mut JoinSet<()>,
     signal: crate::shutdown::ShutdownSignal,
+    storage: Arc<dyn trilithon_core::storage::trait_def::Storage>,
+    drift_detector: Arc<trilithon_adapters::drift::DriftDetector>,
+    capability_cache: Arc<trilithon_adapters::caddy::cache::CapabilityCache>,
+    applier: Arc<trilithon_adapters::CaddyApplier>,
+    pool: trilithon_adapters::sqlite_storage::SqlitePool,
 ) -> Result<Arc<std::sync::atomic::AtomicU64>, ExitCode> {
     use std::sync::atomic::{AtomicBool, AtomicU64};
 
     let apply_in_flight_flag = Arc::new(AtomicBool::new(false));
     let ready_since_ms = Arc::new(AtomicU64::new(0));
-    // Slice 9.6 will wire real user/session stores once bootstrap is initialised.
-    let http_state = trilithon_adapters::http_axum::stubs::make_test_app_state(
-        Arc::clone(&apply_in_flight_flag),
-        Arc::clone(&ready_since_ms),
+
+    let clock: Arc<dyn trilithon_core::clock::Clock> = Arc::new(trilithon_core::clock::SystemClock);
+    let schema_registry = Arc::new(trilithon_core::schema::SchemaRegistry::with_tier1_secrets());
+    let hasher: Arc<dyn trilithon_core::audit::redactor::CiphertextHasher> =
+        Arc::new(trilithon_adapters::Sha256AuditHasher);
+    let audit_writer = Arc::new(trilithon_adapters::AuditWriter::new_with_arcs(
+        Arc::clone(&storage),
+        Arc::clone(&clock),
+        Arc::clone(&schema_registry),
+        Arc::clone(&hasher),
+    ));
+    let user_store: Arc<dyn trilithon_adapters::auth::UserStore> = Arc::new(
+        trilithon_adapters::auth::users::SqliteUserStore::new(pool.clone()),
     );
+    let session_rng: Arc<dyn trilithon_adapters::rng::RandomBytes> =
+        Arc::new(trilithon_adapters::rng::ThreadRng);
+    let session_store: Arc<dyn trilithon_adapters::auth::SessionStore> = Arc::new(
+        trilithon_adapters::auth::sessions::SqliteSessionStore::new(pool.clone(), session_rng),
+    );
+    let http_state = Arc::new(trilithon_adapters::http_axum::AppState {
+        apply_in_flight: Arc::clone(&apply_in_flight_flag),
+        ready_since_unix_ms: Arc::clone(&ready_since_ms),
+        rate_limiter: Arc::new(trilithon_adapters::auth::rate_limit::LoginRateLimiter::new()),
+        session_store,
+        user_store,
+        audit_writer,
+        session_cookie_name: "trilithon_session".to_owned(),
+        session_ttl_seconds: 12 * 3600,
+        token_pool: Some(pool),
+        applier,
+        storage,
+        diff_engine: Arc::new(trilithon_core::diff::DefaultDiffEngine),
+        schema_registry,
+        hasher,
+        drift_detector,
+        capability_cache,
+        // Enable Secure cookie flag when binding is not loopback-only (F008).
+        secure_cookies: config.server.allow_remote,
+        // Trust X-Forwarded-For only when behind a declared reverse proxy (F009).
+        trusted_proxy: false,
+    });
     let http_server_cfg = trilithon_adapters::http_axum::AxumServerConfig {
         bind_host: config.server.bind.ip().to_string(),
         bind_port: config.server.bind.port(),

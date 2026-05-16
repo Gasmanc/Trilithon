@@ -9,6 +9,35 @@ default:
 check:  check-rust check-typescript check-swift
     @echo "✓ all checks passed"
 
+# Per-slice gate: run only the check target(s) for dirs modified since last commit.
+# Uses `git diff HEAD` (staged + unstaged) — correct at gate time before commit.
+# Falls back to full `just check` if changes span multiple dirs or touch root config.
+# Do NOT use this as a substitute for `just check` at end-of-phase or in CI.
+check-changed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    changed=$(git diff HEAD --name-only 2>/dev/null)
+    if [ -z "$changed" ]; then
+        echo "check-changed: no changes detected — running full check"
+        just check
+        exit 0
+    fi
+    in_core=$(echo "$changed" | grep -q '^core/' && echo 1 || echo 0)
+    in_web=$(echo "$changed" | grep -q '^web/' && echo 1 || echo 0)
+    in_app=$(echo "$changed" | grep -q '^app/' && echo 1 || echo 0)
+    # Root-level or multi-dir changes → full check
+    has_root=$(echo "$changed" | grep -qv '^\(core\|web\|app\)/' && echo 1 || echo 0)
+    dir_count=$(( in_core + in_web + in_app ))
+    if [ "$has_root" -eq 1 ] || [ "$dir_count" -gt 1 ]; then
+        echo "check-changed: root/multi-dir changes — running full check"
+        just check
+        exit 0
+    fi
+    [ "$in_core" -eq 1 ] && just check-rust
+    [ "$in_web"  -eq 1 ] && just check-typescript
+    [ "$in_app"  -eq 1 ] && just check-swift
+    echo "✓ check-changed passed"
+
 # Run all tests
 test:  test-rust test-typescript test-swift
     @echo "✓ all tests passed"

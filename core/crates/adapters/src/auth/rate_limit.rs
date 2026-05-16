@@ -76,11 +76,27 @@ impl LoginRateLimiter {
             let backoff = 2_i64.saturating_pow(exponent).min(60);
             bucket.next_allowed_at_unix = now_unix + backoff;
         }
+        // Lazy eviction: remove stale buckets whose back-off window ended more
+        // than 5 minutes ago to bound map growth (F010). Run on 1% of writes to
+        // amortise the scan cost without a background task.
+        if bucket.failure_count % 100 == 0 {
+            let cutoff = now_unix - 300;
+            self.buckets.retain(|_, b| b.next_allowed_at_unix > cutoff);
+        }
     }
 
     /// Record a successful login for `addr`, clearing the failure bucket.
     pub fn record_success(&self, addr: IpAddr) {
         self.buckets.remove(&addr);
+    }
+
+    /// Evict all stale buckets whose back-off window ended before `before_unix`.
+    ///
+    /// Safe to call from a periodic background task as an alternative to the
+    /// lazy eviction in [`record_failure`].
+    pub fn evict_stale(&self, before_unix: i64) {
+        self.buckets
+            .retain(|_, b| b.next_allowed_at_unix > before_unix);
     }
 }
 

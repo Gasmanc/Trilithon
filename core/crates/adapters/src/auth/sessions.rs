@@ -159,6 +159,11 @@ impl SessionStore for SqliteSessionStore {
     }
 
     async fn touch(&self, session_id: &str) -> Result<Option<Session>, SessionError> {
+        // Throttle last_seen_at updates to at most once per 60 seconds (F020).
+        // This prevents SQLite write contention on high-frequency API clients
+        // while still maintaining a useful activity timestamp.
+        const TOUCH_THROTTLE_SECONDS: i64 = 60;
+
         let now = Self::now();
 
         let Some(row) = sqlx::query(
@@ -179,11 +184,15 @@ impl SessionStore for SqliteSessionStore {
             return Ok(None);
         }
 
-        sqlx::query("UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2")
-            .bind(now)
-            .bind(session_id)
-            .execute(&self.pool)
-            .await?;
+        let last_seen_at: i64 = row.try_get("last_seen_at")?;
+
+        if now - last_seen_at >= TOUCH_THROTTLE_SECONDS {
+            sqlx::query("UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2")
+                .bind(now)
+                .bind(session_id)
+                .execute(&self.pool)
+                .await?;
+        }
 
         Ok(Some(Session {
             id: row.try_get("id")?,

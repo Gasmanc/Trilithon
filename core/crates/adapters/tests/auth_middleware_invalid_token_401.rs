@@ -67,6 +67,8 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
             &storage_for_state,
         )),
         capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
+        secure_cookies: false,
+        trusted_proxy: false,
     });
 
     let cfg = AxumServerConfig {

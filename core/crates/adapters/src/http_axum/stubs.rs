@@ -393,5 +393,7 @@ pub fn make_test_app_state(
         hasher,
         drift_detector,
         capability_cache: Arc::new(CapabilityCache::default()),
+        secure_cookies: false,
+        trusted_proxy: false,
     })
 }

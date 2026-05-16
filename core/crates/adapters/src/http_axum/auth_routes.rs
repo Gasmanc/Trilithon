@@ -1,12 +1,13 @@
 //! Auth endpoint handlers: login, logout, and change-password (Slice 9.5).
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::audit_writer::{ActorRef, AuditAppend, AuditWriteError};
 use crate::auth::users::UserRole;
-use crate::auth::{build_cookie, verify_password};
+use crate::auth::{build_cookie, dummy_verify, verify_password};
 use crate::http_axum::AppState;
 use crate::http_axum::auth_middleware::AuthenticatedSession;
 use axum::Json;
@@ -77,6 +78,8 @@ pub enum ApiError {
     NotFound,
     /// 400 Bad Request with a message.
     BadRequest(String),
+    /// 501 Not Implemented.
+    NotImplemented(&'static str),
     /// 500 Internal Server Error.
     Internal(String),
 }
@@ -126,11 +129,22 @@ impl axum::response::IntoResponse for ApiError {
             Self::BadRequest(msg) => {
                 (StatusCode::BAD_REQUEST, Json(error_body("error", &msg))).into_response()
             }
-            Self::Internal(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(error_body("error", &msg)),
+            Self::NotImplemented(detail) => (
+                StatusCode::NOT_IMPLEMENTED,
+                Json(error_body("code", detail)),
             )
                 .into_response(),
+            Self::Internal(msg) => {
+                // Log the full internal error server-side; return a generic body
+                // to avoid leaking schema hints, query fragments, or file paths
+                // to API clients (F007).
+                tracing::error!(internal_error = %msg, "api.internal-error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(error_body("code", "internal")),
+                )
+                    .into_response()
+            }
         }
     }
 }
@@ -157,13 +171,26 @@ fn set_cookie_header(state: &AppState, session_id: &str) -> HeaderValue {
         &state.session_cookie_name,
         session_id,
         state.session_ttl_seconds,
-        false, // loopback-only; Secure is appropriate in production TLS terminator
+        state.secure_cookies,
     )
 }
 
 fn clear_cookie_header(state: &AppState) -> HeaderValue {
     // Max-Age=0 tells the browser to discard the cookie immediately.
     build_cookie(&state.session_cookie_name, "", 0, false)
+}
+
+fn resolve_client_ip(trusted_proxy: bool, addr: SocketAddr, headers: &HeaderMap) -> IpAddr {
+    if trusted_proxy {
+        headers
+            .get("X-Forwarded-For")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .and_then(|s| IpAddr::from_str(s.trim()).ok())
+            .unwrap_or_else(|| addr.ip())
+    } else {
+        addr.ip()
+    }
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -194,12 +221,14 @@ fn clear_cookie_header(state: &AppState) -> HeaderValue {
 pub async fn login(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    request_headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), ApiError> {
     let now = unix_now();
+    let client_ip = resolve_client_ip(state.trusted_proxy, addr, &request_headers);
 
     // 1. Rate-limit check.
-    if let Err(limited) = state.rate_limiter.check(addr.ip(), now) {
+    if let Err(limited) = state.rate_limiter.check(client_ip, now) {
         return Err(ApiError::RateLimited {
             retry_after_seconds: limited.retry_after_seconds,
         });
@@ -215,8 +244,11 @@ pub async fn login(
     let (user, hash) = match lookup {
         Some(row) if row.0.disabled_at.is_none() => row,
         _ => {
-            // User absent or disabled.
-            state.rate_limiter.record_failure(addr.ip(), now);
+            // User absent or disabled.  Run a dummy Argon2 verify so the
+            // response time is indistinguishable from a wrong-password path,
+            // preventing username enumeration via timing (F018).
+            dummy_verify(&req.password);
+            state.rate_limiter.record_failure(client_ip, now);
             state
                 .audit_writer
                 .record(AuditAppend::from_current_span(
@@ -236,12 +268,14 @@ pub async fn login(
         verify_password(&req.password, &hash).map_err(|e| ApiError::Internal(e.to_string()))?;
 
     if !ok {
-        state.rate_limiter.record_failure(addr.ip(), now);
+        state.rate_limiter.record_failure(client_ip, now);
+        // Use System actor (not User) so audit logs don't expose whether the
+        // username was valid (F018 — uniform audit actor for all failed logins).
         state
             .audit_writer
             .record(AuditAppend::from_current_span(
-                ActorRef::User {
-                    id: user.id.clone(),
+                ActorRef::System {
+                    component: "auth".to_owned(),
                 },
                 AuditEvent::AuthLoginFailed,
                 AuditOutcome::Denied,
@@ -251,7 +285,7 @@ pub async fn login(
     }
 
     // 4. Success — clear rate-limit bucket and create session.
-    state.rate_limiter.record_success(addr.ip());
+    state.rate_limiter.record_success(client_ip);
 
     let session = state
         .session_store
@@ -259,7 +293,7 @@ pub async fn login(
             &user.id,
             state.session_ttl_seconds,
             None,
-            Some(addr.ip().to_string()),
+            Some(client_ip.to_string()),
         )
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -288,12 +322,22 @@ pub async fn login(
         ));
     }
 
+    // Read the current config_version so the client can seed expected_version
+    // for subsequent mutations without issuing an extra request.
+    let config_version = state
+        .storage
+        .latest_desired_state()
+        .await
+        .ok()
+        .flatten()
+        .map_or(0, |s| s.config_version);
+
     let body = Json(
         serde_json::to_value(LoginResponse {
             user_id: user.id,
             role: user.role,
             must_change_pw: user.must_change_pw,
-            config_version: 0,
+            config_version,
         })
         .map_err(|e| ApiError::Internal(e.to_string()))?,
     );

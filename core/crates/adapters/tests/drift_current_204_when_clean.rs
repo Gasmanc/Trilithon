@@ -68,6 +68,8 @@ async fn setup() -> (TempDir, SocketAddr, tokio::sync::oneshot::Sender<()>) {
         hasher: Arc::new(Sha256AuditHasher),
         drift_detector: stubs::make_stub_drift_detector(Arc::clone(&storage_arc)),
         capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
+        secure_cookies: false,
+        trusted_proxy: false,
     });
 
     let cfg = AxumServerConfig {

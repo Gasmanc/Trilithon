@@ -184,13 +184,9 @@ pub async fn post_mutation(
     )
     .await?;
 
-    state
-        .storage
-        .insert_snapshot(snapshot.clone())
-        .await
-        .map_err(|e| MutationHandlerError::Internal(e.to_string()).into_response())?;
-
-    apply_and_respond(&state, correlation_id, actor, &snapshot, expected_version).await
+    // insert_snapshot is called inside apply_and_respond, after a successful
+    // apply, so a failed or conflicted apply never leaves a phantom row (F006).
+    apply_and_respond(&state, correlation_id, actor, snapshot, expected_version).await
 }
 
 // ── Sub-steps ─────────────────────────────────────────────────────────────────
@@ -276,11 +272,16 @@ async fn build_snapshot(
     let parent_id = current_snapshot.as_ref().map(|s| s.snapshot_id.clone());
 
     // Step 5: apply mutation (pure).
-    let capabilities = CapabilitySet {
-        loaded_modules: BTreeSet::new(),
-        caddy_version: String::new(),
-        probed_at: 0,
-    };
+    // Use the probed capability snapshot when available; fall back to empty
+    // (permissive) if the background probe has not completed yet (F015).
+    let capabilities = state
+        .capability_cache
+        .snapshot()
+        .unwrap_or_else(|| CapabilitySet {
+            loaded_modules: BTreeSet::new(),
+            caddy_version: String::new(),
+            probed_at: 0,
+        });
     let outcome = apply_mutation(&current_state, mutation, &capabilities).map_err(|e| {
         use trilithon_core::mutation::MutationError as ME;
         match e {
@@ -330,17 +331,20 @@ async fn build_snapshot(
     })
 }
 
-/// Step 7 + 8 — call the applier and map the outcome to a response.
+/// Step 7 + 8 — call the applier, persist the snapshot on success, and respond.
+///
+/// Taking ownership of `snapshot` here ensures the row is only inserted after
+/// a confirmed `ApplyOutcome::Succeeded` — no orphaned rows on conflict (F006).
 async fn apply_and_respond(
     state: &AppState,
     correlation_id: Ulid,
     actor: ActorRef,
-    snapshot: &Snapshot,
+    snapshot: Snapshot,
     expected_version: i64,
 ) -> Result<Json<MutationResponse>, Response> {
     let apply_result = state
         .applier
-        .apply(snapshot, expected_version)
+        .apply(&snapshot, expected_version)
         .await
         .map_err(|e| {
             use trilithon_core::reconciler::ApplyError;
@@ -366,6 +370,13 @@ async fn apply_and_respond(
             config_version,
             ..
         } => {
+            // Persist only after a confirmed successful apply (F006).
+            state
+                .storage
+                .insert_snapshot(snapshot)
+                .await
+                .map_err(|e| MutationHandlerError::Internal(e.to_string()).into_response())?;
+
             let _ = state
                 .audit_writer
                 .record(AuditAppend {

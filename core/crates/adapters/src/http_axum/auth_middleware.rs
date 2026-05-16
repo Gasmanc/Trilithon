@@ -8,6 +8,7 @@
 //! authentication extract [`AuthenticatedSession`] from the extensions.
 
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -35,6 +36,9 @@ pub enum PathClass {
 }
 
 fn classify(path: &str) -> PathClass {
+    // Normalise trailing slashes so that `/api/v1/health/` and `/api/v1/health`
+    // both classify correctly (F022).
+    let path = path.trim_end_matches('/');
     match path {
         "/api/v1/health" | "/api/v1/openapi.json" | "/api/v1/auth/login" => PathClass::Public,
         "/api/v1/auth/change-password" => PathClass::MustChangePassword,
@@ -66,6 +70,8 @@ pub enum AuthContext {
         permissions: serde_json::Value,
         /// Per-token rate-limit quota.
         rate_limit_qps: u32,
+        /// When `true` the owning user must change their password (F012).
+        must_change_pw: bool,
     },
 }
 
@@ -115,6 +121,11 @@ where
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 /// SHA-256 hex digest of the raw bearer token string.
+///
+/// SHA-256 is used (not HMAC) because bearer tokens are generated as 256-bit
+/// random values — preimage attack is computationally infeasible at that entropy
+/// level (F019). If token entropy is ever reduced below 128 bits, switch to
+/// HMAC-SHA256 keyed by a server secret.
 fn sha256_hex(token: &str) -> String {
     let digest = Sha256::digest(token.as_bytes());
     format!("{digest:x}")
@@ -152,7 +163,20 @@ pub async fn auth_layer(
             .map_err(|e| ApiError::Internal(e.to_string()))?;
 
         if let Some(session) = session {
-            // Look up the user to get role and must_change_pw.
+            // Defense-in-depth: secondary expiry check at the middleware layer (F021).
+            // touch() already enforces this via SQL, but guard against clock skew.
+            let now_unix = i64::try_from(
+                SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+            )
+            .unwrap_or(i64::MAX);
+            if session.expires_at <= now_unix {
+                return Err(ApiError::Unauthenticated);
+            }
+
+            // Look up the user to get role, must_change_pw, and disabled_at.
             let user_row = state
                 .user_store
                 .find_user_by_id(&session.user_id)
@@ -160,6 +184,12 @@ pub async fn auth_layer(
                 .map_err(|e| ApiError::Internal(e.to_string()))?;
 
             if let Some((user, _hash)) = user_row {
+                // Reject sessions for disabled accounts (F011).
+                if user.disabled_at.is_some() {
+                    return Err(ApiError::Forbidden {
+                        code: "account-disabled",
+                    });
+                }
                 Some(AuthContext::Session {
                     user_id: user.id,
                     role: user.role,
@@ -188,17 +218,16 @@ pub async fn auth_layer(
         return Err(ApiError::Unauthenticated);
     };
 
-    // 4. must_change_pw enforcement.
-    if let AuthContext::Session {
-        must_change_pw: true,
-        ..
-    } = &auth_ctx
-    {
-        if class != PathClass::MustChangePassword {
-            return Err(ApiError::Forbidden {
-                code: "must-change-password",
-            });
+    // 4. must_change_pw enforcement — applies to both session and bearer token auth (F012).
+    let ctx_must_change_pw = match &auth_ctx {
+        AuthContext::Session { must_change_pw, .. } | AuthContext::Token { must_change_pw, .. } => {
+            *must_change_pw
         }
+    };
+    if ctx_must_change_pw && class != PathClass::MustChangePassword {
+        return Err(ApiError::Forbidden {
+            code: "must-change-password",
+        });
     }
 
     // 5. Attach context to request extensions and continue.
@@ -227,9 +256,16 @@ async fn try_bearer_token(
         return Ok(None);
     };
 
+    // LEFT JOIN to users to enforce disabled_at and must_change_pw for bearer
+    // tokens (F011, F012).  user_id is nullable (pre-migration tokens have no
+    // user association), so the join is outer — tokens without a user_id skip
+    // the user-level checks and are treated as active/unrestricted.
     let row = sqlx::query(
-        "SELECT token_id, permissions, rate_limit_qps FROM tokens \
-         WHERE token_hash = ?1 AND revoked_at IS NULL",
+        "SELECT t.token_id, t.permissions, t.rate_limit_qps, \
+                u.must_change_pw, u.disabled_at \
+         FROM tokens t \
+         LEFT JOIN users u ON u.id = t.user_id \
+         WHERE t.token_hash = ?1 AND t.revoked_at IS NULL",
     )
     .bind(&hash)
     .fetch_optional(pool)
@@ -237,6 +273,16 @@ async fn try_bearer_token(
     .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     if let Some(row) = row {
+        // Reject tokens whose owning user is disabled (F011).
+        let disabled_at: Option<i64> = row
+            .try_get("disabled_at")
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        if disabled_at.is_some() {
+            return Err(ApiError::Forbidden {
+                code: "account-disabled",
+            });
+        }
+
         let token_id: String = row
             .try_get("token_id")
             .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -246,12 +292,15 @@ async fn try_bearer_token(
         let rate_limit_qps: i64 = row
             .try_get("rate_limit_qps")
             .map_err(|e| ApiError::Internal(e.to_string()))?;
+        // NULL when user_id is absent (legacy token); default to false.
+        let must_change_pw: bool = row.try_get("must_change_pw").unwrap_or(false);
         let permissions: serde_json::Value = serde_json::from_str(&permissions_str)
             .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
         Ok(Some(AuthContext::Token {
             token_id,
             permissions,
             rate_limit_qps: u32::try_from(rate_limit_qps).unwrap_or(0),
+            must_change_pw,
         }))
     } else {
         Ok(None)

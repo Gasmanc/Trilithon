@@ -78,6 +78,8 @@ async fn setup() -> (
             &storage_arc,
         )),
         capability_cache: Arc::new(trilithon_adapters::caddy::cache::CapabilityCache::default()),
+        secure_cookies: false,
+        trusted_proxy: false,
     });
 
     let cfg = AxumServerConfig {

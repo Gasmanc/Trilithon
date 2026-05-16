@@ -107,6 +107,20 @@ pub async fn list_audit(
     // 2. Clamp limit.
     let limit = q.limit.unwrap_or(100).min(1000);
 
+    // 2b. Validate since/until range (F026).
+    if let (Some(since), Some(until)) = (q.since, q.until) {
+        if since < 0 || until < 0 {
+            return Err(ApiError::BadRequest(
+                "since and until must be non-negative Unix timestamps".to_owned(),
+            ));
+        }
+        if since > until {
+            return Err(ApiError::BadRequest(
+                "since must not be greater than until".to_owned(),
+            ));
+        }
+    }
+
     // 3. Build selector.
     let selector = AuditSelector {
         kind_glob: q.event.clone(),

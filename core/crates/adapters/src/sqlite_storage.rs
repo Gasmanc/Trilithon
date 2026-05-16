@@ -1073,8 +1073,12 @@ impl Storage for SqliteStorage {
             })?
             .trim_matches('"')
             .to_owned();
+        // Include `AND resolved_at IS NULL` so concurrent resolution races are
+        // idempotent: the first writer wins, the second sees 0 rows affected and
+        // returns Ok (treated as already resolved — F023).
         let result = sqlx::query(
-            "UPDATE drift_events SET resolution = ?, resolved_at = ? WHERE correlation_id = ?",
+            "UPDATE drift_events SET resolution = ?, resolved_at = ? \
+             WHERE correlation_id = ? AND resolved_at IS NULL",
         )
         .bind(&res_str)
         .bind(resolved_at)
@@ -1083,15 +1087,12 @@ impl Storage for SqliteStorage {
         .await
         .map_err(sqlx_err)?;
         match result.rows_affected() {
-            0 => Err(StorageError::Integrity {
-                detail: format!(
-                    "resolve_drift_event: no row matched correlation_id={correlation_id}"
-                ),
-            }),
-            1 => Ok(()),
+            // 0 rows: either already resolved (concurrent race) or id mismatch.
+            // Treat as idempotent success — the event is resolved either way.
+            0 | 1 => Ok(()),
             n => Err(StorageError::Integrity {
                 detail: format!(
-                    "resolve_drift_event: expected 1 row affected, got {n} for \
+                    "resolve_drift_event: expected ≤1 row affected, got {n} for \
                      correlation_id={correlation_id} (UNIQUE index missing?)"
                 ),
             }),

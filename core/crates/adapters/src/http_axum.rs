@@ -82,6 +82,13 @@ pub struct AppState {
     /// In-memory capability probe cache.  `None` on first access until the
     /// background probe completes.
     pub capability_cache: Arc<CapabilityCache>,
+    /// When `true`, session cookies are set with the `Secure` attribute.
+    /// Should be `true` whenever TLS is terminated upstream (F008).
+    pub secure_cookies: bool,
+    /// When `true`, the rate limiter reads `X-Forwarded-For` to identify the
+    /// real client IP instead of the direct TCP peer (F009). Only enable when
+    /// a trusted reverse proxy sets this header.
+    pub trusted_proxy: bool,
 }
 
 // ── Health handler ────────────────────────────────────────────────────────────

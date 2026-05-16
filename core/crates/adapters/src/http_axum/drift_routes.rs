@@ -6,7 +6,6 @@
 //! - `POST /api/v1/drift/{event_id}/defer`    — dismiss the drift event.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -15,12 +14,8 @@ use axum::response::{IntoResponse, Response};
 use ulid::Ulid;
 
 use trilithon_core::audit::AuditEvent;
-use trilithon_core::canonical_json::{
-    CANONICAL_JSON_VERSION, content_address_bytes, to_canonical_bytes,
-};
-use trilithon_core::model::desired_state::DesiredState;
 use trilithon_core::reconciler::ApplyOutcome;
-use trilithon_core::storage::types::{AuditOutcome, Snapshot, SnapshotId};
+use trilithon_core::storage::types::{AuditOutcome, SnapshotId};
 
 use crate::audit_writer::{ActorRef, AuditAppend};
 use crate::drift::ResolutionKind;
@@ -100,15 +95,13 @@ pub async fn current(
 
 /// `POST /api/v1/drift/{event_id}/adopt` — accept running state as desired state.
 ///
-/// Looks up the drift event, builds a new snapshot from the current desired state
-/// (in lieu of having direct access to the running config at this layer — adopt
-/// works by syncing desired state to the known running hash), then resolves the
-/// drift event via the detector.
+/// Correct semantics: fetch the running Caddy config, persist it as the new
+/// desired state, and mark the drift event resolved.  This requires
+/// `Applier::get_running_config` which is not yet available at this layer.
 ///
-/// # Errors
-///
-/// Returns 404 when the `event_id` does not match the latest unresolved event.
-/// Returns 500 on storage or apply failures.
+/// Returns `501 Not Implemented` until the full implementation is wired.
+/// Using `adopt` today would silently re-apply the old desired state (identical
+/// to `reapply`) — returning 501 is safer than wrong semantics.
 #[utoipa::path(
     post,
     path = "/api/v1/drift/{event_id}/adopt",
@@ -117,96 +110,19 @@ pub async fn current(
         (status = 200, description = "Drift adopted"),
         (status = 401, description = "Unauthenticated"),
         (status = 404, description = "Event not found"),
+        (status = 501, description = "Not yet implemented"),
     )
 )]
+/// # Errors
+///
+/// Always returns [`ApiError::NotImplemented`] until the Applier trait exposes
+/// `get_running_config`.
 pub async fn adopt(
-    State(state): State<Arc<AppState>>,
-    session: AuthenticatedSession,
-    Path(id): Path<String>,
+    _state: State<Arc<AppState>>,
+    _session: AuthenticatedSession,
+    _id: Path<String>,
 ) -> Result<Json<MutationResponse>, ApiError> {
-    let row = state
-        .storage
-        .latest_unresolved_drift_event()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or(ApiError::NotFound)?;
-
-    if row.id.0 != id {
-        return Err(ApiError::NotFound);
-    }
-
-    let correlation_id = Ulid::new();
-    let actor = actor_from_session(&session);
-
-    // For adopt: take the latest snapshot and re-insert it to mark "desired = current snapshot"
-    // then resolve drift. The running state is already captured in the drift event.
-    let snap = state
-        .storage
-        .latest_desired_state()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .ok_or_else(|| ApiError::Internal("no snapshot available".to_owned()))?;
-
-    let expected_version = snap.config_version;
-
-    // Apply the same snapshot through the applier to re-sync.
-    let apply_result = state
-        .applier
-        .apply(&snap, expected_version)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let (snapshot_id, config_version) = match apply_result {
-        ApplyOutcome::Succeeded {
-            snapshot_id,
-            config_version,
-            ..
-        } => (snapshot_id.0, config_version),
-        ApplyOutcome::Failed { detail, .. } => {
-            return Err(ApiError::Internal(format!("apply failed: {detail}")));
-        }
-        ApplyOutcome::Conflicted {
-            current_version, ..
-        } => {
-            return Err(ApiError::Internal(format!(
-                "version conflict: current={current_version}"
-            )));
-        }
-    };
-
-    // Resolve via detector — writes config.drift-resolved audit row.
-    let event_correlation_id: Ulid = row
-        .correlation_id
-        .parse()
-        .map_err(|e: ulid::DecodeError| ApiError::Internal(e.to_string()))?;
-
-    state
-        .drift_detector
-        .mark_resolved(event_correlation_id, ResolutionKind::Adopt)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    // Write supplemental mutation.applied audit row.
-    let _ = state
-        .audit_writer
-        .record(AuditAppend {
-            correlation_id,
-            actor,
-            event: AuditEvent::MutationApplied,
-            target_kind: None,
-            target_id: None,
-            snapshot_id: Some(SnapshotId(snapshot_id.clone())),
-            diff: None,
-            outcome: AuditOutcome::Ok,
-            error_kind: None,
-            notes: Some("drift.adopt".to_owned()),
-        })
-        .await;
-
-    Ok(Json(MutationResponse {
-        snapshot_id,
-        config_version,
-    }))
+    Err(ApiError::NotImplemented("adopt-not-implemented"))
 }
 
 /// `POST /api/v1/drift/{event_id}/reapply` — re-push desired state to Caddy.
@@ -288,7 +204,7 @@ pub async fn reapply(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let _ = state
+    if let Err(e) = state
         .audit_writer
         .record(AuditAppend {
             correlation_id,
@@ -302,7 +218,10 @@ pub async fn reapply(
             error_kind: None,
             notes: Some("drift.reapply".to_owned()),
         })
-        .await;
+        .await
+    {
+        tracing::warn!(error = %e, "drift.reapply: supplemental audit write failed");
+    }
 
     Ok(Json(MutationResponse {
         snapshot_id,
@@ -330,7 +249,7 @@ pub async fn reapply(
 )]
 pub async fn defer(
     State(state): State<Arc<AppState>>,
-    _session: AuthenticatedSession,
+    session: AuthenticatedSession,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let row = state
@@ -355,6 +274,35 @@ pub async fn defer(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
+    // Write an audit row recording the actor who deferred drift (F024).
+    let actor = match &session.0 {
+        crate::http_axum::auth_middleware::AuthContext::Session { user_id, .. } => ActorRef::User {
+            id: user_id.clone(),
+        },
+        crate::http_axum::auth_middleware::AuthContext::Token { token_id, .. } => ActorRef::Token {
+            id: token_id.clone(),
+        },
+    };
+    let correlation_id = Ulid::new();
+    if let Err(e) = state
+        .audit_writer
+        .record(AuditAppend {
+            correlation_id,
+            actor,
+            event: AuditEvent::DriftDeferred,
+            target_kind: None,
+            target_id: None,
+            snapshot_id: None,
+            diff: None,
+            outcome: AuditOutcome::Ok,
+            error_kind: None,
+            notes: Some("drift.defer".to_owned()),
+        })
+        .await
+    {
+        tracing::warn!(error = %e, "drift.defer: audit write failed");
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -372,66 +320,5 @@ fn actor_from_session(session: &AuthenticatedSession) -> ActorRef {
     }
 }
 
-/// Build a snapshot from the current desired state with a new mutation intent.
-///
-/// Used by adopt/reapply to produce a traceable snapshot for the apply step.
-#[allow(dead_code)]
-// reason: retained for future use when adopt needs to build a snapshot from running state
-async fn build_snapshot_from_desired(
-    state: &AppState,
-    session: &AuthenticatedSession,
-    correlation_id: Ulid,
-    intent: &str,
-) -> Result<Snapshot, ApiError> {
-    use crate::http_axum::auth_middleware::AuthContext;
-
-    let current_snap = state
-        .storage
-        .latest_desired_state()
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let (current_state, parent_id) = match current_snap {
-        Some(ref s) => {
-            let ds = serde_json::from_str::<DesiredState>(&s.desired_state_json)
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
-            (ds, Some(s.snapshot_id.clone()))
-        }
-        None => (DesiredState::default(), None),
-    };
-
-    let canonical_bytes =
-        to_canonical_bytes(&current_state).map_err(|e| ApiError::Internal(e.to_string()))?;
-    let hash = content_address_bytes(&canonical_bytes);
-    let snapshot_id = SnapshotId(hash);
-
-    let now_unix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-    // reason: unix seconds fit in i64 for thousands of years
-    let (now_secs_i64, now_ms_u64) = (now_unix.as_secs() as i64, now_unix.as_millis() as u64);
-
-    let desired_state_json =
-        String::from_utf8(canonical_bytes).map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    let actor_label = match &session.0 {
-        AuthContext::Session { user_id, .. } => user_id.clone(),
-        AuthContext::Token { token_id, .. } => token_id.clone(),
-    };
-
-    Ok(Snapshot {
-        snapshot_id,
-        parent_id,
-        config_version: current_state.version,
-        actor: actor_label,
-        intent: intent.to_owned(),
-        correlation_id: correlation_id.to_string(),
-        caddy_version: String::new(),
-        trilithon_version: env!("CARGO_PKG_VERSION").to_owned(),
-        created_at_unix_seconds: now_secs_i64,
-        created_at_monotonic_nanos: now_ms_u64 * 1_000_000,
-        canonical_json_version: CANONICAL_JSON_VERSION,
-        desired_state_json,
-    })
-}
+// build_snapshot_from_desired removed (F037): dead code with #[allow(dead_code)].
+// Re-introduce when adopt is implemented to capture Caddy running state (F002).
