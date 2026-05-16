@@ -38,6 +38,8 @@ nix = { version = "0.27", features = ["signal"] }
 argon2 = "0.5"
 password-hash = { version = "0.5", features = ["rand_core"] }
 base64 = "0.22"
+chacha20poly1305 = "0.10"
+getrandom = "0.2"
 dashmap = "6"
 utoipa = { version = "5" }
 
@@ -379,6 +381,24 @@ path = "tests/openapi_documents_every_handler.rs"
 [[test]]
 name = "error_envelope_round_trip"
 path = "tests/error_envelope_round_trip.rs"
+
+# ── Slice 10.2 — cipher tests ─────────────────────────────────────────────────
+
+[[test]]
+name = "cipher_encrypt_decrypt_round_trip"
+path = "tests/cipher_encrypt_decrypt_round_trip.rs"
+
+[[test]]
+name = "cipher_swap_owner_id_fails_decrypt"
+path = "tests/cipher_swap_owner_id_fails_decrypt.rs"
+
+[[test]]
+name = "cipher_swap_field_path_fails_decrypt"
+path = "tests/cipher_swap_field_path_fails_decrypt.rs"
+
+[[test]]
+name = "cipher_uses_xchacha20poly1305"
+path = "tests/cipher_uses_xchacha20poly1305.rs"
 
 [lints]
 workspace = true

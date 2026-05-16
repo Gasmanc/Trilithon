@@ -20,6 +20,7 @@ pub mod model;
 pub mod mutation;
 pub mod reconciler;
 pub mod schema;
+pub mod secrets;
 pub mod storage;
 
 /// Errors from the core domain logic.

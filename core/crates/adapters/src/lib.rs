@@ -34,6 +34,7 @@ pub use tls_observer::TlsIssuanceObserver;
 pub mod auth;
 pub mod http_axum;
 pub mod rng;
+pub mod secrets_local;
 
 /// Initialize all adapters.
 pub fn boot() {
