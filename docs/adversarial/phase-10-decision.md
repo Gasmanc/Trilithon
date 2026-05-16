@@ -1,5 +1,6 @@
 # Adversarial Decision — Phase 10 (Secrets Vault)
 
+**Date:** 2026-05-16
 **Review process:** 10 rounds, 91 findings, 28 confirmed non-findings.
 **Recommendation:** Implementation may proceed after the required design changes in §2 are incorporated. All findings are classified as either a required design change, an accepted residual, or a confirmed non-finding.
 
