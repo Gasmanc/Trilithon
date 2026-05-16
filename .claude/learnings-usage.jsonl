@@ -41,3 +41,8 @@
 {"event": "surfaced", "phase_id": "9", "slug": "sqlite-static-sql-coalesce-optional-filters", "context": "review", "ts": "2026-05-15T05:31:03Z"}
 {"event": "surfaced", "phase_id": "9", "slug": "cidr-validate-at-mutation-boundary", "context": "review", "ts": "2026-05-15T05:31:03Z"}
 {"event": "surfaced", "phase_id": "9", "slug": "tokio-mutex-in-async-test-doubles", "context": "review", "ts": "2026-05-15T05:31:03Z"}
+{"event": "surfaced", "phase_id": "10", "slug": "uniform-auth-failure-path-timing-audit", "context": "pre-phase", "ts": "2026-05-16T00:00:00Z"}
+{"event": "surfaced", "phase_id": "10", "slug": "storage-rederive-content-address-on-write", "context": "pre-phase", "ts": "2026-05-16T00:00:00Z"}
+{"event": "surfaced", "phase_id": "10", "slug": "io-adjacent-crates-belong-in-adapters", "context": "pre-phase", "ts": "2026-05-16T00:00:00Z"}
+{"event": "surfaced", "phase_id": "10", "slug": "sync-all-before-atomic-rename", "context": "pre-phase", "ts": "2026-05-16T00:00:00Z"}
+{"event": "surfaced", "phase_id": "10", "slug": "security-flags-from-config-not-hardcoded", "context": "pre-phase", "ts": "2026-05-16T00:00:00Z"}
