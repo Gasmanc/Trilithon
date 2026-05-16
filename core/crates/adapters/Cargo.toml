@@ -303,6 +303,10 @@ name = "bootstrap_password_not_in_logs"
 path = "tests/bootstrap_password_not_in_logs.rs"
 
 [[test]]
+name = "bootstrap_password_not_in_env"
+path = "tests/bootstrap_password_not_in_env.rs"
+
+[[test]]
 name = "bootstrap_must_change_pw_set"
 path = "tests/bootstrap_must_change_pw_set.rs"
 

@@ -1,7 +1,30 @@
 //! Argon2id password hashing at RFC 9106 first-recommendation parameters.
 
+use std::sync::OnceLock;
+
+use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
+
+/// A dummy Argon2id hash computed once at startup for constant-time verification.
+static DUMMY_HASH: OnceLock<String> = OnceLock::new();
+
+/// Perform a dummy Argon2id verification to mitigate username-enumeration timing attacks.
+///
+/// Call this when a username lookup returns nothing so the handler takes the same time
+/// as a real wrong-password path (F018).
+pub fn dummy_verify(password: &str) {
+    let hash = DUMMY_HASH.get_or_init(|| {
+        let salt = SaltString::generate(&mut OsRng);
+        // SAFETY: constants are always valid; this path is unreachable in tests too.
+        hash_password("__dummy_password_placeholder__", &salt).unwrap_or_else(|_| String::new())
+    });
+    if hash.is_empty() {
+        return;
+    }
+    // Ignore the result — timing is the only goal here.
+    let _ = verify_password(password, hash);
+}
 
 /// Memory cost in KiB (RFC 9106 first recommendation: 19 MiB).
 pub const ARGON2_M_COST_KIB: u32 = 19456;

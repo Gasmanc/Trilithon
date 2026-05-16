@@ -111,19 +111,9 @@ pub async fn bootstrap_if_empty(
     rng.fill_bytes(&mut raw);
     let password = encode_password(&raw);
 
-    // Step 4: create admin user with must_change_pw = true.
-    let user = user_store
-        .create_user("admin", &password, UserRole::Owner)
-        .await?;
-    user_store.set_must_change_pw(&user.id, true).await?;
-    // Fetch the updated user so must_change_pw reflects the persisted state.
-    let user = {
-        let mut u = user;
-        u.must_change_pw = true;
-        u
-    };
-
-    // Step 5: write credentials file with mode 0600.
+    // Step 4: write credentials file BEFORE creating the DB user (F005).
+    // Writing first means a failure here leaves no orphaned DB account.
+    // If the DB write fails after a successful file write, we clean up the file.
     let path = data_dir.join("bootstrap-credentials.txt");
     {
         #[cfg(unix)]
@@ -135,23 +125,42 @@ pub async fn bootstrap_if_empty(
                 .write(true)
                 .mode(0o600)
                 .open(&path)?;
-            write!(
-                file,
-                "username: {}\npassword: {}\n",
-                user.username, password
-            )?;
+            write!(file, "username: admin\npassword: {password}\n")?;
         }
         #[cfg(not(unix))]
         {
-            // Non-Unix: create file and write; mode 0600 is a no-op.
-            let mut file = std::fs::File::create(&path)?;
-            write!(
-                file,
-                "username: {}\npassword: {}\n",
-                user.username, password
-            )?;
+            use std::fs::OpenOptions;
+            // Use create_new so concurrent daemon instances cannot overwrite an
+            // existing credentials file (F040).
+            let mut file = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)?;
+            write!(file, "username: admin\npassword: {password}\n")?;
         }
     }
+
+    // Step 5: create admin user with must_change_pw = true.
+    // If this fails, clean up the credentials file so bootstrap can retry.
+    let user = match async {
+        let u = user_store
+            .create_user("admin", &password, UserRole::Owner)
+            .await?;
+        user_store.set_must_change_pw(&u.id, true).await?;
+        Ok::<_, UserStoreError>(u)
+    }
+    .await
+    {
+        Ok(u) => {
+            let mut u = u;
+            u.must_change_pw = true;
+            u
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&path);
+            return Err(BootstrapError::UserStore(e));
+        }
+    };
 
     // Step 6: log a single INFO line — password MUST NOT appear here.
     tracing::info!(
