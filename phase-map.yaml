@@ -1,23 +1,295 @@
 version: 1
-revision: 2
+revision: 3
 phases:
+- id: '1'
+  slug: daemon-skeleton
+  todo_path: docs/todo/phase-01-daemon-skeleton.md
+  finding_slug: phase_1
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '2'
+  slug: sqlite-persistence
+  todo_path: docs/todo/phase-02-sqlite-persistence.md
+  finding_slug: phase_2
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '3'
+  slug: caddy-adapter
+  todo_path: docs/todo/phase-03-caddy-adapter.md
+  finding_slug: phase_3
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '4'
+  slug: mutation-algebra
+  todo_path: docs/todo/phase-04-mutation-algebra.md
+  finding_slug: phase_4
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '5'
+  slug: snapshot-writer
+  todo_path: docs/todo/phase-05-snapshot-writer.md
+  finding_slug: phase_5
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '6'
+  slug: audit-log
+  todo_path: docs/todo/phase-06-audit-log.md
+  finding_slug: phase_6
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '7'
+  slug: apply-path
+  todo_path: docs/todo/phase-07-apply-path.md
+  finding_slug: phase_7
+  diff_source: commit-grep
+  diff_ref: null
+  status: complete
+  depends_on: []
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
 - id: '8'
   slug: drift-detection
   todo_path: docs/todo/phase-08-drift-detection.md
   finding_slug: phase_8
   diff_source: commit-grep
   diff_ref: null
-  status: in_progress
+  status: complete
   depends_on: []
   reviewers: []
-  status_updated_at: '2026-05-09T23:27:41.084063Z'
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
 - id: '9'
   slug: http-api
   todo_path: docs/todo/phase-09-http-api.md
   finding_slug: phase_9
   diff_source: commit-grep
   diff_ref: null
-  status: in_progress
+  status: complete
   depends_on: []
   reviewers: []
-  status_updated_at: '2026-05-13T15:31:22.340164Z'
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '10'
+  slug: secrets-vault
+  todo_path: docs/todo/phase-10-secrets-vault.md
+  finding_slug: phase_10
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '9'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '11'
+  slug: web-ui-shell
+  todo_path: docs/todo/phase-11-web-ui-shell.md
+  finding_slug: phase_11
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '9'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '12'
+  slug: rollback-preflight
+  todo_path: docs/todo/phase-12-rollback-preflight.md
+  finding_slug: phase_12
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '11'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '13'
+  slug: caddyfile-import
+  todo_path: docs/todo/phase-13-caddyfile-import.md
+  finding_slug: phase_13
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '12'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '14'
+  slug: tls-and-upstream-health
+  todo_path: docs/todo/phase-14-tls-and-upstream-health.md
+  finding_slug: phase_14
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '12'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '15'
+  slug: dual-pane-editor
+  todo_path: docs/todo/phase-15-dual-pane-editor.md
+  finding_slug: phase_15
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '13'
+  - '14'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '16'
+  slug: tier-1-hardening
+  todo_path: docs/todo/phase-16-tier-1-hardening.md
+  finding_slug: phase_16
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '15'
+  - '10'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '17'
+  slug: concurrency-control
+  todo_path: docs/todo/phase-17-concurrency-control.md
+  finding_slug: phase_17
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '16'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '18'
+  slug: policy-presets
+  todo_path: docs/todo/phase-18-policy-presets.md
+  finding_slug: phase_18
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '17'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '19'
+  slug: gateway-explain-mode
+  todo_path: docs/todo/phase-19-gateway-explain-mode.md
+  finding_slug: phase_19
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '18'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '20'
+  slug: gateway-propose-mode
+  todo_path: docs/todo/phase-20-gateway-propose-mode.md
+  finding_slug: phase_20
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '19'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '21'
+  slug: docker-discovery
+  todo_path: docs/todo/phase-21-docker-discovery.md
+  finding_slug: phase_21
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '20'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '22'
+  slug: access-log-viewer
+  todo_path: docs/todo/phase-22-access-log-viewer.md
+  finding_slug: phase_22
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '21'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '23'
+  slug: compose-deployment
+  todo_path: docs/todo/phase-23-compose-deployment.md
+  finding_slug: phase_23
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '22'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '24'
+  slug: systemd-deployment
+  todo_path: docs/todo/phase-24-systemd-deployment.md
+  finding_slug: phase_24
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '22'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '25'
+  slug: config-export
+  todo_path: docs/todo/phase-25-config-export.md
+  finding_slug: phase_25
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '22'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '26'
+  slug: backup-and-restore
+  todo_path: docs/todo/phase-26-backup-and-restore.md
+  finding_slug: phase_26
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '25'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'
+- id: '27'
+  slug: tier-2-hardening
+  todo_path: docs/todo/phase-27-tier-2-hardening.md
+  finding_slug: phase_27
+  diff_source: commit-grep
+  diff_ref: null
+  status: approved
+  depends_on:
+  - '26'
+  - '23'
+  - '24'
+  reviewers: []
+  status_updated_at: '2026-05-16T00:00:00.000000Z'

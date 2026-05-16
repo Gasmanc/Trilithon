@@ -31,7 +31,7 @@
 
 ---
 
-## Slice 23.1 — Multi-stage Trilithon Dockerfile and `healthcheck` subcommand
+## Slice 23.1 [standard] — Multi-stage Trilithon Dockerfile and `healthcheck` subcommand
 
 ### Goal
 
@@ -184,7 +184,7 @@ None. Per architecture §12.1, the healthcheck binary process MUST NOT emit trac
 
 ---
 
-## Slice 23.2 — Base `docker-compose.yml` (default profile)
+## Slice 23.2 [trivial] — Base `docker-compose.yml` (default profile)
 
 ### Goal
 
@@ -343,7 +343,7 @@ None. The Compose file is a deployment artefact; audit rows are emitted by the d
 
 ---
 
-## Slice 23.3 — Opt-in Docker-discovery overlay and socket-trust enforcement test
+## Slice 23.3 [trivial] — Opt-in Docker-discovery overlay and socket-trust enforcement test
 
 ### Goal
 
@@ -460,7 +460,7 @@ None at the Compose layer. Slice 23.4 emits the corresponding tracing event.
 
 ---
 
-## Slice 23.4 — First-run Docker socket trust-grant warning emission
+## Slice 23.4 [cross-cutting] — First-run Docker socket trust-grant warning emission
 
 ### Goal
 
@@ -475,7 +475,7 @@ When the Trilithon daemon starts inside a container that has `/var/run/docker.so
 ### Files to create or modify
 
 - `core/crates/cli/src/startup.rs` — startup-time hook that detects the socket and emits the warning.
-- `core/crates/core/src/audit.rs` — add `AuditEvent::DockerSocketTrustGrant` variant if not already present (architecture §6.6 references it; verify presence).
+- `core/crates/core/src/audit.rs` — `AuditEvent::DockerSocketTrustGrant` already exists (confirmed in source). Do not re-add it; only verify the `kind` wire string is `"docker.socket-trust-grant"` per architecture §6.6.
 - `core/crates/cli/tests/docker_socket_trust_grant.rs` — integration test asserting the three-sink emission.
 
 ### Signatures and shapes
@@ -596,7 +596,7 @@ cargo test -p trilithon-cli docker_socket_trust_grant
 
 ---
 
-## Slice 23.5 — GHCR publish workflow with multi-arch build, cosign signing, and SBOM
+## Slice 23.5 [trivial] — GHCR publish workflow with multi-arch build, cosign signing, and SBOM
 
 ### Goal
 
@@ -781,7 +781,7 @@ None. Same reason.
 
 ---
 
-## Slice 23.6 — Compose smoke-test script and 30-second bootstrap timing gate
+## Slice 23.6 [standard] — Compose smoke-test script and 30-second bootstrap timing gate
 
 ### Goal
 
@@ -943,7 +943,7 @@ The smoke test exercises:
 
 ---
 
-## Slice 23.7 — Upgrade-from-prior smoke test and `UPGRADING.md` rationale paragraph
+## Slice 23.7 [standard] — Upgrade-from-prior smoke test and `UPGRADING.md` rationale paragraph
 
 ### Goal
 
@@ -1130,7 +1130,7 @@ bash deploy/compose/test/upgrade-from-prior.sh
 
 ---
 
-## Slice 23.8 — Operator and end-user documentation
+## Slice 23.8 [trivial] — Operator and end-user documentation
 
 ### Goal
 
@@ -1260,7 +1260,7 @@ None.
 
 ---
 
-## Slice 23.9 — Wire deployment lints into `just check` and image-size budget into CI
+## Slice 23.9 [trivial] — Wire deployment lints into `just check` and image-size budget into CI
 
 ### Goal
 

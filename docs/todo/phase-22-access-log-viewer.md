@@ -29,7 +29,7 @@
 
 ---
 
-## Slice 22.1 — Rolling on-disk store and ingest
+## Slice 22.1 [cross-cutting] — Rolling on-disk store and ingest
 
 ### Goal
 
@@ -186,7 +186,7 @@ Per §12.1: existing events. No new event names.
 
 ---
 
-## Slice 22.2 — Hourly index and capacity alarm
+## Slice 22.2 [cross-cutting] — Hourly index and capacity alarm
 
 ### Goal
 
@@ -286,7 +286,7 @@ New: `access-logs.capacity-90-percent` (added to §12.1 in this slice).
 
 ---
 
-## Slice 22.3 — Filter engine
+## Slice 22.3 [standard] — Filter engine
 
 ### Goal
 
@@ -396,7 +396,7 @@ None.
 
 ---
 
-## Slice 22.4 — Explanation engine
+## Slice 22.4 [cross-cutting] — Explanation engine
 
 ### Goal
 
@@ -551,7 +551,7 @@ None new.
 
 ---
 
-## Slice 22.5 — HTTP endpoints (paginated and SSE tail)
+## Slice 22.5 [cross-cutting] — HTTP endpoints (paginated and SSE tail)
 
 ### Goal
 
@@ -668,7 +668,7 @@ Per §12.1: `http.request.received`, `http.request.completed`. No new events.
 
 ---
 
-## Slice 22.6 — Web UI viewer page
+## Slice 22.6 [standard] — Web UI viewer page
 
 ### Goal
 
@@ -825,7 +825,7 @@ None directly.
 
 ---
 
-## Slice 22.7 — Performance harness and 95% explanation coverage tests
+## Slice 22.7 [standard] — Performance harness and 95% explanation coverage tests
 
 ### Goal
 

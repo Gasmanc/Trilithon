@@ -38,7 +38,7 @@ After every slice: `cargo build --workspace` succeeds; `pnpm typecheck` succeeds
 
 ---
 
-## Slice 13.1 — Lexer: token types and `lex` function
+## Slice 13.1 [standard] — Lexer: token types and `lex` function
 
 ### Goal
 
@@ -164,7 +164,7 @@ None.
 
 ---
 
-## Slice 13.2 — Lexer fuzz harness
+## Slice 13.2 [cross-cutting] — Lexer fuzz harness
 
 ### Goal
 
@@ -229,7 +229,7 @@ None.
 
 ---
 
-## Slice 13.3 — Parser AST types and recursive-descent `parse`
+## Slice 13.3 [standard] — Parser AST types and recursive-descent `parse`
 
 ### Goal
 
@@ -408,7 +408,7 @@ None.
 
 ---
 
-## Slice 13.4 — Snippet expander, environment resolver, file-import resolver
+## Slice 13.4 [cross-cutting] — Snippet expander, environment resolver, file-import resolver
 
 ### Goal
 
@@ -423,11 +423,28 @@ Three separate post-parse passes:
 - Slice 13.3 complete.
 - `core::config::EnvProvider` is available per trait-signatures.md §9.
 
+### ⚠️ Core-purity constraint
+
+`resolve_file_imports` (step 3 of this slice) performs real filesystem I/O — `canonicalize` and file reads. **This is forbidden in `core/`** (architecture §4.1: `core` must have no I/O). The correct pattern, matching `EnvProvider` (trait-signatures.md §9), is:
+
+1. Define a `FileImportReader` trait in `core/crates/core/src/caddyfile/import.rs`:
+   ```rust
+   pub trait FileImportReader: Send + Sync {
+       fn read(&self, canonical_path: &Path) -> Result<String, ImportError>;
+       fn canonicalize(&self, root: &Path, relative: &Path) -> Result<PathBuf, ImportError>;
+   }
+   ```
+2. Accept `&dyn FileImportReader` in `resolve_file_imports` — keeping the logic pure.
+3. Implement `TokioFileImportReader` in `core/crates/adapters/src/caddyfile_file_import.rs` using `std::fs`.
+
+The file listed below (`import.rs` in `core`) holds the trait + pure logic only. The adapter implementation is an additional file the slice must create.
+
 ### Files to create or modify
 
 - `core/crates/core/src/caddyfile/expand.rs`.
 - `core/crates/core/src/caddyfile/env.rs`.
-- `core/crates/core/src/caddyfile/import.rs`.
+- `core/crates/core/src/caddyfile/import.rs` — `FileImportReader` trait + pure logic.
+- `core/crates/adapters/src/caddyfile_file_import.rs` — `TokioFileImportReader` implementing `FileImportReader` with real filesystem I/O.
 - `core/crates/core/src/caddyfile/lossy.rs` — provisional `LossyWarning` enum (full version lands in slice 13.6).
 
 ### Signatures and shapes
@@ -489,6 +506,7 @@ pub enum ImportError {
 pub fn resolve_file_imports(
     ast: CaddyfileAst,
     root: &Path,
+    reader: &dyn FileImportReader,
     opts: &ImportOptions,
 ) -> Result<CaddyfileAst, ImportError>;
 ```
@@ -561,7 +579,7 @@ None.
 
 ---
 
-## Slice 13.5 — Size guards (input, directives, nesting, expansion factor, route count)
+## Slice 13.5 [standard] — Size guards (input, directives, nesting, expansion factor, route count)
 
 ### Goal
 
@@ -650,7 +668,7 @@ None.
 
 ---
 
-## Slice 13.6 — `LossyWarning` catalogue and translator dispatch skeleton
+## Slice 13.6 [standard] — `LossyWarning` catalogue and translator dispatch skeleton
 
 ### Goal
 
@@ -785,7 +803,7 @@ None.
 
 ---
 
-## Slice 13.7 — Translator batch A: sites, `reverse_proxy`, `file_server`, `redir`, `respond`
+## Slice 13.7 [standard] — Translator batch A: sites, `reverse_proxy`, `file_server`, `redir`, `respond`
 
 ### Goal
 
@@ -899,7 +917,7 @@ None.
 
 ---
 
-## Slice 13.8 — Translator batch B: handlers, headers, TLS, encode, log, matchers
+## Slice 13.8 [standard] — Translator batch B: handlers, headers, TLS, encode, log, matchers
 
 ### Goal
 
@@ -1016,7 +1034,7 @@ None.
 
 ---
 
-## Slice 13.9 — Fixture corpus authoring batches `01_trivial` through `06_snippets`
+## Slice 13.9 [standard] — Fixture corpus authoring batches `01_trivial` through `06_snippets`
 
 ### Goal
 
@@ -1105,7 +1123,7 @@ None.
 
 ---
 
-## Slice 13.10 — Fixture corpus authoring batches `07_imports` through `11_pathological`
+## Slice 13.10 [standard] — Fixture corpus authoring batches `07_imports` through `11_pathological`
 
 ### Goal
 
@@ -1188,7 +1206,7 @@ None.
 
 ---
 
-## Slice 13.11 — Round-trip equivalence harness and normalisation rules
+## Slice 13.11 [cross-cutting] — Round-trip equivalence harness and normalisation rules
 
 ### Goal
 
@@ -1296,7 +1314,7 @@ None.
 
 ---
 
-## Slice 13.12 — `ImportFromCaddyfile` mutation, HTTP endpoints, audit row authoring
+## Slice 13.12 [cross-cutting] — `ImportFromCaddyfile` mutation, HTTP endpoints, audit row authoring
 
 ### Goal
 
@@ -1424,7 +1442,7 @@ Integration tests at `core/crates/cli/tests/imports_http.rs`:
 
 ---
 
-## Slice 13.13 — Web UI: Import wizard, `LossyWarningList`, `MutationPreviewList`
+## Slice 13.13 [standard] — Web UI: Import wizard, `LossyWarningList`, `MutationPreviewList`
 
 ### Goal
 

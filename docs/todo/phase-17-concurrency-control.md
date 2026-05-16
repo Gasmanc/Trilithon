@@ -30,7 +30,7 @@
 
 ---
 
-## Slice 17.1 — Conflict and rebase types
+## Slice 17.1 [standard] — Conflict and rebase types
 
 ### Goal
 
@@ -226,7 +226,7 @@ None in this slice.
 
 ---
 
-## Slice 17.2 — Rebase planner (pure)
+## Slice 17.2 [standard] — Rebase planner (pure)
 
 ### Goal
 
@@ -321,7 +321,7 @@ None.
 
 ---
 
-## Slice 17.3 — Three-way diff and resolution apply
+## Slice 17.3 [standard] — Three-way diff and resolution apply
 
 ### Goal
 
@@ -432,7 +432,7 @@ None.
 
 ---
 
-## Slice 17.4 — Snapshot writer compare-and-swap and rebase-token store
+## Slice 17.4 [cross-cutting] — Snapshot writer compare-and-swap and rebase-token store
 
 ### Goal
 
@@ -655,7 +655,7 @@ None new. Existing `apply.failed` continues to fire on the failure path; this sl
 
 ---
 
-## Slice 17.5 — Conflict HTTP envelope and audit kinds
+## Slice 17.5 [cross-cutting] — Conflict HTTP envelope and audit kinds
 
 ### Goal
 
@@ -781,7 +781,7 @@ Per §6.6: `mutation.conflicted`, `mutation.rejected.missing-expected-version`. 
 
 ---
 
-## Slice 17.6 — `POST /api/v1/mutations/rebase` endpoint
+## Slice 17.6 [standard] — `POST /api/v1/mutations/rebase` endpoint
 
 ### Goal
 
@@ -880,7 +880,7 @@ Per §12.1: `http.request.received`, `http.request.completed`, `apply.started`, 
 
 ---
 
-## Slice 17.7 — Conflict banner and rebase view (web UI)
+## Slice 17.7 [standard] — Conflict banner and rebase view (web UI)
 
 ### Goal
 
@@ -1066,7 +1066,7 @@ None directly from the web tier.
 
 ---
 
-## Slice 17.8 — End-to-end concurrency scenarios
+## Slice 17.8 [standard] — End-to-end concurrency scenarios
 
 ### Goal
 

@@ -34,7 +34,7 @@
 
 ---
 
-## Slice 18.1 — Policy core types and registry scaffolding
+## Slice 18.1 [cross-cutting] — Policy core types and registry scaffolding
 
 ### Goal
 
@@ -254,7 +254,7 @@ None.
 
 ---
 
-## Slice 18.2 — Persistence migration and seeding
+## Slice 18.2 [cross-cutting] — Persistence migration and seeding
 
 ### Goal
 
@@ -390,7 +390,7 @@ Per §12.1: `storage.migrations.applied`.
 
 ---
 
-## Slice 18.3 — Capability degradation table
+## Slice 18.3 [standard] — Capability degradation table
 
 ### Goal
 
@@ -564,7 +564,7 @@ None new.
 
 ---
 
-## Slice 18.4 — Preset `public-website@1`
+## Slice 18.4 [standard] — Preset `public-website@1`
 
 ### Goal
 
@@ -676,7 +676,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.5 — Preset `public-application@1`
+## Slice 18.5 [standard] — Preset `public-application@1`
 
 ### Goal
 
@@ -753,7 +753,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.6 — Preset `public-admin@1`
+## Slice 18.6 [standard] — Preset `public-admin@1`
 
 ### Goal
 
@@ -833,7 +833,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.7 — Preset `internal-application@1`
+## Slice 18.7 [standard] — Preset `internal-application@1`
 
 ### Goal
 
@@ -903,7 +903,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.8 — Preset `internal-admin@1`
+## Slice 18.8 [standard] — Preset `internal-admin@1`
 
 ### Goal
 
@@ -976,7 +976,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.9 — Preset `api@1`
+## Slice 18.9 [cross-cutting] — Preset `api@1`
 
 ### Goal
 
@@ -1053,7 +1053,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.10 — Preset `media-upload@1`
+## Slice 18.10 [cross-cutting] — Preset `media-upload@1`
 
 ### Goal
 
@@ -1170,7 +1170,7 @@ Per §12.1: `apply.started`, `apply.succeeded`.
 
 ---
 
-## Slice 18.11 — Mutation pipeline (attach, detach, upgrade)
+## Slice 18.11 [cross-cutting] — Mutation pipeline (attach, detach, upgrade)
 
 ### Goal
 
@@ -1301,7 +1301,7 @@ Per §12.1: `http.request.received`, `http.request.completed`, `apply.started`, 
 
 ---
 
-## Slice 18.12 — Web UI (PolicyTab, PresetPicker, PresetUpgradePrompt, CapabilityNotice)
+## Slice 18.12 [standard] — Web UI (PolicyTab, PresetPicker, PresetUpgradePrompt, CapabilityNotice)
 
 ### Goal
 

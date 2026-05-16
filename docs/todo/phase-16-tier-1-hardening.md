@@ -61,7 +61,7 @@ After every slice: `cargo build --workspace` succeeds; `pnpm typecheck` succeeds
 
 ---
 
-## Slice 16.1 — Failure-mode batch A: Caddy unreachable (startup and mid-flight)
+## Slice 16.1 [cross-cutting] — Failure-mode batch A: Caddy unreachable (startup and mid-flight)
 
 ### Goal
 
@@ -153,7 +153,7 @@ Asserted:
 
 ---
 
-## Slice 16.2 — Failure-mode batch B: SQLite locked, SQLite corruption
+## Slice 16.2 [cross-cutting] — Failure-mode batch B: SQLite locked, SQLite corruption
 
 ### Goal
 
@@ -227,7 +227,7 @@ Asserted:
 
 ---
 
-## Slice 16.3 — Failure-mode batch C: Docker socket gone, capability probe failure
+## Slice 16.3 [cross-cutting] — Failure-mode batch C: Docker socket gone, capability probe failure
 
 ### Goal
 
@@ -298,7 +298,7 @@ Asserted:
 
 ---
 
-## Slice 16.4 — Failure-mode batch D: bootstrap credentials unwritable, master-key access denied
+## Slice 16.4 [cross-cutting] — Failure-mode batch D: bootstrap credentials unwritable, master-key access denied
 
 ### Goal
 
@@ -372,7 +372,7 @@ Asserted:
 
 ---
 
-## Slice 16.5 — Performance verification
+## Slice 16.5 [cross-cutting] — Performance verification
 
 ### Goal
 
@@ -482,7 +482,7 @@ Asserted:
 
 ---
 
-## Slice 16.6 — Security review document covering H1–H17
+## Slice 16.6 [cross-cutting] — Security review document covering H1–H17
 
 ### Goal
 
@@ -557,7 +557,7 @@ None.
 
 ---
 
-## Slice 16.7 — Strict-mode `just check` upgrade
+## Slice 16.7 [cross-cutting] — Strict-mode `just check` upgrade
 
 ### Goal
 
@@ -632,7 +632,7 @@ None.
 
 ---
 
-## Slice 16.8 — End-to-end demo script
+## Slice 16.8 [cross-cutting] — End-to-end demo script
 
 ### Goal
 
@@ -712,7 +712,7 @@ Asserted:
 
 ---
 
-## Slice 16.9 — Documentation pass
+## Slice 16.9 [cross-cutting] — Documentation pass
 
 ### Goal
 

@@ -37,7 +37,7 @@
 
 ---
 
-## Slice 25.1 — Deterministic JSON-ordering helper
+## Slice 25.1 [standard] — Deterministic JSON-ordering helper
 
 ### Goal
 
@@ -165,7 +165,7 @@ None.
 
 ---
 
-## Slice 25.2 — Caddy JSON serialiser and integration test
+## Slice 25.2 [standard] — Caddy JSON serialiser and integration test
 
 ### Goal
 
@@ -277,7 +277,7 @@ cargo test -p trilithon-core export::caddy_json \
 
 ---
 
-## Slice 25.3 — Caddyfile printer with snippet deduplication and translation reference
+## Slice 25.3 [standard] — Caddyfile printer with snippet deduplication and translation reference
 
 ### Goal
 
@@ -531,7 +531,7 @@ None at the printer layer.
 
 ---
 
-## Slice 25.4 — Bundle manifest schema (Rust type and JSON Schema)
+## Slice 25.4 [standard] — Bundle manifest schema (Rust type and JSON Schema)
 
 ### Goal
 
@@ -709,7 +709,7 @@ None.
 
 ---
 
-## Slice 25.5 — Deterministic tar packer
+## Slice 25.5 [standard] — Deterministic tar packer
 
 ### Goal
 
@@ -864,7 +864,7 @@ None.
 
 ---
 
-## Slice 25.6 — Master-key wrap (Argon2id + XChaCha20-Poly1305)
+## Slice 25.6 [standard] — Master-key wrap (Argon2id + XChaCha20-Poly1305)
 
 ### Goal
 
@@ -1036,7 +1036,7 @@ None.
 
 ---
 
-## Slice 25.7 — Bundle exporter and named determinism test
+## Slice 25.7 [cross-cutting] — Bundle exporter and named determinism test
 
 ### Goal
 
@@ -1280,7 +1280,7 @@ cargo test -p trilithon-adapters bundle::tests
 
 ---
 
-## Slice 25.8 — Audit kinds plus artefact SHA-256 persistence
+## Slice 25.8 [cross-cutting] — Audit kinds plus artefact SHA-256 persistence
 
 ### Goal
 
@@ -1376,7 +1376,7 @@ None at this layer.
 
 ---
 
-## Slice 25.9 — HTTP export endpoints (three formats plus warnings sidecar)
+## Slice 25.9 [cross-cutting] — HTTP export endpoints (three formats plus warnings sidecar)
 
 ### Goal
 
@@ -1622,7 +1622,7 @@ cargo test -p trilithon-cli http_export
 
 ---
 
-## Slice 25.10 — CLI `trilithon export` subcommand
+## Slice 25.10 [cross-cutting] — CLI `trilithon export` subcommand
 
 ### Goal
 
@@ -1742,7 +1742,7 @@ When the daemon path is taken: same as slice 25.9. When the in-process path is t
 
 ---
 
-## Slice 25.11 — Web UI `ExportPanel`
+## Slice 25.11 [standard] — Web UI `ExportPanel`
 
 ### Goal
 
@@ -1895,7 +1895,7 @@ None at the React layer.
 
 ---
 
-## Slice 25.12 — Caddyfile round-trip integration test against Phase 13 corpus
+## Slice 25.12 [standard] — Caddyfile round-trip integration test against Phase 13 corpus
 
 ### Goal
 
@@ -1996,7 +1996,7 @@ None.
 
 ---
 
-## Slice 25.13 — Migration documentation page
+## Slice 25.13 [trivial] — Migration documentation page
 
 ### Goal
 

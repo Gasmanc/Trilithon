@@ -21,13 +21,13 @@
 | 10.2 | XChaCha20-Poly1305 encryptor with associated-data binding | `core/crates/adapters/src/secrets_local/cipher.rs` | 5 | 10.1 |
 | 10.3 | `KeychainBackend` (macOS Keychain, Linux Secret Service) | `core/crates/adapters/src/secrets_local/keychain.rs` | 6 | 10.1 |
 | 10.4 | `FileBackend` fallback with mode 0600 master-key file | `core/crates/adapters/src/secrets_local/file.rs` | 5 | 10.1 |
-| 10.5 | `0004_secrets.sql` migration plus `secrets_metadata` writer | `core/crates/adapters/migrations/0004_secrets.sql`, `core/crates/adapters/src/storage_sqlite/secrets.rs` | 4 | 10.2 |
+| 10.5 | `0013_secrets.sql` migration plus `secrets_metadata` writer | `core/crates/adapters/migrations/0013_secrets.sql`, `core/crates/adapters/src/storage_sqlite/secrets.rs` | 4 | 10.2 |
 | 10.6 | `POST /api/v1/secrets/{secret_id}/reveal` with step-up auth | `core/crates/adapters/src/http_axum/secrets_routes.rs` | 6 | 10.5, Phase 9 |
 | 10.7 | Wire mutation pipeline through the vault and feed redactor with ciphertext hash | `core/crates/core/src/mutation/secrets_extract.rs`, `core/crates/adapters/src/mutation_queue/secrets.rs` | 6 | 10.5, Phase 6 |
 
 ---
 
-## Slice 10.1 — `Ciphertext`, `EncryptContext`, `SecretsVault` types in core
+## Slice 10.1 [cross-cutting] — `Ciphertext`, `EncryptContext`, `SecretsVault` types in core
 
 ### Goal
 
@@ -144,7 +144,7 @@ None.
 
 ---
 
-## Slice 10.2 — XChaCha20-Poly1305 encryptor with associated-data binding
+## Slice 10.2 [standard] — XChaCha20-Poly1305 encryptor with associated-data binding
 
 ### Goal
 
@@ -236,7 +236,7 @@ None.
 
 ---
 
-## Slice 10.3 — `KeychainBackend` (macOS Keychain, Linux Secret Service)
+## Slice 10.3 [cross-cutting] — `KeychainBackend` (macOS Keychain, Linux Secret Service)
 
 ### Goal
 
@@ -319,7 +319,7 @@ None directly. The vault writes `secrets.master-key-rotated` on rotate (slice 10
 
 ---
 
-## Slice 10.4 — `FileBackend` fallback with mode 0600 master-key file
+## Slice 10.4 [standard] — `FileBackend` fallback with mode 0600 master-key file
 
 ### Goal
 
@@ -390,7 +390,7 @@ None.
 
 ---
 
-## Slice 10.5 — `0004_secrets.sql` migration plus `secrets_metadata` writer
+## Slice 10.5 [cross-cutting] — `0013_secrets.sql` migration plus `secrets_metadata` writer
 
 ### Goal
 
@@ -402,7 +402,7 @@ Land the `secrets_metadata` schema per architecture §6.9, plus an extension col
 
 ### Files to create or modify
 
-- `core/crates/adapters/migrations/0004_secrets.sql` — DDL.
+- `core/crates/adapters/migrations/0013_secrets.sql` — DDL.
 - `core/crates/adapters/src/storage_sqlite/secrets.rs` — writer/reader.
 
 ### Signatures and shapes
@@ -466,7 +466,7 @@ pub async fn record_reveal(
 
 ### Algorithm
 
-1. The migration runner applies `0004_secrets.sql`.
+1. The migration runner applies `0013_secrets.sql`.
 2. `upsert_secret` writes via `INSERT INTO secrets_metadata (...) ON CONFLICT (owner_kind, owner_id, field_path) DO UPDATE SET nonce=excluded.nonce, ciphertext=excluded.ciphertext, algorithm=excluded.algorithm, key_version=excluded.key_version, updated_at=excluded.updated_at`. Plaintext NEVER touches this function.
 3. `get_secret` returns the full row.
 4. `record_reveal` updates `last_revealed_at` and `last_revealed_by` only.
@@ -503,7 +503,7 @@ None directly.
 
 ---
 
-## Slice 10.6 — `POST /api/v1/secrets/{secret_id}/reveal` with step-up auth
+## Slice 10.6 [cross-cutting] — `POST /api/v1/secrets/{secret_id}/reveal` with step-up auth
 
 ### Goal
 
@@ -581,7 +581,7 @@ pub async fn reveal(
 
 ---
 
-## Slice 10.7 — Wire mutation pipeline through the vault and feed redactor with ciphertext hash
+## Slice 10.7 [cross-cutting] — Wire mutation pipeline through the vault and feed redactor with ciphertext hash
 
 ### Goal
 
@@ -710,5 +710,5 @@ None new.
 ## Open questions
 
 - The phase reference's "identical secrets MUST produce identical hash prefixes" admits two readings: per-plaintext or per-row. This breakdown chooses per-row (slice 10.7 test). The project owner SHOULD ratify before Phase 11 surfaces redacted hashes in the UI.
-- `secrets.master-key.permissions-tightened` and `secrets.file-backend.startup` are tracing events not yet listed in architecture §12.1. The slices flag adding them.
+- `secrets.master-key.permissions-tightened` and `secrets.file-backend.startup` are already present in architecture §12.1 (lines 1061–1063). The implementer should verify the event names match exactly and does NOT need to add them.
 - Master-key rotation flow (slice 10.3 `rotate`) is sketched but the cross-cutting "re-encrypt every ciphertext" walk is not surfaced as an HTTP endpoint in V1; it lives as a daemon command. Whether to expose `POST /api/v1/secrets/master-key/rotate` is a Phase 27 hardening question.

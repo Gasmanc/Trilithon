@@ -31,7 +31,7 @@
 
 ---
 
-## Slice 21.1 — Docker socket adapter (bollard)
+## Slice 21.1 [cross-cutting] — Docker socket adapter (bollard)
 
 ### Goal
 
@@ -193,7 +193,7 @@ Per §12.1: `docker.event.received` on every successfully decoded event.
 
 ---
 
-## Slice 21.2 — Watcher loop with reconnect backoff
+## Slice 21.2 [standard] — Watcher loop with reconnect backoff
 
 ### Goal
 
@@ -296,7 +296,7 @@ Per §12.1: `docker.event.received` on each forwarded event. (No new event names
 
 ---
 
-## Slice 21.3 — Label parser (pure)
+## Slice 21.3 [standard] — Label parser (pure)
 
 ### Goal
 
@@ -415,7 +415,7 @@ None.
 
 ---
 
-## Slice 21.4 — Proposal generator from labels
+## Slice 21.4 [cross-cutting] — Proposal generator from labels
 
 ### Goal
 
@@ -543,7 +543,7 @@ Per §12.1: `docker.event.received`, `proposal.received`.
 
 ---
 
-## Slice 21.5 — Hostname-collision conflict detector
+## Slice 21.5 [cross-cutting] — Hostname-collision conflict detector
 
 ### Goal
 
@@ -640,7 +640,7 @@ Per §12.1: `proposal.received`.
 
 ---
 
-## Slice 21.6 — Wildcard-match security warning
+## Slice 21.6 [cross-cutting] — Wildcard-match security warning
 
 ### Goal
 
@@ -735,7 +735,7 @@ Per §12.1: `proposal.approved`.
 
 ---
 
-## Slice 21.7 — Trust-grant first-run warning and `GET /api/v1/docker/status`
+## Slice 21.7 [cross-cutting] — Trust-grant first-run warning and `GET /api/v1/docker/status`
 
 ### Goal
 
@@ -857,7 +857,7 @@ Per §12.1: `daemon.started`, `daemon.shutting-down`, `http.request.received`, `
 
 ---
 
-## Slice 21.8 — Podman compatibility
+## Slice 21.8 [standard] — Podman compatibility
 
 ### Goal
 
@@ -931,7 +931,7 @@ None new.
 
 ---
 
-## Slice 21.9 — Web UI badge and proposal-row Docker metadata
+## Slice 21.9 [standard] — Web UI badge and proposal-row Docker metadata
 
 ### Goal
 

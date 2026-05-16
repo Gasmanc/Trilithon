@@ -32,7 +32,7 @@
 
 ---
 
-## Slice 27.1 — T2.10 conflict + rebase end-to-end flow test
+## Slice 27.1 [cross-cutting] — T2.10 conflict + rebase end-to-end flow test
 
 ### Goal
 
@@ -153,7 +153,7 @@ cargo test -p trilithon-adapters --test e2e_concurrent_mutation
 
 ---
 
-## Slice 27.2 — T2.2 policy preset capability degradation flow
+## Slice 27.2 [standard] — T2.2 policy preset capability degradation flow
 
 ### Goal
 
@@ -229,7 +229,7 @@ cargo test -p trilithon-adapters --test e2e_policy_preset_degradation
 
 ---
 
-## Slice 27.3 — T2.3 + T2.4 explain-then-propose end-to-end flow
+## Slice 27.3 [cross-cutting] — T2.3 + T2.4 explain-then-propose end-to-end flow
 
 ### Goal
 
@@ -306,7 +306,7 @@ cargo test -p trilithon-adapters --test e2e_explain_then_propose
 
 ---
 
-## Slice 27.4 — T2.1 + T2.11 Docker discovery wildcard-callout flow
+## Slice 27.4 [cross-cutting] — T2.1 + T2.11 Docker discovery wildcard-callout flow
 
 ### Goal
 
@@ -384,7 +384,7 @@ cargo test -p trilithon-adapters --test e2e_docker_discovery
 
 ---
 
-## Slice 27.5 — T2.5 + T2.6 access log viewer 10-million-line flow
+## Slice 27.5 [standard] — T2.5 + T2.6 access log viewer 10-million-line flow
 
 ### Goal
 
@@ -459,7 +459,7 @@ None new at this layer.
 
 ---
 
-## Slice 27.6 — T2.9 + T2.12 native bundle round-trip flow
+## Slice 27.6 [cross-cutting] — T2.9 + T2.12 native bundle round-trip flow
 
 ### Goal
 
@@ -546,7 +546,7 @@ cargo test -p trilithon-adapters --test e2e_bundle_round_trip
 
 ---
 
-## Slice 27.7 — Performance verification at 5,000 routes
+## Slice 27.7 [standard] — Performance verification at 5,000 routes
 
 ### Goal
 
@@ -684,7 +684,7 @@ None at the benchmark layer.
 
 ---
 
-## Slice 27.8 — Install/upgrade matrix
+## Slice 27.8 [cross-cutting] — Install/upgrade matrix
 
 ### Goal
 
@@ -848,7 +848,7 @@ gh workflow run install-upgrade-matrix.yml
 
 ---
 
-## Slice 27.9 — Security review document and H11/H16 dedicated re-review
+## Slice 27.9 [standard] — Security review document and H11/H16 dedicated re-review
 
 ### Goal
 
@@ -975,7 +975,7 @@ None.
 
 ---
 
-## Slice 27.10 — V1 release readiness: release notes, doc audit, Tier 1 regression guard
+## Slice 27.10 [cross-cutting] — V1 release readiness: release notes, doc audit, Tier 1 regression guard
 
 ### Goal
 

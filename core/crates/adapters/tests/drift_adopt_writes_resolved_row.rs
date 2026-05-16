@@ -1,4 +1,4 @@
-//! `POST /api/v1/drift/{event_id}/adopt` — asserts exactly one `config.drift-resolved` audit row.
+//! `POST /api/v1/drift/{event_id}/adopt` — asserts 501 until adopt is fully wired (F002).
 
 #![allow(
     clippy::unwrap_used,
@@ -214,14 +214,17 @@ async fn drift_adopt_writes_resolved_row() {
         .await
         .expect("POST adopt");
 
+    // F002: adopt is stubbed as 501 until Applier::get_running_config is wired.
+    // The correct semantics require fetching the live Caddy config and persisting
+    // it as the new desired state — that path is not yet available at this layer.
     assert_eq!(
         resp.status(),
-        200,
-        "adopt should return 200; body: {:?}",
+        501,
+        "adopt should return 501 (not implemented); body: {:?}",
         resp.text().await
     );
 
-    // Assert exactly one config.drift-resolved audit row.
+    // No drift-resolved audit row should be written for a 501 response.
     let rows = storage
         .tail_audit_log(
             AuditSelector {
@@ -235,13 +238,8 @@ async fn drift_adopt_writes_resolved_row() {
 
     assert_eq!(
         rows.len(),
-        1,
-        "expected exactly 1 config.drift-resolved row"
-    );
-    let notes = rows[0].notes.as_deref().unwrap_or("");
-    assert!(
-        notes.contains("adopt"),
-        "notes should contain 'adopt', got: {notes}"
+        0,
+        "no drift-resolved row expected for 501 adopt"
     );
 
     let _ = tx.send(());

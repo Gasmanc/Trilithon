@@ -36,3 +36,8 @@
 {"event": "surfaced", "phase_id": "7", "slug": "apply-layer-self-defend-missing-field", "context": "review", "ts": "2026-05-09T15:49:13Z"}
 {"event": "applied", "phase_id": "7", "slug": "sqlite-begin-immediate-read-check-write", "matched_finding": "TRY_INSERT_LOCK_USES_DEFERRED_NOT_IMMEDIATE", "ts": "2026-05-10T00:00:00Z"}
 {"event": "applied", "phase_id": "7", "slug": "sqlite-manual-tx-rollback-early-exit", "matched_finding": "COMMIT FAILURE SILENTLY RETURNS Ok WHILE APPLIED VERSION STAYS UNCHANGED", "ts": "2026-05-10T00:00:00Z"}
+{"event": "surfaced", "phase_id": "9", "slug": "ulid-sort-key-stable-ordering", "context": "review", "ts": "2026-05-15T05:31:03Z"}
+{"event": "surfaced", "phase_id": "9", "slug": "sqlite-like-wildcard-escape", "context": "review", "ts": "2026-05-15T05:31:03Z"}
+{"event": "surfaced", "phase_id": "9", "slug": "sqlite-static-sql-coalesce-optional-filters", "context": "review", "ts": "2026-05-15T05:31:03Z"}
+{"event": "surfaced", "phase_id": "9", "slug": "cidr-validate-at-mutation-boundary", "context": "review", "ts": "2026-05-15T05:31:03Z"}
+{"event": "surfaced", "phase_id": "9", "slug": "tokio-mutex-in-async-test-doubles", "context": "review", "ts": "2026-05-15T05:31:03Z"}

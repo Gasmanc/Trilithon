@@ -31,7 +31,7 @@ After every slice: `cargo build --workspace` succeeds; `pnpm typecheck` succeeds
 
 ---
 
-## Slice 12.1 — `RollbackRequest` mutation type and snapshot reachability check
+## Slice 12.1 [standard] — `RollbackRequest` mutation type and snapshot reachability check
 
 ### Goal
 
@@ -146,7 +146,7 @@ None.
 
 ---
 
-## Slice 12.2 — `Preflight` engine and condition algebra in `core`
+## Slice 12.2 [cross-cutting] — `Preflight` engine and condition algebra in `core`
 
 ### Goal
 
@@ -294,7 +294,7 @@ None. The HTTP slice (12.5) opens and closes the spans that wrap engine invocati
 
 ---
 
-## Slice 12.3 — TCP reachability and TLS validity probes in `adapters`
+## Slice 12.3 [cross-cutting] — TCP reachability and TLS validity probes in `adapters`
 
 ### Goal
 
@@ -412,7 +412,7 @@ None directly; spans are opened by the HTTP wrapper in slice 12.5.
 
 ---
 
-## Slice 12.4 — `module-available` condition wired to capability cache
+## Slice 12.4 [standard] — `module-available` condition wired to capability cache
 
 ### Goal
 
@@ -509,7 +509,7 @@ None.
 
 ---
 
-## Slice 12.5 — HTTP endpoints `POST /api/v1/snapshots/{id}/preflight` and `/rollback`
+## Slice 12.5 [cross-cutting] — HTTP endpoints `POST /api/v1/snapshots/{id}/preflight` and `/rollback`
 
 ### Goal
 
@@ -668,7 +668,7 @@ All five strings are quoted verbatim from architecture §6.6.
 
 ---
 
-## Slice 12.6 — Audit row authoring for rollback request, overrides, and apply outcome
+## Slice 12.6 [cross-cutting] — Audit row authoring for rollback request, overrides, and apply outcome
 
 ### Goal
 
@@ -779,7 +779,7 @@ None new. The applier emits `apply.started`, `apply.succeeded`, `apply.failed` p
 
 ---
 
-## Slice 12.7 — Web UI snapshot history tab and rollback dialog
+## Slice 12.7 [standard] — Web UI snapshot history tab and rollback dialog
 
 ### Goal
 

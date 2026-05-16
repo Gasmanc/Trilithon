@@ -42,3 +42,16 @@ Package.resolved
 
 # ─── Foundation 0: revalidation + audit caches (cross-phase scaffold) ───
 .claude/cache/
+.claude/pipeline-lock-token
+.claude/locks/
+.claude/last-gate-pass.json
+.claude/last-gate-pass.json.tmp
+.claude/machine-id
+.claude/pipeline-state.json
+.claude/phase-*-manifest.json
+.claude/.step4-active
+.claude/pipeline-clock-skew.log
+.claude/pipeline-env-caps.json
+.claude/pipeline-recovery-*.json
+.claude/pending-history-append.*.json
+.claude/pending-history-append.json

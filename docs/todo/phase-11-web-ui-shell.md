@@ -29,7 +29,7 @@
 
 ---
 
-## Slice 11.1 — Replace Vite skeleton with `App` shell, router, layouts, error boundary
+## Slice 11.1 [cross-cutting] — Replace Vite skeleton with `App` shell, router, layouts, error boundary
 
 ### Goal
 
@@ -127,7 +127,7 @@ None directly. The frontend's `X-Correlation-Id` headers are surfaced to the dae
 
 ---
 
-## Slice 11.2 — OpenAPI-generated typed API client
+## Slice 11.2 [cross-cutting] — OpenAPI-generated typed API client
 
 ### Goal
 
@@ -220,7 +220,7 @@ None.
 
 ---
 
-## Slice 11.3 — Mutation envelope and shared API types
+## Slice 11.3 [cross-cutting] — Mutation envelope and shared API types
 
 ### Goal
 
@@ -351,7 +351,7 @@ None directly.
 
 ---
 
-## Slice 11.4 — Login page, bootstrap step-up, change-password page
+## Slice 11.4 [standard] — Login page, bootstrap step-up, change-password page
 
 ### Goal
 
@@ -424,7 +424,7 @@ None directly.
 
 ---
 
-## Slice 11.5 — Dashboard with capability summary, drift banner, apply-in-flight banner
+## Slice 11.5 [standard] — Dashboard with capability summary, drift banner, apply-in-flight banner
 
 ### Goal
 
@@ -502,7 +502,7 @@ None.
 
 ---
 
-## Slice 11.6 — Routes index with pagination
+## Slice 11.6 [standard] — Routes index with pagination
 
 ### Goal
 
@@ -569,7 +569,7 @@ None.
 
 ---
 
-## Slice 11.7 — Route detail, history strip, delete with confirmation
+## Slice 11.7 [standard] — Route detail, history strip, delete with confirmation
 
 ### Goal
 
@@ -653,7 +653,7 @@ None directly.
 
 ---
 
-## Slice 11.8 — Route create and update forms with field-level validation
+## Slice 11.8 [standard] — Route create and update forms with field-level validation
 
 ### Goal
 
@@ -744,7 +744,7 @@ None directly.
 
 ---
 
-## Slice 11.9 — `DiffPreview` component with secret redaction enforcement
+## Slice 11.9 [standard] — `DiffPreview` component with secret redaction enforcement
 
 ### Goal
 

@@ -32,7 +32,7 @@
 
 ---
 
-## Slice 26.1 — `POST /api/v1/backup` handler with optional access-log inclusion
+## Slice 26.1 [standard] — `POST /api/v1/backup` handler with optional access-log inclusion
 
 ### Goal
 
@@ -172,7 +172,7 @@ cargo test -p trilithon-cli http_backup
 
 ---
 
-## Slice 26.2 — Restore pipeline scaffolding and seven-step error type
+## Slice 26.2 [cross-cutting] — Restore pipeline scaffolding and seven-step error type
 
 ### Goal
 
@@ -316,7 +316,7 @@ None at this layer.
 
 ---
 
-## Slice 26.3 — Restore steps 1–2: manifest compatibility + master-key unwrap
+## Slice 26.3 [standard] — Restore steps 1–2: manifest compatibility + master-key unwrap
 
 ### Goal
 
@@ -434,7 +434,7 @@ None at this layer.
 
 ---
 
-## Slice 26.4 — Restore steps 3–4: audit-log content-address + snapshot tree validation
+## Slice 26.4 [standard] — Restore steps 3–4: audit-log content-address + snapshot tree validation
 
 ### Goal
 
@@ -565,7 +565,7 @@ None at this layer.
 
 ---
 
-## Slice 26.5 — Restore steps 5–7: preflight, atomic swap, failure leaves state untouched
+## Slice 26.5 [cross-cutting] — Restore steps 5–7: preflight, atomic swap, failure leaves state untouched
 
 ### Goal
 
@@ -706,7 +706,7 @@ None new; existing `apply.started` / `apply.succeeded` events from the reconcile
 
 ---
 
-## Slice 26.6 — Cross-machine handoff: `installation_id` lifecycle and audit rows
+## Slice 26.6 [cross-cutting] — Cross-machine handoff: `installation_id` lifecycle and audit rows
 
 ### Goal
 
@@ -850,7 +850,7 @@ None new.
 
 ---
 
-## Slice 26.7 — `POST /api/v1/restore` handler and CLI subcommand
+## Slice 26.7 [standard] — `POST /api/v1/restore` handler and CLI subcommand
 
 ### Goal
 
@@ -1036,7 +1036,7 @@ cargo test -p trilithon-cli http_restore \
 
 ---
 
-## Slice 26.8 — Web UI Backup-and-restore page with confirmation gate
+## Slice 26.8 [trivial] — Web UI Backup-and-restore page with confirmation gate
 
 ### Goal
 

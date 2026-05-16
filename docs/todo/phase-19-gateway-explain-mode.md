@@ -19,7 +19,7 @@
 
 | # | Slice | Primary files | Effort (h) | Depends on |
 |---|-------|---------------|------------|------------|
-| 19.1 | Tokens table migration and Argon2id hashing | `crates/adapters/migrations/0006_gateway_tokens.sql`, `crates/adapters/src/gateway_token_store.rs` | 6 | — |
+| 19.1 | Tokens table migration and Argon2id hashing | `crates/adapters/migrations/0015_gateway_tokens.sql`, `crates/adapters/src/gateway_token_store.rs` | 6 | — |
 | 19.2 | Typed scope set and read-function catalogue | `crates/core/src/tool_gateway/mod.rs`, `crates/core/src/tool_gateway/scopes.rs`, `crates/core/src/tool_gateway/read_functions.rs` | 6 | 19.1 |
 | 19.3 | Per-token rate limiter | `crates/core/src/tool_gateway/rate_limit.rs` | 4 | 19.2 |
 | 19.4 | Read-only function implementations | `crates/adapters/src/tool_gateway.rs` | 8 | 19.2 |
@@ -30,11 +30,11 @@
 
 ---
 
-## Slice 19.1 — Tokens table migration and Argon2id hashing
+## Slice 19.1 [standard] — Tokens table migration and Argon2id hashing
 
 ### Goal
 
-Add migration `0006_gateway_tokens.sql` introducing the `gateway_tokens` table; bodies stored as Argon2id hashes. Implement `GatewayTokenStore` with create, lookup-by-prefix-and-verify, list, and revoke operations.
+Add migration `0015_gateway_tokens.sql` introducing the `gateway_tokens` table; bodies stored as Argon2id hashes. Implement `GatewayTokenStore` with create, lookup-by-prefix-and-verify, list, and revoke operations.
 
 ### Entry conditions
 
@@ -43,14 +43,14 @@ Add migration `0006_gateway_tokens.sql` introducing the `gateway_tokens` table; 
 
 ### Files to create or modify
 
-- `core/crates/adapters/migrations/0006_gateway_tokens.sql`.
+- `core/crates/adapters/migrations/0015_gateway_tokens.sql`.
 - `core/crates/adapters/src/gateway_token_store.rs`.
 - `core/crates/adapters/src/lib.rs` — export `gateway_token_store`.
 
 ### Signatures and shapes
 
 ```sql
--- core/crates/adapters/migrations/0006_gateway_tokens.sql
+-- core/crates/adapters/migrations/0015_gateway_tokens.sql
 BEGIN;
 
 CREATE TABLE gateway_tokens (
@@ -209,7 +209,7 @@ None directly.
 
 ---
 
-## Slice 19.2 — Typed scope set and read-function catalogue
+## Slice 19.2 [standard] — Typed scope set and read-function catalogue
 
 ### Goal
 
@@ -349,7 +349,7 @@ None.
 
 ---
 
-## Slice 19.3 — Per-token rate limiter
+## Slice 19.3 [standard] — Per-token rate limiter
 
 ### Goal
 
@@ -437,7 +437,7 @@ None.
 
 ---
 
-## Slice 19.4 — Read-only function implementations
+## Slice 19.4 [cross-cutting] — Read-only function implementations
 
 ### Goal
 
@@ -599,11 +599,11 @@ Per §12.1: `tool-gateway.invocation.started`, `tool-gateway.invocation.complete
 
 ---
 
-## Slice 19.5 — HTTP endpoints and authentication middleware
+## Slice 19.5 [cross-cutting] — HTTP endpoints and authentication middleware
 
 ### Goal
 
-Mount `POST /api/v1/gateway/functions/list` and `POST /api/v1/gateway/functions/call`. Bearer-token middleware verifies the token, rejects unauthenticated calls with 401, and threads `SessionToken` into the handler.
+Mount `POST /api/tool/functions/list` and `POST /api/tool/functions/call`. Bearer-token middleware verifies the token, rejects unauthenticated calls with 401, and threads `SessionToken` into the handler. (Path prefix is `/api/tool/` per architecture §8.3 — not `/api/v1/gateway/`.)
 
 ### Entry conditions
 
@@ -613,7 +613,7 @@ Mount `POST /api/v1/gateway/functions/list` and `POST /api/v1/gateway/functions/
 
 - `core/crates/cli/src/http/gateway.rs` — handlers.
 - `core/crates/cli/src/http/auth.rs` — bearer-token middleware extension.
-- `core/crates/cli/src/http/router.rs` — mount endpoints under `/api/v1/gateway/`.
+- `core/crates/cli/src/http/router.rs` — mount endpoints under `/api/tool/` (architecture §8.3).
 
 ### Signatures and shapes
 
@@ -724,11 +724,11 @@ Per §12.1: `http.request.received`, `http.request.completed`, `tool-gateway.inv
 ### Cross-references
 
 - ADR-0008.
-- Phase 19 tasks: "Implement `POST /api/v1/gateway/functions/list`," "Implement `POST /api/v1/gateway/functions/call`."
+- Phase 19 tasks: "Implement `POST /api/tool/functions/list`," "Implement `POST /api/tool/functions/call`."
 
 ---
 
-## Slice 19.6 — Prompt-injection envelope and system message
+## Slice 19.6 [cross-cutting] — Prompt-injection envelope and system message
 
 ### Goal
 
@@ -832,7 +832,7 @@ None new.
 
 ---
 
-## Slice 19.7 — Audit obligations
+## Slice 19.7 [cross-cutting] — Audit obligations
 
 ### Goal
 
@@ -916,7 +916,7 @@ Per §12.1: `tool-gateway.invocation.started`, `tool-gateway.invocation.complete
 
 ---
 
-## Slice 19.8 — API tokens page (web)
+## Slice 19.8 [standard] — API tokens page (web)
 
 ### Goal
 

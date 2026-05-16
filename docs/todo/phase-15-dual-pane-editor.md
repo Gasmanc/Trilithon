@@ -54,7 +54,7 @@ After every slice: `cargo build --workspace` succeeds; `pnpm typecheck` succeeds
 
 ---
 
-## Slice 15.1 — Caddyfile renderer in `core`
+## Slice 15.1 [standard] — Caddyfile renderer in `core`
 
 ### Goal
 
@@ -146,7 +146,7 @@ None.
 
 ---
 
-## Slice 15.2 — `POST /api/v1/desired-state/validate` endpoint
+## Slice 15.2 [cross-cutting] — `POST /api/v1/desired-state/validate` endpoint
 
 ### Goal
 
@@ -253,7 +253,7 @@ None.
 
 ---
 
-## Slice 15.3 — Editor state machine in TypeScript
+## Slice 15.3 [trivial] — Editor state machine in TypeScript
 
 ### Goal
 
@@ -355,7 +355,7 @@ None.
 
 ---
 
-## Slice 15.4 — `DualPaneEditor` shell layout
+## Slice 15.4 [standard] — `DualPaneEditor` shell layout
 
 ### Goal
 
@@ -485,7 +485,7 @@ None directly.
 
 ---
 
-## Slice 15.5 — Apply gating, diff preview, commit handler
+## Slice 15.5 [standard] — Apply gating, diff preview, commit handler
 
 ### Goal
 
@@ -563,7 +563,7 @@ None directly.
 
 ---
 
-## Slice 15.6 — Dual-pane Vitest test corpus
+## Slice 15.6 [trivial] — Dual-pane Vitest test corpus
 
 ### Goal
 

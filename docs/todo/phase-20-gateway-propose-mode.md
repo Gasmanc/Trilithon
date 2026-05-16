@@ -19,7 +19,7 @@
 
 | # | Slice | Primary files | Effort (h) | Depends on |
 |---|-------|---------------|------------|------------|
-| 20.1 | Proposals migration and store | `crates/adapters/migrations/0007_proposals.sql`, `crates/adapters/src/proposal_store.rs` | 6 | — |
+| 20.1 | Proposals migration and store | `crates/adapters/migrations/0016_proposals.sql`, `crates/adapters/src/proposal_store.rs` | 6 | — |
 | 20.2 | Propose scopes and propose-function catalogue | `crates/core/src/tool_gateway/scopes.rs`, `crates/core/src/tool_gateway/propose_functions.rs` | 4 | 20.1 |
 | 20.3 | Proposal validation and creation | `crates/adapters/src/tool_gateway.rs`, `crates/core/src/proposals.rs` | 8 | 20.1, 20.2 |
 | 20.4 | Proposals HTTP endpoints (list, approve, reject) | `crates/cli/src/http/proposals.rs` | 6 | 20.3 |
@@ -29,11 +29,11 @@
 
 ---
 
-## Slice 20.1 — Proposals migration and store
+## Slice 20.1 [standard] — Proposals migration and store
 
 ### Goal
 
-Add migration `0007_proposals.sql` and implement `ProposalStore` covering insert, transition, list-pending-by-source, approve, reject, and expire operations. The `proposals` table carries `proposal_id`, `source`, `source_identifier`, `mutation_json`, `expires_at_unix_seconds`, `status`, `created_at`, `decided_at`, `decided_by`.
+Add migration `0016_proposals.sql` and implement `ProposalStore` covering insert, transition, list-pending-by-source, approve, reject, and expire operations. The schema is authoritative in architecture §6.8 — use that definition exactly (see ⚠️ note below).
 
 ### Entry conditions
 
@@ -42,33 +42,41 @@ Add migration `0007_proposals.sql` and implement `ProposalStore` covering insert
 
 ### Files to create or modify
 
-- `core/crates/adapters/migrations/0007_proposals.sql`.
+- `core/crates/adapters/migrations/0016_proposals.sql`.
 - `core/crates/adapters/src/proposal_store.rs`.
 - `core/crates/adapters/src/lib.rs` — export `proposal_store`.
 - `core/crates/core/src/proposals.rs` — `ProposalId`, `ProposalSource`, `ProposalStatus`.
 
 ### Signatures and shapes
 
+⚠️ **Schema correction:** The original draft here diverged from architecture §6.8. The authoritative schema is below. Use this — do not re-invent columns.
+
 ```sql
--- core/crates/adapters/migrations/0007_proposals.sql
+-- core/crates/adapters/migrations/0016_proposals.sql
 BEGIN;
 
 CREATE TABLE proposals (
-    proposal_id              TEXT PRIMARY KEY,           -- ULID
-    source                   TEXT NOT NULL CHECK (source IN ('language-model', 'docker-discovery', 'caddyfile-import')),
-    source_identifier        TEXT NOT NULL,              -- token-id or container-id or import-id
-    mutation_json            TEXT NOT NULL,              -- canonical JSON of the TypedMutation
-    basis_config_version     INTEGER NOT NULL,           -- the config_version at proposal creation
-    expires_at_unix_seconds  INTEGER NOT NULL,
-    status                   TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'expired', 'superseded')),
-    created_at               INTEGER NOT NULL,
-    decided_at               INTEGER,                    -- nullable until decided
-    decided_by               TEXT                        -- user-id of the approver/rejecter; nullable until decided
+    id                  TEXT PRIMARY KEY,
+    correlation_id      TEXT NOT NULL,
+    source              TEXT NOT NULL CHECK (source IN ('docker', 'llm', 'import')),
+    source_ref          TEXT,
+    payload_json        TEXT NOT NULL,
+    rationale           TEXT,
+    submitted_at        INTEGER NOT NULL,
+    expires_at          INTEGER NOT NULL,
+    state               TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'rejected', 'expired', 'superseded')),
+    decided_by_kind     TEXT,
+    decided_by_id       TEXT,
+    decided_at          INTEGER,
+    wildcard_callout    INTEGER NOT NULL DEFAULT 0,
+    wildcard_ack_by     TEXT,
+    wildcard_ack_at     INTEGER,
+    resulting_mutation  TEXT REFERENCES mutations(id)
 );
 
-CREATE INDEX proposals_status_created_at ON proposals(status, created_at);
-CREATE INDEX proposals_source ON proposals(source, source_identifier);
-CREATE INDEX proposals_expires_at ON proposals(expires_at_unix_seconds) WHERE status = 'pending';
+CREATE INDEX proposals_state ON proposals(state);
+CREATE INDEX proposals_expires_at ON proposals(expires_at);
+CREATE INDEX proposals_source ON proposals(source);
 
 COMMIT;
 ```
@@ -83,14 +91,14 @@ pub type ProposalId = ulid::Ulid;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProposalSource {
-    LanguageModel,
-    DockerDiscovery,
-    CaddyfileImport,
+    Docker,  // serialises as "docker"
+    Llm,     // serialises as "llm"
+    Import,  // serialises as "import"
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ProposalStatus {
+pub enum ProposalState {
     Pending, Approved, Rejected, Expired, Superseded,
 }
 ```
@@ -116,16 +124,22 @@ pub enum ProposalStoreError {
 
 #[derive(Clone, Debug)]
 pub struct ProposalRecord {
-    pub proposal_id:          ProposalId,
-    pub source:               ProposalSource,
-    pub source_identifier:    String,
-    pub mutation:             TypedMutation,
-    pub basis_config_version: i64,
-    pub expires_at:           i64,
-    pub status:               ProposalStatus,
-    pub created_at:           i64,
-    pub decided_at:           Option<i64>,
-    pub decided_by:           Option<String>,
+    pub id:                ProposalId,
+    pub correlation_id:    String,
+    pub source:            ProposalSource,
+    pub source_ref:        Option<String>,
+    pub payload_json:      String,          // canonical JSON of the TypedMutation
+    pub rationale:         Option<String>,
+    pub submitted_at:      i64,
+    pub expires_at:        i64,
+    pub state:             ProposalState,
+    pub decided_by_kind:   Option<String>,
+    pub decided_by_id:     Option<String>,
+    pub decided_at:        Option<i64>,
+    pub wildcard_callout:  bool,
+    pub wildcard_ack_by:   Option<String>,
+    pub wildcard_ack_at:   Option<i64>,
+    pub resulting_mutation: Option<String>,
 }
 
 pub struct ProposalStore;
@@ -229,7 +243,7 @@ None directly.
 
 ---
 
-## Slice 20.2 — Propose scopes and propose-function catalogue
+## Slice 20.2 [standard] — Propose scopes and propose-function catalogue
 
 ### Goal
 
@@ -348,7 +362,7 @@ None.
 
 ---
 
-## Slice 20.3 — Proposal validation and creation
+## Slice 20.3 [cross-cutting] — Proposal validation and creation
 
 ### Goal
 
@@ -451,7 +465,7 @@ Per §12.1: `tool-gateway.invocation.started`, `tool-gateway.invocation.complete
 
 ---
 
-## Slice 20.4 — Proposals HTTP endpoints (list, approve, reject)
+## Slice 20.4 [cross-cutting] — Proposals HTTP endpoints (list, approve, reject)
 
 ### Goal
 
@@ -594,7 +608,7 @@ Per §12.1: `http.request.received`, `http.request.completed`, `proposal.approve
 
 ---
 
-## Slice 20.5 — Expiry sweeper and queue cap
+## Slice 20.5 [cross-cutting] — Expiry sweeper and queue cap
 
 ### Goal
 
@@ -699,7 +713,7 @@ None new.
 
 ---
 
-## Slice 20.6 — Proposals web UI
+## Slice 20.6 [standard] — Proposals web UI
 
 ### Goal
 
@@ -803,7 +817,7 @@ None directly.
 
 ---
 
-## Slice 20.7 — End-to-end propose-approve-conflict scenarios
+## Slice 20.7 [standard] — End-to-end propose-approve-conflict scenarios
 
 ### Goal
 

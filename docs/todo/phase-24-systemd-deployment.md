@@ -31,7 +31,7 @@
 
 ---
 
-## Slice 24.1 — Systemd unit file plus `tmpfiles.d` snippet and Caddy drop-in
+## Slice 24.1 [trivial] — Systemd unit file plus `tmpfiles.d` snippet and Caddy drop-in
 
 ### Goal
 
@@ -197,7 +197,7 @@ None at the unit-file layer. The runtime daemon emits audit rows; the unit file 
 
 ---
 
-## Slice 24.2 — OS detection plus `detect_caddy` and `install_caddy_apt_repo` install-script functions
+## Slice 24.2 [trivial] — OS detection plus `detect_caddy` and `install_caddy_apt_repo` install-script functions
 
 ### Goal
 
@@ -403,7 +403,7 @@ None.
 
 ---
 
-## Slice 24.3 — `create_trilithon_user`, `install_binary`, `seed_config` install-script functions
+## Slice 24.3 [trivial] — `create_trilithon_user`, `install_binary`, `seed_config` install-script functions
 
 ### Goal
 
@@ -552,7 +552,7 @@ None.
 
 ---
 
-## Slice 24.4 — `start_service`, `verify_running`, `rollback_partial`, install entry point
+## Slice 24.4 [standard] — `start_service`, `verify_running`, `rollback_partial`, install entry point
 
 ### Goal
 
@@ -742,7 +742,7 @@ After daemon readiness:
 
 ---
 
-## Slice 24.5 — Uninstall script (six functions)
+## Slice 24.5 [standard] — Uninstall script (six functions)
 
 ### Goal
 
@@ -885,7 +885,7 @@ The daemon emits `auth.session-revoked` when the service stops if any sessions a
 
 ---
 
-## Slice 24.6 — CI hardening-score gate (`systemd-analyze security`)
+## Slice 24.6 [trivial] — CI hardening-score gate (`systemd-analyze security`)
 
 ### Goal
 
@@ -1014,7 +1014,7 @@ None.
 
 ---
 
-## Slice 24.7 — CI smoke matrix on Ubuntu 24.04 and Debian 12 plus negative tests
+## Slice 24.7 [standard] — CI smoke matrix on Ubuntu 24.04 and Debian 12 plus negative tests
 
 ### Goal
 
@@ -1204,7 +1204,7 @@ During the smoke run the daemon emits `daemon.started`, `caddy.connected`, `cadd
 
 ---
 
-## Slice 24.8 — `.deb` package build with postinst/prerm/postrm hooks
+## Slice 24.8 [standard] — `.deb` package build with postinst/prerm/postrm hooks
 
 ### Goal
 
@@ -1393,7 +1393,7 @@ After `dpkg -i` the daemon emits the same events as slice 24.4.
 
 ---
 
-## Slice 24.9 — Operator and end-user documentation
+## Slice 24.9 [trivial] — Operator and end-user documentation
 
 ### Goal
 

@@ -38,7 +38,7 @@ This phase touches three traits from `trait-signatures.md`. The implementer MUST
 
 | # | Slice title | Primary files | Effort (h) | Depends on |
 |---|---|---|---|---|
-| 14.1 | Migration `0005_tls_and_health.sql` and storage extension | `core/crates/adapters/migrations/0005_tls_and_health.sql`, `core/crates/adapters/src/storage_sqlite.rs` | 4 | Phase 12 |
+| 14.1 | Migration `0014_tls_and_health.sql` and storage extension | `core/crates/adapters/migrations/0014_tls_and_health.sql`, `core/crates/adapters/src/storage_sqlite.rs` | 4 | Phase 12 |
 | 14.2 | `TlsInventory` adapter with 5-minute Tokio interval | `core/crates/adapters/src/tls_inventory.rs` | 6 | 14.1 |
 | 14.3 | `UpstreamHealth` adapter with 30-second Tokio interval and Caddy long-poll subscription | `core/crates/adapters/src/upstream_health.rs` | 8 | 14.1 |
 | 14.4 | Route-level probe opt-out (`disable_trilithon_probes`) wiring | `core/crates/core/src/route.rs`, `core/crates/adapters/src/upstream_health.rs` | 3 | 14.3 |
@@ -51,7 +51,7 @@ After every slice: `cargo build --workspace` succeeds; `pnpm typecheck` succeeds
 
 ---
 
-## Slice 14.1 — Migration `0005_tls_and_health.sql` and storage extension
+## Slice 14.1 [cross-cutting] — Migration `0014_tls_and_health.sql` and storage extension
 
 ### Goal
 
@@ -64,14 +64,14 @@ Add the persistent storage for the TLS inventory and the upstream-health state. 
 
 ### Files to create or modify
 
-- `core/crates/adapters/migrations/0005_tls_and_health.sql` — DDL.
+- `core/crates/adapters/migrations/0014_tls_and_health.sql` — DDL.
 - `core/crates/adapters/src/storage_sqlite.rs` — extend with `upsert_tls_certificates`, `list_tls_certificates`, `upsert_upstream_health`, `list_upstream_health`.
 - `core/crates/core/src/storage.rs` — extend the `Storage` trait if the methods are not already on the trait surface (trait-signatures.md §1 lists the canonical surface; if extending, update that file in the same commit).
 
 ### Signatures and shapes
 
 ```sql
--- core/crates/adapters/migrations/0005_tls_and_health.sql
+-- core/crates/adapters/migrations/0014_tls_and_health.sql
 CREATE TABLE tls_certificates (
     host                TEXT NOT NULL PRIMARY KEY,
     issuer              TEXT NOT NULL,
@@ -195,7 +195,7 @@ None.
 
 ---
 
-## Slice 14.2 — `TlsInventory` adapter with 5-minute Tokio interval
+## Slice 14.2 [standard] — `TlsInventory` adapter with 5-minute Tokio interval
 
 ### Goal
 
@@ -317,7 +317,7 @@ None directly. The capability probe writes `caddy.capability-probe-completed` pe
 
 ---
 
-## Slice 14.3 — `UpstreamHealth` adapter with 30-second interval and Caddy long-poll
+## Slice 14.3 [cross-cutting] — `UpstreamHealth` adapter with 30-second interval and Caddy long-poll
 
 ### Goal
 
@@ -436,7 +436,7 @@ None.
 
 ---
 
-## Slice 14.4 — Route-level probe opt-out
+## Slice 14.4 [standard] — Route-level probe opt-out
 
 ### Goal
 
@@ -507,7 +507,7 @@ None.
 
 ---
 
-## Slice 14.5 — HTTP endpoints `GET /api/v1/tls/certificates` and `/upstreams/health`
+## Slice 14.5 [standard] — HTTP endpoints `GET /api/v1/tls/certificates` and `/upstreams/health`
 
 ### Goal
 
@@ -599,7 +599,7 @@ None (read endpoints do not write the audit log).
 
 ---
 
-## Slice 14.6 — Web UI per-route TLS and upstream health badges
+## Slice 14.6 [standard] — Web UI per-route TLS and upstream health badges
 
 ### Goal
 
@@ -692,7 +692,7 @@ None.
 
 ---
 
-## Slice 14.7 — Dashboard "TLS expiring soon" widget
+## Slice 14.7 [trivial] — Dashboard "TLS expiring soon" widget
 
 ### Goal
 
@@ -755,7 +755,7 @@ None.
 
 ---
 
-## Slice 14.8 — "Issuing" vs "applied" state with ACME error surfacing
+## Slice 14.8 [cross-cutting] — "Issuing" vs "applied" state with ACME error surfacing
 
 ### Goal
 
