@@ -1,5 +1,5 @@
 version: 1
-revision: 3
+revision: 4
 phases:
 - id: '1'
   slug: daemon-skeleton
@@ -97,11 +97,11 @@ phases:
   finding_slug: phase_10
   diff_source: commit-grep
   diff_ref: null
-  status: approved
+  status: in_progress
   depends_on:
   - '9'
   reviewers: []
-  status_updated_at: '2026-05-16T00:00:00.000000Z'
+  status_updated_at: '2026-05-16T00:00:00Z'
 - id: '11'
   slug: web-ui-shell
   todo_path: docs/todo/phase-11-web-ui-shell.md
