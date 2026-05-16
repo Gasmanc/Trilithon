@@ -1,0 +1,24 @@
+- finding_id: F002
+  fix_diff_summary: "adopt handler replaced with 501 Not Implemented; removed all reapply logic from adopt path"
+  generalizable: true
+  one_sentence_lesson: "When an endpoint's semantics cannot be correctly implemented yet, return 501 rather than silently falling back to a different (wrong) operation"
+
+- finding_id: F006
+  fix_diff_summary: "Moved insert_snapshot from post_mutation into apply_and_respond after confirmed ApplyOutcome::Succeeded"
+  generalizable: true
+  one_sentence_lesson: "Side-effectful persistence (DB insert) must happen only after the confirming outcome is observed — never before an operation whose failure should leave no trace"
+
+- finding_id: F008
+  fix_diff_summary: "secure_cookies bool added to AppState, wired from config.allow_remote, passed to build_cookie"
+  generalizable: true
+  one_sentence_lesson: "Security-sensitive HTTP flags (Secure on cookies, HSTS, etc.) must be driven by runtime config, not hardcoded to the insecure default"
+
+- finding_id: F009
+  fix_diff_summary: "Extracted resolve_client_ip helper that reads X-Forwarded-For when trusted_proxy is set; otherwise falls back to TCP peer"
+  generalizable: true
+  one_sentence_lesson: "Rate limiters and IP-keyed logic must read X-Forwarded-For behind trusted proxies or all traffic collapses to one shared bucket"
+
+- finding_id: F018
+  fix_diff_summary: "Added dummy_verify() call for missing-username path and changed both failed-login audit rows to ActorRef::System"
+  generalizable: true
+  one_sentence_lesson: "All failed authentication paths must use the same audit actor (System, not User) and take the same wall-clock time to prevent username enumeration via timing or log inspection"
