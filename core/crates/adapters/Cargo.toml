@@ -40,6 +40,7 @@ password-hash = { version = "0.5", features = ["rand_core"] }
 base64 = "0.22"
 chacha20poly1305 = "0.10"
 getrandom = "0.2"
+keyring-core = "1"
 dashmap = "6"
 utoipa = { version = "5" }
 
@@ -399,6 +400,24 @@ path = "tests/cipher_swap_field_path_fails_decrypt.rs"
 [[test]]
 name = "cipher_uses_xchacha20poly1305"
 path = "tests/cipher_uses_xchacha20poly1305.rs"
+
+# ── Slice 10.3 — keychain tests ──────────────────────────────────────────────
+
+[[test]]
+name = "keychain_load_or_generate_macos"
+path = "tests/keychain_load_or_generate_macos.rs"
+
+[[test]]
+name = "keychain_load_or_generate_linux"
+path = "tests/keychain_load_or_generate_linux.rs"
+
+[[test]]
+name = "keychain_rotate_increments_version"
+path = "tests/keychain_rotate_increments_version.rs"
+
+[[test]]
+name = "keychain_keyring_failure_returns_typed_error"
+path = "tests/keychain_keyring_failure_returns_typed_error.rs"
 
 [lints]
 workspace = true
