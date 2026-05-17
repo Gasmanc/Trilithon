@@ -1,4 +1,12 @@
 //! Linux Secret Service: first call generates, second call retrieves the same key.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_methods,
+    clippy::panic
+)]
+// reason: integration test — panics are the correct failure mode
 //!
 //! Gated on `target_os = "linux"`.  CI runners that do not have a session D-Bus
 //! running (e.g. bare containers) are detected by attempting a keyring probe
@@ -37,7 +45,7 @@ async fn keychain_load_or_generate_linux() {
     }
 
     // Cleanup.
-    if let Ok(entry) = keyring::Entry::new("trilithon-test", &account) {
+    if let Ok(entry) = keyring_core::Entry::new("trilithon-test", &account) {
         let _ = entry.delete_credential();
     }
 }

@@ -1,4 +1,12 @@
 //! macOS Keychain: first call generates, second call retrieves the same key.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_methods,
+    clippy::panic
+)]
+// reason: integration test — panics are the correct failure mode
 //!
 //! This test is gated on `target_os = "macos"` and writes a real entry into
 //! the macOS Keychain under the test service name `"trilithon-test"`.  The
@@ -32,7 +40,7 @@ async fn keychain_load_or_generate_macos() {
     assert_eq!(key1, key2, "second call must return the same key");
 
     // Cleanup: delete the test entry so we don't litter the Keychain.
-    if let Ok(entry) = keyring::Entry::new("trilithon-test", &account) {
+    if let Ok(entry) = keyring_core::Entry::new("trilithon-test", &account) {
         let _ = entry.delete_credential();
     }
 }

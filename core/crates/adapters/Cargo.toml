@@ -419,5 +419,23 @@ path = "tests/keychain_rotate_increments_version.rs"
 name = "keychain_keyring_failure_returns_typed_error"
 path = "tests/keychain_keyring_failure_returns_typed_error.rs"
 
+# ── Slice 10.4 — FileBackend tests ───────────────────────────────────────────
+
+[[test]]
+name = "file_backend_creates_file_mode_0600"
+path = "tests/file_backend_creates_file_mode_0600.rs"
+
+[[test]]
+name = "file_backend_round_trip"
+path = "tests/file_backend_round_trip.rs"
+
+[[test]]
+name = "file_backend_tightens_permissions"
+path = "tests/file_backend_tightens_permissions.rs"
+
+[[test]]
+name = "file_backend_startup_warning_emitted"
+path = "tests/file_backend_startup_warning_emitted.rs"
+
 [lints]
 workspace = true

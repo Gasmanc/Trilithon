@@ -1,4 +1,12 @@
 //! `rotate` stores the new key under `master-key-v{n+1}` and returns the
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::disallowed_methods,
+    clippy::panic
+)]
+// reason: integration test — panics are the correct failure mode
 //! incremented version.  The old version's entry is still retrievable.
 
 use trilithon_adapters::secrets_local::{KeychainBackend, MasterKeyBackend as _};
@@ -44,7 +52,7 @@ async fn keychain_rotate_increments_version() {
 
     // Cleanup.
     for account in [account_v1, format!("master-key-v2-rot-{pid}")] {
-        if let Ok(entry) = keyring::Entry::new("trilithon-test", &account) {
+        if let Ok(entry) = keyring_core::Entry::new("trilithon-test", &account) {
             let _ = entry.delete_credential();
         }
     }

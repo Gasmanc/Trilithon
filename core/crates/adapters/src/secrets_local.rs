@@ -4,6 +4,8 @@
 //! holds a single 256-bit key; Slice 10.3 will wrap it in a key-version map.
 
 pub mod cipher;
+pub mod file;
 pub mod keychain;
 pub use cipher::CipherCore;
+pub use file::FileBackend;
 pub use keychain::{KeychainBackend, MasterKeyBackend};
